@@ -89,7 +89,7 @@ function SemLista({
   erro: boolean;
   onTentarDeNovo: () => void;
 }) {
-  if (!erro) return <p className="mt-2 text-xs text-muted-foreground">{vazio}</p>;
+  if (!erro) return <p className="mt-2 text-xs text-muted-foreground max-md:text-[var(--m-text-3)]">{vazio}</p>;
   return (
     <div className="mt-2 space-y-1">
       <p className="text-xs text-error-fg">Não consegui ler estes dados.</p>
@@ -196,15 +196,23 @@ export function CRMSidePanel({ conversation }: Props) {
   }
 
   return (
-    <aside className="flex h-full flex-col gap-4 overflow-y-auto border-l border-border bg-background p-4">
+    /* `bg-[var(--m-surface)]` e NÃO `bg-transparent`: dentro da folha de baixo,
+       um painel transparente deixava a conversa aparecer POR TRÁS do texto —
+       valor do lead e mensagem do cliente sobrepostos, ilegíveis os dois.
+       A folha precisa ser superfície opaca, não vidro. */
+    <aside className="flex h-full flex-col gap-4 overflow-y-auto border-l border-border bg-background p-4 max-md:border-l-0 max-md:bg-[var(--m-surface)] max-md:px-5 max-md:pb-8">
       <section>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground max-md:text-[11.5px] max-md:font-bold max-md:tracking-[0.05em] max-md:text-[var(--m-text-2)]">
           Contato
         </h3>
-        <Card className="mt-2 space-y-2 p-3 text-sm">
-          <div className="font-medium">{displayName}</div>
+        <Card className="mt-2 space-y-2 p-3 text-sm max-md:rounded-2xl max-md:border-[var(--m-border-soft)] max-md:bg-[var(--m-elevated)] max-md:p-4">
+          <div className="font-medium max-md:text-[15px] max-md:text-[var(--m-text-1)]">
+            {displayName}
+          </div>
           {contact?.phone_number && (
-            <div className="text-xs text-muted-foreground">{contact.phone_number}</div>
+            <div className="text-xs text-muted-foreground max-md:text-[12.5px] max-md:text-[var(--m-text-2)]">
+              {contact.phone_number}
+            </div>
           )}
           {tags.length > 0 && (
             <div className="flex flex-wrap gap-1">
@@ -270,7 +278,7 @@ export function CRMSidePanel({ conversation }: Props) {
       <Separator />
 
       <section>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground max-md:text-[11.5px] max-md:font-bold max-md:tracking-[0.05em] max-md:text-[var(--m-text-2)]">
           Leads recentes
         </h3>
         {sectionsLoading ? (
@@ -280,12 +288,26 @@ export function CRMSidePanel({ conversation }: Props) {
             {leads.map((l) => (
               <li
                 key={l.id}
-                className="flex items-center justify-between rounded-md border border-border p-2 text-xs"
+                className="flex items-center justify-between rounded-md border border-border p-2 text-xs max-md:rounded-2xl max-md:border-[var(--m-border-soft)] max-md:bg-[var(--m-elevated)] max-md:p-4"
               >
                 <div className="min-w-0">
-                  <div className="truncate font-medium">{l.title}</div>
-                  <div className="text-muted-foreground">
+                  {/* No celular o VALOR vem primeiro e grande: é o que se quer
+                      saber de relance ("quanto vale esta conversa?"). No
+                      desktop ele segue como legenda, porque lá a coluna toda
+                      está visível de uma vez e a hierarquia não precisa gritar. */}
+                  <div className="hidden font-mono text-[21px] font-semibold tabular-nums text-[var(--m-text-1)] max-md:block">
+                    {formatMoney(l.value_cents, l.currency)}
+                  </div>
+                  <div className="truncate font-medium max-md:mt-1 max-md:text-[12.5px] max-md:font-normal max-md:text-[var(--m-text-2)]">
+                    {l.title}
+                  </div>
+                  <div className="text-muted-foreground max-md:hidden">
                     {l.status} · {formatMoney(l.value_cents, l.currency)}
+                  </div>
+                  <div className="mt-2 hidden max-md:block">
+                    <span className="rounded-md border border-[var(--m-violet-line)] bg-[var(--m-violet-dim)] px-2 py-[3px] text-[10.5px] font-semibold text-[var(--m-violet)]">
+                      {l.status}
+                    </span>
                   </div>
                 </div>
               </li>
@@ -299,7 +321,7 @@ export function CRMSidePanel({ conversation }: Props) {
       <Separator />
 
       <section>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground max-md:text-[11.5px] max-md:font-bold max-md:tracking-[0.05em] max-md:text-[var(--m-text-2)]">
           Pedidos recentes
         </h3>
         {sectionsLoading ? (
@@ -309,7 +331,7 @@ export function CRMSidePanel({ conversation }: Props) {
             {orders.map((o) => (
               <li
                 key={o.id}
-                className="flex items-center justify-between rounded-md border border-border p-2 text-xs"
+                className="flex items-center justify-between rounded-md border border-border p-2 text-xs max-md:rounded-xl max-md:border-[var(--m-border-soft)] max-md:bg-[var(--m-elevated)] max-md:p-3"
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-1 truncate font-medium">
@@ -331,7 +353,7 @@ export function CRMSidePanel({ conversation }: Props) {
       <Separator />
 
       <section>
-        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground max-md:text-[11.5px] max-md:font-bold max-md:tracking-[0.05em] max-md:text-[var(--m-text-2)]">
           Atividade
         </h3>
         {sectionsLoading ? (
@@ -339,7 +361,7 @@ export function CRMSidePanel({ conversation }: Props) {
         ) : activities && activities.length > 0 ? (
           <ul className="mt-2 space-y-1.5">
             {activities.map((a) => (
-              <li key={a.id} className="rounded-md border border-border p-2 text-xs">
+              <li key={a.id} className="rounded-md border border-border p-2 text-xs max-md:rounded-xl max-md:border-[var(--m-border-soft)] max-md:bg-[var(--m-elevated)] max-md:p-3">
                 {/* Rótulo do vocabulário único (activity-vocabulary), nunca o
                     tipo cru: a tela e o banco divergiram justamente por manter
                     duas listas. Marcador por ator, forma e não cor (§5). */}

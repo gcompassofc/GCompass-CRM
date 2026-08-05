@@ -8,11 +8,13 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Clock } from "@/lib/ui/icons";
 import { useSnoozeConversation } from "@/hooks/inbox/useSnoozeConversation";
+import { cn } from "@/lib/utils";
 
 interface Props {
   conversationId: string;
   snoozeUntil: string | null;
   disabled?: boolean;
+  className?: string;
 }
 
 const DURATIONS: Array<{ hours: 1 | 3 | 24; label: string }> = [
@@ -25,7 +27,7 @@ function isSnoozeActive(snoozeUntil: string | null): boolean {
   return snoozeUntil != null && new Date(snoozeUntil).getTime() > Date.now();
 }
 
-export function SnoozeButton({ conversationId, snoozeUntil, disabled }: Props) {
+export function SnoozeButton({ conversationId, snoozeUntil, disabled, className }: Props) {
   const { snooze, cancel } = useSnoozeConversation();
   const isActive = isSnoozeActive(snoozeUntil);
   const isPending = snooze.isPending || cancel.isPending;
@@ -37,10 +39,14 @@ export function SnoozeButton({ conversationId, snoozeUntil, disabled }: Props) {
           size="sm"
           variant="outline"
           disabled={disabled || isPending}
-          className="flex items-center gap-1"
+          className={cn("flex items-center gap-1.5", className)}
         >
-          <Clock size={12} weight="regular" aria-hidden />
-          {isActive ? "Lembrete ativo" : "Lembrar"}
+          <Clock size={14} weight="regular" aria-hidden />
+          {/* No celular o rótulo aparece: a fileira de ações é toda escrita, e
+              um relógio sozinho no meio de quatro palavras vira adivinhação. */}
+          <span className="hidden sm:inline max-md:inline">
+            {isActive ? "Lembrete ativo" : "Lembrar"}
+          </span>
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

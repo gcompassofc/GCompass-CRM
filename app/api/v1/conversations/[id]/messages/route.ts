@@ -13,6 +13,9 @@ import { createClient } from "@/lib/supabase/server";
 
 import { listMessagesHandler } from "@/app/api/v1/messages/_handler";
 
+import { MOCK_DEV_MESSAGES } from "@/lib/mock-dev-data";
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
+
 export const dynamic = "force-dynamic";
 
 interface RouteCtx {
@@ -22,6 +25,12 @@ interface RouteCtx {
 export async function GET(req: NextRequest, ctx: RouteCtx): Promise<Response> {
   const requestId = randomUUID();
   const { id: conversationId } = await ctx.params;
+
+  if (IS_DEMO_MODE) {
+    const msgs = MOCK_DEV_MESSAGES[conversationId] ?? MOCK_DEV_MESSAGES["conv-1"];
+    return ok(msgs, { requestId, meta: { cursor: null, has_more: false } });
+  }
+
   const supabase = await createClient();
 
   const {

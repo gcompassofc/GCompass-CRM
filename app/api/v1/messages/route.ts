@@ -7,6 +7,7 @@ import { type NextRequest } from "next/server";
 import { ApiError } from "@/lib/api/types";
 import { fail, ok } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
 import { sendMessageSchema, validateRequest, type SendMessageInput } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
 
@@ -16,6 +17,36 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
+
+  // Na demo a mensagem "sai" mas não viaja: não há WAHA para entregá-la.
+  // Ela volta com `status: "sent"` para a bolha aparecer na conversa com o
+  // tique de enviada — o botão de enviar é a interação central da tela, e um
+  // composer que engole o texto faria a demo parecer quebrada.
+  // O eco NÃO é persistido: recarregar a página devolve o roteiro fixo.
+  if (IS_DEMO_MODE) {
+    const corpo = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    const agora = new Date().toISOString();
+    return ok(
+      {
+        id: `demo-${randomUUID()}`,
+        conversation_id: corpo.conversation_id ?? null,
+        organization_id: "00000000-0000-0000-0000-000000000002",
+        direction: "outbound",
+        type: "text",
+        status: "sent",
+        ack: 1,
+        body: typeof corpo.body === "string" ? corpo.body : "",
+        media_url: null,
+        media_storage_path: null,
+        sent_at: agora,
+        created_at: agora,
+        sent_via: "human",
+        metadata: {},
+      },
+      { requestId },
+    );
+  }
+
   const supabase = await createClient();
 
   // spec 13 §4: escrita é agent+ (viewer é read-only).

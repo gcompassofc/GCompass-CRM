@@ -7,6 +7,7 @@ import { signupSchema, type SignupInput } from "@/lib/auth/schemas";
 import { audit, hashEmail } from "@/lib/audit";
 import { authRateLimited, AUTH_LIMITS } from "@/lib/auth/rate-limit";
 import { env } from "@/lib/env";
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
 
 export type SignUpResult =
   | { ok: true }
@@ -40,6 +41,11 @@ export async function signUp(input: SignupInput): Promise<SignUpResult> {
   const requestId = hdrs.get("x-request-id");
   const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   const userAgent = hdrs.get("user-agent") ?? null;
+
+  // Na demo não há provisionamento de tenant para proteger.
+  if (IS_DEMO_MODE) {
+    return { ok: true };
+  }
 
   // Criar conta é fluxo raro por pessoa: teto baixo por IP evita fábrica de
   // organizações (cada signup provisiona tenant). Issue #64.

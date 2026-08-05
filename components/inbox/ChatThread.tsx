@@ -26,12 +26,16 @@ export type ThreadItem =
 /** Intercala mensagens e notas por timestamp asc (puro, sem I/O — testado em thread-merge.test.ts). */
 export function mergeThreadItems(messages: Message[], notes: Note[]): ThreadItem[] {
   const items: ThreadItem[] = [
-    ...messages.map((data): ThreadItem => ({ kind: "message", ts: data.sent_at, data })),
-    ...notes.map((data): ThreadItem => ({ kind: "note", ts: data.created_at, data })),
+    ...messages.map((data): ThreadItem => ({ kind: "message", ts: data.sent_at || new Date().toISOString(), data })),
+    ...notes.map((data): ThreadItem => ({ kind: "note", ts: data.created_at || new Date().toISOString(), data })),
   ];
   // Sort estável (Array#sort é estável no V8/Node): empate mantém a ordem de
   // inserção acima — mensagens antes de notas no mesmo instante.
-  items.sort((a, b) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+  items.sort((a, b) => {
+    const timeA = new Date(a.ts).getTime();
+    const timeB = new Date(b.ts).getTime();
+    return (isNaN(timeA) ? 0 : timeA) - (isNaN(timeB) ? 0 : timeB);
+  });
   return items;
 }
 
@@ -140,7 +144,8 @@ export function ChatThread({ conversationId }: Props) {
   // Group by day for separators (usa o timestamp do item — sent_at pra mensagem, created_at pra nota).
   const groups: { key: string; date: Date; items: ThreadItem[] }[] = [];
   for (const item of items) {
-    const d = new Date(item.ts);
+    let d = new Date(item.ts);
+    if (isNaN(d.getTime())) d = new Date(); // Fallback seguro para mock data ou valores ausentes
     const key = format(d, "yyyy-MM-dd");
     const last = groups[groups.length - 1];
     if (last && last.key === key) last.items.push(item);

@@ -14,6 +14,9 @@ import { createClient } from "@/lib/supabase/server";
 
 import { getConversationHandler, patchConversationHandler } from "../_handler";
 
+import { MOCK_DEV_CONVERSATIONS } from "@/lib/mock-dev-data";
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
+
 export const dynamic = "force-dynamic";
 
 interface RouteCtx {
@@ -23,6 +26,12 @@ interface RouteCtx {
 export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
   const requestId = randomUUID();
   const { id } = await ctx.params;
+
+  if (IS_DEMO_MODE) {
+    const conv = MOCK_DEV_CONVERSATIONS.find((c) => c.id === id) ?? MOCK_DEV_CONVERSATIONS[0];
+    return ok(conv, { requestId });
+  }
+
   const supabase = await createClient();
 
   const {
@@ -61,6 +70,12 @@ export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
 export async function PATCH(req: NextRequest, ctx: RouteCtx): Promise<Response> {
   const requestId = randomUUID();
   const { id } = await ctx.params;
+
+  if (IS_DEMO_MODE) {
+    const conv = MOCK_DEV_CONVERSATIONS.find((c) => c.id === id) ?? MOCK_DEV_CONVERSATIONS[0];
+    return ok(conv, { requestId });
+  }
+
   const supabase = await createClient();
 
   // spec 13 §4: escrita é agent+ (viewer é read-only).

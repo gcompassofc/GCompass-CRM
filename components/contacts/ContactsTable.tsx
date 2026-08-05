@@ -27,11 +27,11 @@ export function ContactsTable({ contacts }: Props) {
       <TableHeader>
         <TableRow>
           <TableHead>Nome</TableHead>
-          <TableHead>Email</TableHead>
+          <TableHead className="max-md:hidden">Email</TableHead>
           <TableHead>Telefone</TableHead>
           <TableHead>Tags</TableHead>
-          <TableHead>Última atividade</TableHead>
-          <TableHead>Status</TableHead>
+          <TableHead className="max-md:hidden">Última atividade</TableHead>
+          <TableHead className="max-md:hidden">Status</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -42,7 +42,7 @@ export function ContactsTable({ contacts }: Props) {
                 {displayName(c)}
               </Link>
             </TableCell>
-            <TableCell className="text-muted-foreground">
+            <TableCell className="text-muted-foreground max-md:hidden">
               {c.email ?? "—"}
             </TableCell>
             <TableCell className="text-muted-foreground">
@@ -57,12 +57,17 @@ export function ContactsTable({ contacts }: Props) {
                     ))}
               </div>
             </TableCell>
-            <TableCell className="text-muted-foreground text-sm">
+            <TableCell className="text-muted-foreground text-sm max-md:hidden">
               {c.last_activity_at
                 ? formatRelative(new Date(c.last_activity_at), new Date(), { locale: ptBR })
                 : "—"}
             </TableCell>
-            <TableCell>
+            {/* Seis colunas não cabem em 390px — a tabela vazava a tela e as
+                últimas ficavam ilegíveis ("Últim… ativi"). No celular ficam as
+                três que respondem "quem é e como falo com ele": nome, telefone
+                e tags. Email costuma ser vazio em contato de WhatsApp, e
+                atividade/status são leitura de mesa. Todas voltam no desktop. */}
+            <TableCell className="max-md:hidden">
               <div className="flex flex-wrap gap-1">
                 {c.is_anonymized && <Badge variant="destructive">Anonimizado</Badge>}
                 {c.is_blocked && <Badge variant="warning">Bloqueado</Badge>}

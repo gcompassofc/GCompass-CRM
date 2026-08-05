@@ -32,7 +32,9 @@ function AckIndicator({ status }: { status: string }) {
 
 export function MessageBubble({ message, debugCitations }: Props) {
   const isOutbound = message.direction === "outbound";
-  const time = format(new Date(message.sent_at), "HH:mm", { locale: ptBR });
+  let sentAtDate = new Date(message.sent_at);
+  if (isNaN(sentAtDate.getTime())) sentAtDate = new Date(); // Fallback para mock/dados inválidos
+  const time = format(sentAtDate, "HH:mm", { locale: ptBR });
   const isFailed = message.status === "failed";
   const hasMedia = Boolean(message.media_url || message.media_storage_path);
   // Figurinha sem caption: sem moldura de bolha (padrão WhatsApp).
@@ -48,17 +50,21 @@ export function MessageBubble({ message, debugCitations }: Props) {
   })();
 
   return (
-    <div className={cn("flex w-full px-4 py-1", isOutbound ? "justify-end" : "justify-start")}>
+    <div className={cn("flex w-full px-2 sm:px-4 py-1", isOutbound ? "justify-end" : "justify-start")}>
       <div
         className={cn(
-          "max-w-[75%] text-sm",
+          "max-w-[85%] sm:max-w-[75%] text-sm",
+          "max-md:max-w-[80%] max-md:text-[13.5px]",
           isBareSticker
             ? "px-0 py-0"
             : cn(
                 "rounded-2xl px-3 py-2 shadow-sm",
+                // No celular a bolha é tingida + contornada, não um bloco
+                // sólido de accent: sobre fundo quase preto, o violeta chapado
+                // no tamanho de um parágrafo vibra e cansa a leitura.
                 isOutbound
-                  ? "rounded-br-sm bg-primary text-primary-foreground"
-                  : "rounded-bl-sm bg-muted text-foreground",
+                  ? "rounded-br-sm bg-primary text-primary-foreground max-md:rounded-br-[4px] max-md:border max-md:border-[var(--m-violet-line)] max-md:bg-[var(--m-bubble-sent)] max-md:text-[var(--m-text-1)] max-md:shadow-none"
+                  : "rounded-bl-sm bg-muted text-foreground max-md:rounded-bl-[4px] max-md:border max-md:border-[var(--m-border-soft)] max-md:bg-[var(--m-bubble-recv)] max-md:text-[var(--m-text-1)] max-md:shadow-none",
               ),
           isFailed && "border border-destructive",
         )}
@@ -85,7 +91,12 @@ export function MessageBubble({ message, debugCitations }: Props) {
         <div
           className={cn(
             "mt-1 flex items-center justify-end gap-1 text-[10px]",
-            isOutbound ? "text-primary-foreground/70" : "text-muted-foreground",
+            // `primary-foreground/70` é branco translúcido: legível sobre o
+            // accent sólido do desktop, quase invisível sobre a bolha tingida
+            // do celular. Abaixo de `md` a hora usa o cinza dos tokens.
+            isOutbound
+              ? "text-primary-foreground/70 max-md:text-[var(--m-text-3)]"
+              : "text-muted-foreground max-md:text-[var(--m-text-3)]",
           )}
         >
           <span>{time}</span>

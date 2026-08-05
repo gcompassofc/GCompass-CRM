@@ -22,6 +22,8 @@ import {
   type RiskBucket,
 } from "@/lib/leads/risk-radar";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
+import { MOCK_DEV_AT_RISK } from "@/lib/mock-dev-data";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +61,9 @@ export interface AtRiskLead {
 
 export async function GET(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
+
+  if (IS_DEMO_MODE) return ok(MOCK_DEV_AT_RISK, { requestId });
+
   const authz = await requireRole("agent", { requestId, resource: "leads_at_risk" });
   if (!authz.ok) return authz.response;
   const { org } = authz;

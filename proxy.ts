@@ -3,6 +3,7 @@ import { cookieSecure } from "@/lib/supabase/cookie-secure";
 import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/lib/env";
 import { isPublicPath } from "@/lib/auth/public-paths";
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
 import {
   verifyImpersonateCookieEdge,
   IMPERSONATE_COOKIE_NAME_EDGE,
@@ -30,6 +31,10 @@ export async function proxy(request: NextRequest) {
   const isAdminSurface = host.startsWith("admin.") || pathname.startsWith("/admin");
 
   if (isPublicPath(pathname)) {
+    return response;
+  }
+
+  if (IS_DEMO_MODE) {
     return response;
   }
 

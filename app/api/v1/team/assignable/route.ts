@@ -23,8 +23,24 @@ interface AssignableMember {
   full_name: string | null;
 }
 
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
+
 export async function GET(_req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
+
+  if (IS_DEMO_MODE) {
+    return ok(
+      [
+        {
+          user_id: "00000000-0000-0000-0000-000000000001",
+          role: "admin",
+          full_name: "Atendente Demo",
+        },
+      ],
+      { requestId },
+    );
+  }
+
   const authz = await requireRole("agent", { requestId, resource: "team" });
   if (!authz.ok) return authz.response;
   const orgId = authz.org.orgId; // fonte confiável (cookie validado)

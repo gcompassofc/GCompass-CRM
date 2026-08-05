@@ -13,11 +13,13 @@ import { ok, fail } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
 import { canonicalConversationTagsSchema } from "@/lib/schemas/settings";
 import { createClient } from "@/lib/supabase/server";
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(_req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
+  if (IS_DEMO_MODE) return ok([], { requestId });
   const authz = await requireRole("viewer", { requestId, resource: "conversations" });
   if (!authz.ok) return authz.response;
   const { org: activeOrg } = authz;

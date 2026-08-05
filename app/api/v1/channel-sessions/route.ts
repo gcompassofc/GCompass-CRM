@@ -16,6 +16,7 @@ import { requireRole } from "@/lib/auth/require-role";
 import { createChannelSchema } from "@/lib/schemas/channels";
 import { createClient } from "@/lib/supabase/server";
 import { getWahaClient, wahaFriendlyError } from "@/lib/waha/client";
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,9 @@ export const CHANNEL_COLUMNS =
 
 export async function GET(): Promise<Response> {
   const requestId = randomUUID();
+  // Demo: nenhum numero conectado ainda. Lista vazia e a verdade de uma
+  // instalacao recem-aberta, e e o que o alternador de canais espera.
+  if (IS_DEMO_MODE) return ok([], { requestId });
   const user = await loadAuthUser();
   if (!user) return fail("unauthenticated", "Auth required.", 401, { requestId });
   const activeOrg = await resolveActiveOrg(user);

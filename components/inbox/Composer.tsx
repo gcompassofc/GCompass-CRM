@@ -12,6 +12,7 @@ import { useCreateNote } from "@/hooks/inbox/useCreateNote";
 import { useMessageTemplates, type MessageTemplate } from "@/hooks/inbox/useMessageTemplates";
 import { useSendMessage } from "@/hooks/inbox/useSendMessage";
 import { useUploadMedia } from "@/hooks/inbox/useUploadMedia";
+import { useIsMobile } from "@/hooks/ui/useIsMobile";
 import { interpolateTemplate } from "@/lib/inbox/template-vars";
 import { cn } from "@/lib/utils";
 
@@ -36,6 +37,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [menuDismissed, setMenuDismissed] = useState(false);
   const [mode, setMode] = useState<"reply" | "note">("reply");
+  const isMobile = useIsMobile();
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const send = useSendMessage();
   const upload = useUploadMedia();
@@ -132,8 +134,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
     <>
       <div
         className={cn(
-          "relative border-t border-border bg-background px-3 py-2",
-          mode === "note" && "border-warning/40 bg-warning-bg",
+          "relative border-t border-border bg-background px-2 pt-1.5 sm:px-3 sm:pt-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))]",
+          "max-md:border-[var(--m-border-soft)] max-md:bg-[var(--m-bg)] max-md:px-3 max-md:pt-2",
+          mode === "note" && "border-warning/40 bg-warning-bg max-md:bg-[rgba(255,194,76,0.05)]",
         )}
       >
         <TemplateMenu
@@ -143,15 +146,20 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
           onPick={applyTemplate}
           onClose={() => setMenuDismissed(true)}
         />
-        <div className="mb-1.5 flex gap-1">
+        {/* No celular vira aba sublinhada em vez de pílula: o modo "nota" muda
+            PARA ONDE o texto vai (o time, não o cliente), e a aba grudada no
+            campo mostra essa ligação melhor que uma pílula solta. O amarelo
+            atravessa aba, borda e fundo — é o aviso de que o cliente não lê. */}
+        <div className="mb-1.5 flex gap-1 max-md:mb-0 max-md:gap-4 max-md:px-1">
           <button
             type="button"
             onClick={() => setMode("reply")}
             className={cn(
-              "rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+              "rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-semibold uppercase tracking-wider transition-colors",
+              "max-md:rounded-none max-md:border-b-2 max-md:border-transparent max-md:px-0 max-md:pb-2 max-md:text-[12px] max-md:normal-case max-md:tracking-normal",
               mode === "reply"
-                ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-muted",
+                ? "bg-accent text-accent-foreground max-md:border-[var(--m-violet)] max-md:bg-transparent max-md:text-[var(--m-violet)]"
+                : "text-muted-foreground hover:bg-muted max-md:text-[var(--m-text-3)]",
             )}
           >
             Responder
@@ -160,16 +168,17 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             type="button"
             onClick={() => setMode("note")}
             className={cn(
-              "rounded-full px-2.5 py-1 text-xs font-medium transition-colors",
+              "rounded-full px-2 py-0.5 text-[10px] sm:text-xs font-semibold uppercase tracking-wider transition-colors",
+              "max-md:rounded-none max-md:border-b-2 max-md:border-transparent max-md:px-0 max-md:pb-2 max-md:text-[12px] max-md:normal-case max-md:tracking-normal",
               mode === "note"
-                ? "bg-warning text-warning-fg"
-                : "text-muted-foreground hover:bg-muted",
+                ? "bg-warning text-warning-fg max-md:border-[var(--m-morno)] max-md:bg-transparent max-md:text-[var(--m-morno)]"
+                : "text-muted-foreground hover:bg-muted max-md:text-[var(--m-text-3)]",
             )}
           >
             Nota interna
           </button>
         </div>
-        <div className="flex items-end gap-2">
+        <div className="flex items-end gap-1.5 sm:gap-2">
           {mode === "reply" && <AttachMenu disabled={isDisabled} onPick={setPendingFile} />}
           {mode === "reply" && (
             <DraftReplyButton conversationId={conversationId} disabled={isDisabled} onDraft={applyDraft} />
@@ -205,12 +214,20 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             rows={1}
             placeholder={
               mode === "note"
-                ? "Escreva uma nota interna… (só o time vê)"
-                : "Escreva uma mensagem… (Enter envia, Shift+Enter quebra linha)"
+                ? isMobile
+                  ? "Nota interna — só o time vê"
+                  : "Escreva uma nota interna… (só o time vê)"
+                : isMobile
+                  ? "Escrever mensagem"
+                  : "Escreva uma mensagem… (Enter envia, Shift+Enter quebra linha)"
             }
             className={cn(
               "min-h-9 max-h-40 flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm",
               "placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring",
+              // 16px no celular NÃO é capricho: abaixo disso o iOS dá zoom no
+              // campo ao focar e a tela inteira desalinha, sem voltar sozinha.
+              "max-md:rounded-xl max-md:border-[var(--m-border-soft)] max-md:bg-[var(--m-elevated)] max-md:text-[16px] max-md:text-[var(--m-text-1)] max-md:placeholder:text-[var(--m-text-3)]",
+              mode === "note" && "max-md:border-[rgba(255,194,76,0.38)]",
             )}
             disabled={isDisabled}
             aria-label="Mensagem"

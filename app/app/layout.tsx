@@ -15,6 +15,9 @@ import {
   type ImpersonatingInfo,
 } from "@/components/app/ImpersonateBanner";
 
+import { env } from "@/lib/env";
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
+
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await loadAuthUser();
   if (!user) redirect("/login");
@@ -23,7 +26,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   // EPIC-02: gate /app/* on completed onboarding.
   // EPIC-11: gate /app/* on org not being suspended (S-11.08).
-  if (activeOrg) {
+  if (activeOrg && !IS_DEMO_MODE) {
     const admin = createAdminClient();
     const { data: orgRow } = await admin
       .from("organizations")

@@ -14,8 +14,32 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
+import { MOCK_DEV_CONVERSATIONS } from "@/lib/mock-dev-data";
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
+
 export async function GET(): Promise<Response> {
   const requestId = randomUUID();
+
+  if (IS_DEMO_MODE) {
+    // DERIVADO da mesma lista que a rota de conversas devolve, nunca digitado
+    // à mão: com números fixos, acrescentar uma conversa ao mock fazia o chip
+    // dizer "4" sobre uma lista de 5 — a demo desmentindo a si mesma na
+    // primeira tela que alguém abre.
+    const doDono = MOCK_DEV_CONVERSATIONS.filter(
+      (c) => c.assigned_to_user_id !== null,
+    ).length;
+    return ok(
+      {
+        unassigned: MOCK_DEV_CONVERSATIONS.filter(
+          (c) => c.assigned_to_user_id === null && c.status === "open",
+        ).length,
+        mine: doDono,
+        all: MOCK_DEV_CONVERSATIONS.length,
+      },
+      { requestId },
+    );
+  }
+
   const supabase = await createClient();
 
   const {

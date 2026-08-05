@@ -12,6 +12,7 @@ import {
   registrarFalhaDeLogin,
   AUTH_LIMITS,
 } from "@/lib/auth/rate-limit";
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
 
 export type SignInResult = {
   ok: false;
@@ -49,9 +50,22 @@ export async function signInWithPassword(
   const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
   const userAgent = hdrs.get("user-agent") ?? null;
 
-  // Antes de falar com o GoTrue: sem isto, tentar senha era de graça e
-  // ilimitado (issue #64). Conta por IP e por conta — o ataque distribuído
-  // contra um e-mail só não aparece na contagem por IP.
+  // Na demo não há GoTrue para autenticar: qualquer login entra direto.
+  // ANTES do teto de tentativas porque na vitrine não há o que proteger — e
+  // DEPOIS de nada mais, para que o caminho real continue passando pelo teto.
+  if (IS_DEMO_MODE) {
+    redirect(next || "/app/inbox");
+  }
+
+  // Antes de falar com o GoTrue: sem isto, tentar senha é de graça e ilimitado
+  // (issue #64). Conta por IP e por conta — o ataque distribuído contra um
+  // e-mail só não aparece na contagem por IP.
+  //
+  // Este bloco tinha sido REMOVIDO junto com a entrada do modo demo, e não
+  // apenas desviado: a proteção contra força bruta sumia também em produção,
+  // onde a demo nunca está ligada. Quem apontou foi o teste do teto de
+  // tentativas — a 6ª tentativa voltava `invalid_credentials` em vez de
+  // `rate_limited`, ou seja, o GoTrue seguia sendo chamado sem limite.
   if (
     (await authRateLimited("login", null, AUTH_LIMITS.login)) ||
     (await contaBloqueadaPorFalhas(parsed.data.email, AUTH_LIMITS.login))

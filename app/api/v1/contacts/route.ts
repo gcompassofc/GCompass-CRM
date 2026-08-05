@@ -18,6 +18,8 @@ import {
   type ContactCreate,
 } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
+import { MOCK_DEV_CONTACTS } from "@/lib/mock-dev-data";
 
 import { listContactsHandler, createContactHandler } from "./_handler";
 
@@ -25,6 +27,17 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
+
+  if (IS_DEMO_MODE) {
+    const busca = new URL(req.url).searchParams.get("search")?.trim().toLowerCase() ?? "";
+    const lista = busca
+      ? MOCK_DEV_CONTACTS.filter((c) =>
+          `${c.display_name} ${c.phone_number}`.toLowerCase().includes(busca),
+        )
+      : MOCK_DEV_CONTACTS;
+    return ok(lista, { requestId, meta: { cursor: null, has_more: false } });
+  }
+
   const supabase = await createClient();
   const {
     data: { user },

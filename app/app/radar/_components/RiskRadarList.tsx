@@ -15,6 +15,7 @@ import {
   ClockCountdown,
   PaperPlaneTilt,
   Warning,
+  WarningOctagon,
 } from "@/lib/ui/icons";
 
 const RISK_META: Record<
@@ -40,7 +41,7 @@ function followupWhen(iso: string): string {
 }
 
 export function RiskRadarList() {
-  const { data, isLoading } = useAtRiskLeads();
+  const { data, isLoading, isError, refetch } = useAtRiskLeads();
 
   if (isLoading) {
     return (
@@ -48,6 +49,36 @@ export function RiskRadarList() {
         <Skeleton className="h-16 w-full" />
         <Skeleton className="h-16 w-full" />
         <Skeleton className="h-16 w-full" />
+      </div>
+    );
+  }
+
+  /**
+   * O TERCEIRO ESTADO — e aqui ele era o mais perigoso do app.
+   *
+   * `isError` não era lido. Numa falha de leitura, `data` fica `undefined`, o
+   * teste `!data` casava e a tela anunciava "Nenhuma demanda em risco": uma
+   * afirmação tranquilizadora sobre o NEGÓCIO construída em cima de um erro
+   * de rede. Esta é a tela cujo trabalho é gritar quando um cliente está
+   * morrendo sem resposta; calada, ela mente na direção que custa venda.
+   *
+   * "Não tem" e "não consegui ler" são coisas diferentes, e a diferença
+   * precisa aparecer. Mesma doutrina do `SemLista` no CRMSidePanel.
+   */
+  if (isError) {
+    return (
+      <div
+        className="flex flex-1 flex-col items-center justify-center gap-2 py-16 text-center"
+        data-testid="radar-erro"
+      >
+        <WarningOctagon size={28} className="text-error-fg/80" aria-hidden />
+        <p className="text-sm font-medium">Não consegui carregar o radar.</p>
+        <p className="text-xs text-muted-foreground">
+          Isto não quer dizer que está tudo em dia — quer dizer que não deu para verificar.
+        </p>
+        <Button size="sm" variant="outline" className="mt-2" onClick={() => refetch()}>
+          Tentar de novo
+        </Button>
       </div>
     );
   }

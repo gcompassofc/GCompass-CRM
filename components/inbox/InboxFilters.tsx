@@ -12,6 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import { useChannelSessions } from "@/hooks/channels/useChannelSessions";
 import { useAuth } from "@/hooks/auth/AuthProvider";
 import { useConversationTagVocabulary } from "@/hooks/inbox/useConversationTags";
@@ -81,19 +82,26 @@ export function InboxFilters({ value, onChange }: Props) {
   }, [searchInput]);
 
   return (
-    <div className="space-y-3 border-b border-border bg-background px-3 py-3">
-      <div className="relative">
+    <div className="space-y-3 border-b border-border bg-background px-3 py-3 max-md:space-y-0 max-md:border-b-0 max-md:bg-transparent max-md:px-0 max-md:pb-0 max-md:pt-2">
+      {/* Título da tela — só no celular. No desktop o sidebar já diz onde
+          você está; aqui não há sidebar, e uma lista sem título deixa a tela
+          sem âncora quando se volta da conversa. */}
+      <h1 className="hidden px-5 pb-3 text-[22px] font-bold tracking-tight text-[var(--m-text-1)] max-md:block">
+        Conversas
+      </h1>
+
+      <div className="relative max-md:px-5">
         <MagnifyingGlass
           size={14}
           weight="regular"
-          className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
+          className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground max-md:left-8 max-md:text-[var(--m-text-3)]"
           aria-hidden
         />
         <Input
           value={searchInput}
           onChange={(e) => setSearchInput(e.target.value)}
           placeholder="Buscar mensagens…"
-          className="h-8 pl-8 text-sm"
+          className="h-8 pl-8 text-sm max-md:h-11 max-md:rounded-xl max-md:border-[var(--m-border-soft)] max-md:bg-[var(--m-elevated)] max-md:pl-10 max-md:text-[14px] max-md:text-[var(--m-text-1)] max-md:placeholder:text-[var(--m-text-3)]"
           aria-label="Buscar conversas"
         />
       </div>
@@ -105,7 +113,7 @@ export function InboxFilters({ value, onChange }: Props) {
             onChange({ ...value, channel_session_id: v === "all" ? undefined : v })
           }
         >
-          <SelectTrigger className="h-8 text-sm" aria-label="Filtrar por número de WhatsApp">
+          <SelectTrigger className="h-8 text-sm max-md:hidden" aria-label="Filtrar por número de WhatsApp">
             <SelectValue placeholder="Todos os números" />
           </SelectTrigger>
           <SelectContent>
@@ -124,7 +132,7 @@ export function InboxFilters({ value, onChange }: Props) {
           value={value.tag ?? "all"}
           onValueChange={(v) => onChange({ ...value, tag: v === "all" ? undefined : v })}
         >
-          <SelectTrigger className="h-8 text-sm" aria-label="Filtrar por tag">
+          <SelectTrigger className="h-8 text-sm max-md:hidden" aria-label="Filtrar por tag">
             <SelectValue placeholder="Todas as tags" />
           </SelectTrigger>
           <SelectContent>
@@ -138,9 +146,11 @@ export function InboxFilters({ value, onChange }: Props) {
         </Select>
       )}
 
+      {/* Desktop: abas de largura igual. */}
       <Tabs
         value={value.tab}
         onValueChange={(v) => onChange({ ...value, tab: v as InboxTab })}
+        className="max-md:hidden"
       >
         <TabsList
           className="grid h-8 w-full"
@@ -163,7 +173,69 @@ export function InboxFilters({ value, onChange }: Props) {
         </TabsList>
       </Tabs>
 
-      <div className="flex items-center justify-between">
+      {/* Celular: fileira de chips que rola.
+          Abas de largura igual não cabem em 390px — com cinco visões cada uma
+          fica com ~70px e o rótulo trunca. O chip tem a largura do seu próprio
+          texto e sai da tela pela direita, que é o gesto esperado no celular.
+          `radiogroup` e não `tablist`: aqui não há painéis irmãos trocando,
+          é uma escolha única que refiltra a MESMA lista. */}
+      <div
+        role="radiogroup"
+        aria-label="Filtrar conversas"
+        className="m-scroll-x hidden gap-[7px] px-5 pb-1 pt-3 max-md:flex"
+      >
+        {tabs.map((tab) => {
+          const meta = INBOX_TABS.find((t) => t.value === tab)!;
+          const count = countFor[tab];
+          const on = value.tab === tab;
+          return (
+            <button
+              key={tab}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              onClick={() => onChange({ ...value, tab })}
+              className={cn(
+                "flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3.5 py-[7px] text-[12.5px] font-semibold transition-colors",
+                on
+                  ? "border-[var(--m-violet-line)] bg-[var(--m-violet-dim)] text-[var(--m-text-1)]"
+                  : "border-[var(--m-border-soft)] bg-[var(--m-elevated)] text-[var(--m-text-2)]",
+              )}
+            >
+              {meta.label}
+              {typeof count === "number" && count > 0 && (
+                <span
+                  className={cn(
+                    "text-[10.5px] tabular-nums",
+                    on ? "text-[var(--m-violet)]" : "text-[var(--m-text-3)]",
+                  )}
+                >
+                  {count}
+                </span>
+              )}
+            </button>
+          );
+        })}
+
+        {/* "Apenas não lidos" vira o último chip: no celular ele é mais uma
+            visão da lista, e um switch com rótulo comeria uma linha inteira. */}
+        <button
+          type="button"
+          role="radio"
+          aria-checked={value.onlyUnread}
+          onClick={() => onChange({ ...value, onlyUnread: !value.onlyUnread })}
+          className={cn(
+            "shrink-0 whitespace-nowrap rounded-full border px-3.5 py-[7px] text-[12.5px] font-semibold transition-colors",
+            value.onlyUnread
+              ? "border-[var(--m-violet-line)] bg-[var(--m-violet-dim)] text-[var(--m-text-1)]"
+              : "border-[var(--m-border-soft)] bg-[var(--m-elevated)] text-[var(--m-text-2)]",
+          )}
+        >
+          Não lidos
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between max-md:hidden">
         <Label htmlFor="only-unread" className="text-xs text-muted-foreground">
           Apenas não lidos
         </Label>

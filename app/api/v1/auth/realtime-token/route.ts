@@ -32,8 +32,18 @@ export const dynamic = "force-dynamic";
 
 const NO_STORE = { "cache-control": "no-store, max-age=0" } as const;
 
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
+
 export async function GET(_req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
+
+  if (IS_DEMO_MODE) {
+    return ok(
+      { access_token: "dev-mock-token", expires_at: null },
+      { requestId, headers: NO_STORE },
+    );
+  }
+
   const supabase = await createClient();
 
   // getUser() valida o JWT no servidor — é ele que autoriza a resposta.

@@ -11,6 +11,7 @@ import { type NextRequest } from "next/server";
 import { audit } from "@/lib/audit";
 import { fail, ok } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
 import { createNoteSchema } from "@/lib/schemas/notes";
 import { createClient } from "@/lib/supabase/server";
 
@@ -23,6 +24,12 @@ interface RouteParams {
 
 export async function GET(_req: NextRequest, { params }: RouteParams): Promise<Response> {
   const requestId = randomUUID();
+
+  // Sem esta saída a demo abria a conversa e cuspia "Conversa não encontrada"
+  // por cima da tela: a rota ia ao Supabase falso, e o 404 honesto dela virava
+  // um erro que acusava de sumida uma conversa visível ali atrás.
+  if (IS_DEMO_MODE) return ok([], { requestId });
+
   const authz = await requireRole("agent", { requestId, resource: "conversation_notes" });
   if (!authz.ok) return authz.response;
   const { org } = authz;

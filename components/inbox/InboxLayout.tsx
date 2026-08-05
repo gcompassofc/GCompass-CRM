@@ -19,6 +19,8 @@ import { RetentionNotice } from "./RetentionNotice";
 import { CRMSidePanel } from "./CRMSidePanel";
 import { InboxKeyboardShortcuts } from "./InboxKeyboardShortcuts";
 import { ShortcutsHelpDialog } from "./ShortcutsHelpDialog";
+import { useImmersiveView } from "@/lib/ui/immersive-view";
+import { cn } from "@/lib/utils";
 
 function tabToFilter(tab: InboxFiltersValue["tab"]): Partial<ConversationsFilters> {
   switch (tab) {
@@ -118,6 +120,10 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
   const selectionNotFound =
     needsFetch && !single.isPending && !single.data && isNotFound(single.error);
 
+  // Com conversa aberta, o celular está numa tela imersiva: o shell recolhe a
+  // barra flutuante para o composer ficar com o rodapé.
+  useImmersiveView(!!selectedId);
+
   const claim = useClaimConversation();
   const close = useCloseConversation();
 
@@ -161,9 +167,17 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
   // `dvh` em vez de `vh` porque no celular a `vh` ignora a barra do navegador — o
   // mesmo corte, só que pior e mudando conforme se rola a página.
   return (
-    <div className="grid h-[calc(100dvh-3.5rem-2*var(--space-6))] w-full grid-cols-1 md:grid-cols-[300px_1fr] xl:grid-cols-[300px_1fr_320px]">
-      <div className="flex h-full min-h-0 flex-col border-r border-border">
+    <div className="grid h-[calc(100dvh-3.5rem)] md:h-[calc(100dvh-3.5rem-2*var(--space-6))] w-full grid-cols-1 md:grid-cols-[300px_1fr] xl:grid-cols-[300px_1fr_320px]">
+      <div
+        className={cn(
+          "flex h-full min-h-0 flex-col border-r border-border",
+          selectedId ? "hidden md:flex" : "flex w-full",
+        )}
+      >
         <InboxFilters value={filterValue} onChange={setFilterValue} />
+        {/* A folga da barra flutuante é paga pelo <main> do AppShell, para toda
+            tela de uma vez. Repeti-la aqui somava duas e abria um vão morto no
+            fim da lista. */}
         <div className="min-h-0 flex-1 overflow-hidden">
           <ConversationList
             filters={filters}
@@ -176,10 +190,22 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
         </div>
       </div>
 
-      <div className="flex h-full min-h-0 flex-col">
+      <div
+        className={cn(
+          "flex h-full min-h-0 flex-col",
+          selectedId ? "flex w-full" : "hidden md:flex",
+          // A conversa entra deslizando pela direita, como no iOS: no celular
+          // ela SUBSTITUI a lista, e sem o movimento a troca parece um corte.
+          // A animação respeita `prefers-reduced-motion` (globals.css).
+          selectedId && "m-chat-enter",
+        )}
+      >
         {selectedConversation ? (
           <>
-            <ConversationHeader conversation={selectedConversation} />
+            <ConversationHeader
+              conversation={selectedConversation}
+              onBack={() => setSelectedId(null)}
+            />
             <div className="min-h-0 flex-1 overflow-hidden">
               <ChatThread conversationId={selectedConversation.id} />
             </div>

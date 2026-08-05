@@ -11,6 +11,7 @@ import { z } from "zod";
 import { ok, fail } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
 
 export const dynamic = "force-dynamic";
 
@@ -21,6 +22,7 @@ const querySchema = z.object({
 
 export async function GET(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
+  if (IS_DEMO_MODE) return ok([], { requestId });
   const authz = await requireRole("agent", { requestId, resource: "agent_inbox_items" });
   if (!authz.ok) return authz.response;
   const { org } = authz;

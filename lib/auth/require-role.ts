@@ -16,6 +16,7 @@
  *     verdade); falha fechada se membership foi revogado.
  *  4. Rank insuficiente → audit `authz.denied` (fire-and-forget) + 403.
  */
+import { env } from "@/lib/env";
 import type { NextResponse } from "next/server";
 
 import { fail, type ApiError } from "@/lib/api/wrappers";
@@ -23,6 +24,7 @@ import { audit } from "@/lib/audit";
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK, type ActiveOrg, type AuthUser, type Role } from "@/lib/auth/types";
 import { createClient } from "@/lib/supabase/server";
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
 
 export type RoleCheck =
   | { ok: true; user: AuthUser; org: ActiveOrg }
@@ -82,7 +84,9 @@ export async function requireRole(min: Role, opts: RequireRoleOpts = {}): Promis
     return { ok: true, user, org };
   }
 
-  // Role efetivo do banco (não do snapshot do cookie/membership em memória).
+  if (IS_DEMO_MODE) {
+    return { ok: true, user, org: { ...org, role: (org.role || "admin") as Role } };
+  }
   const supabase = await createClient();
   const { data: effectiveRole, error } = await supabase.rpc("fn_user_role_in_org", {
     p_org: org.orgId,

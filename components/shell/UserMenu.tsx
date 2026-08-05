@@ -28,7 +28,14 @@ export function UserMenu() {
 
   return (
     <div className="flex items-center gap-2">
-      <ThemeToggle />
+      {/* O app de celular tem UM tema (escuro violeta): a paleta é remapeada em
+          `.mobile-shell` (app/globals.css) abaixo de `md`, e o botão continuava
+          na barra sem efeito nenhum — clicar não mudava nada. Controle que não
+          controla é pior que controle ausente, então ele some onde não manda.
+          Volta inteiro no desktop, onde claro e escuro existem de verdade. */}
+      <span className="max-md:hidden">
+        <ThemeToggle />
+      </span>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" className="rounded-full" aria-label="Menu do usuário">

@@ -39,6 +39,9 @@ const ORDER_COLS = "id, external_id, status, total_cents, currency, created_at";
 /** Acompanha o que a timeline mostra — `reason` e `actor_kind` inclusive. */
 const ACTIVITY_COLS = "id, type, source_module, performed_at, payload, reason, actor_kind";
 
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
+import { MOCK_DEV_CRM_SUMMARY } from "@/lib/mock-dev-data";
+
 export async function GET(
   _req: NextRequest,
   ctx: { params: Promise<{ id: string }> },
@@ -46,14 +49,11 @@ export async function GET(
   const requestId = randomUUID();
   const { id: contactId } = await ctx.params;
 
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabase.auth.getUser();
-  if (authErr || !user) {
-    return fail("unauthenticated", "Auth required.", 401, { requestId });
+  if (IS_DEMO_MODE) {
+    return ok(MOCK_DEV_CRM_SUMMARY, { requestId });
   }
+
+  const supabase = await createClient();
 
   const [leads, orders, activities] = await Promise.all([
     supabase

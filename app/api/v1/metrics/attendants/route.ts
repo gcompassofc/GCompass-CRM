@@ -17,6 +17,8 @@ import { isServiceRoleConfigured } from "@/lib/audit";
 import { requireRole } from "@/lib/auth/require-role";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
+import { MOCK_DEV_METRICS } from "@/lib/mock-dev-data";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +45,8 @@ interface MetricsPayload {
 
 export async function GET(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
+
+  if (IS_DEMO_MODE) return ok(MOCK_DEV_METRICS, { requestId });
 
   // spec 13 §6.1: piso agent (vê as próprias); RLS gate a comparação manager+.
   const authz = await requireRole("agent", { requestId, resource: "metrics" });

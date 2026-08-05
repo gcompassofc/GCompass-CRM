@@ -23,6 +23,8 @@ import {
 } from "@/lib/leads/next-action";
 import type { LeadCandidate } from "@/lib/leads/active-lead";
 import { createClient } from "@/lib/supabase/server";
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
+import { MOCK_DEV_BOARD } from "@/lib/mock-dev-data";
 import type { BoardData, Pipeline, Stage } from "@/lib/kanban/types";
 import type { Lead } from "@/lib/types/leads";
 
@@ -290,6 +292,10 @@ async function withNextActions(
 export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
   const requestId = randomUUID();
   const { id: pipelineId } = await ctx.params;
+
+  if (IS_DEMO_MODE) {
+    return ok(MOCK_DEV_BOARD, { requestId });
+  }
 
   const supabase = await createClient();
   const {

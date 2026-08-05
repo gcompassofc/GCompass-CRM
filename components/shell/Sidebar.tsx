@@ -19,7 +19,13 @@ import { GRUPO_NO_RODAPE, NAV_GROUPS, sidebarGroups } from "@/lib/navigation/reg
  * itens e sete `usePermission()` viviam aqui — e divergiam do hub de
  * Configurações e das abas de IA, que mantinham suas próprias listas.
  */
-export function Sidebar({ collapsed }: { collapsed: boolean }) {
+export function Sidebar({
+  collapsed,
+  onNavClick,
+}: {
+  collapsed: boolean;
+  onNavClick?: () => void;
+}) {
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
   const { user, activeOrg } = useAuth();
@@ -34,7 +40,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
   return (
     <aside
       className={cn(
-        "fixed inset-y-0 left-0 z-30 flex flex-col border-r bg-card transition-[width] duration-200",
+        "fixed inset-y-0 left-0 z-30 flex flex-col border-r border-border/60 bg-card/85 backdrop-blur-xl transition-[width] duration-200",
         collapsed ? "w-16" : "w-60",
       )}
     >
@@ -87,6 +93,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                     <li key={item.href}>
                       <Link
                         href={item.href}
+                        onClick={onNavClick}
                         title={collapsed ? item.label : undefined}
                         aria-current={isActive ? "page" : undefined}
                         className={cn(
@@ -112,6 +119,7 @@ export function Sidebar({ collapsed }: { collapsed: boolean }) {
                   <li>
                     <Link
                       href={group.hub.href}
+                      onClick={onNavClick}
                       title={collapsed ? group.hub.label : undefined}
                       aria-current={pathname === group.hub.href ? "page" : undefined}
                       className={cn(

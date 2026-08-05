@@ -5,6 +5,7 @@ import { Robot } from "@/lib/ui/icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { corDoAvatar, metaDaConversa } from "@/lib/inbox/temperatura";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
 
 interface Props {
@@ -74,6 +75,10 @@ export function ConversationListItem({
   const unread = conversation.unread_count_for_assignee ?? 0;
   const dot = STATUS_DOT[conversation.status] ?? STATUS_DOT.open;
   const isAi = conversation.status === "ai_handling";
+  // Temperatura calculada (lib/inbox/temperatura.ts) — a mesma que o cabeçalho
+  // da conversa e a ficha do lead mostram. A cor nunca vai sozinha: o rótulo
+  // viaja no aria-label da bolinha.
+  const temp = metaDaConversa(conversation);
 
   return (
     <button
@@ -81,12 +86,17 @@ export function ConversationListItem({
       onClick={() => onSelect(conversation.id)}
       className={cn(
         "group flex w-full items-start gap-3 border-b border-border px-3 py-3 text-left transition-colors hover:bg-accent/40",
-        isSelected && "bg-accent/60",
+        "md:rounded-none rounded-2xl md:border-b border-b-0 md:px-3 px-2.5",
+        "max-md:border-transparent max-md:active:bg-[var(--m-hover)]",
+        isSelected && "bg-accent/60 max-md:bg-[var(--m-hover)]",
       )}
       aria-current={isSelected ? "true" : undefined}
     >
       <div className="relative shrink-0">
-        <Avatar className="h-10 w-10">
+        <Avatar
+          className="h-10 w-10 max-md:h-[46px] max-md:w-[46px]"
+          style={{ backgroundColor: corDoAvatar(c?.id ?? displayName) }}
+        >
           {/* Só monta a <img> quando existe arquivo: sem isso o browser pediria
               a rota para TODO contato da lista e levaria 404 em cada um sem
               foto — que é a maioria. O AvatarFallback do Radix já cobre o caso
@@ -98,16 +108,25 @@ export function ConversationListItem({
               className="object-cover"
             />
           ) : null}
-          <AvatarFallback className="text-xs">
+          <AvatarFallback className="bg-transparent text-xs text-white max-md:text-[15px] max-md:font-semibold">
             {initials(displayName, phoneFallback)}
           </AvatarFallback>
         </Avatar>
+        {/* Desktop: estado do atendimento (aberta/IA/fechada). */}
         <span
           className={cn(
-            "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-background",
+            "absolute -right-0.5 -top-0.5 h-2.5 w-2.5 rounded-full border border-background max-md:hidden",
             dot,
           )}
           aria-hidden
+        />
+        {/* Celular: TEMPERATURA, embaixo. É a pergunta que se faz de relance na
+            rua ("quem está esperando?"), não o estado interno do atendimento. */}
+        <span
+          className="absolute -bottom-px -right-px hidden h-2.5 w-2.5 rounded-full border-[2.5px] border-[var(--m-bg)] max-md:block"
+          style={{ backgroundColor: temp.color }}
+          role="img"
+          aria-label={temp.descricao}
         />
       </div>
 
@@ -115,12 +134,12 @@ export function ConversationListItem({
         {queuePosition !== undefined && (
           <div className="mb-1 flex items-center gap-1.5">
             <span
-              className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary/10 px-1 text-[10px] font-medium tabular-nums text-primary"
+              className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-primary/10 px-1 text-[10px] font-medium tabular-nums text-primary max-md:bg-transparent max-md:px-0 max-md:text-[11px] max-md:font-bold max-md:text-[var(--m-quente)]"
               aria-label={`Posição ${queuePosition} na fila`}
             >
               {queuePosition}º
             </span>
-            <span className="text-[10px] text-muted-foreground">
+            <span className="text-[10px] text-muted-foreground max-md:text-[11px] max-md:text-[var(--m-text-3)]">
               {waitingLabel(conversation)}
             </span>
           </div>
@@ -128,30 +147,48 @@ export function ConversationListItem({
         <div className="flex items-baseline justify-between gap-2">
           <span
             className={cn(
-              "truncate text-sm font-medium",
+              "truncate text-sm font-medium max-md:text-[14.5px] max-md:font-semibold max-md:text-[var(--m-text-1)]",
               c?.is_anonymized && "italic text-muted-foreground",
             )}
           >
             {displayName}
           </span>
-          <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground">
+          <span className="shrink-0 text-[10px] uppercase tracking-wide text-muted-foreground max-md:text-[11px] max-md:normal-case max-md:tabular-nums max-md:text-[var(--m-text-3)]">
             {time}
           </span>
         </div>
 
-        <p className="mt-0.5 truncate text-xs text-muted-foreground">
-          {isAi ? <Robot size={10} weight="duotone" className="mr-1 inline" aria-hidden /> : null}
-          {truncated}
-        </p>
+        {/* No celular a prévia divide a linha com o contador de não lidos —
+            é o par "o que ele disse / quantas faltam" que o polegar procura. */}
+        <div className="mt-0.5 flex items-center justify-between gap-2">
+          <p className="min-w-0 truncate text-xs text-muted-foreground max-md:text-[12.5px] max-md:text-[var(--m-text-2)]">
+            {isAi ? <Robot size={10} weight="duotone" className="mr-1 inline" aria-hidden /> : null}
+            {truncated}
+          </p>
+          {unread > 0 && (
+            <span
+              className="hidden h-[19px] min-w-[19px] shrink-0 items-center justify-center rounded-full bg-[var(--m-violet)] px-1.5 text-[10.5px] font-bold text-white max-md:flex"
+              aria-label={`${unread} não lidas`}
+            >
+              {unread}
+            </span>
+          )}
+        </div>
 
-        <div className="mt-1.5 flex flex-wrap items-center gap-1">
+        <div className="mt-1.5 flex flex-wrap items-center gap-1 max-md:mt-[7px] max-md:gap-1.5">
           {visibleTags.map((t) => (
-            <Badge key={t} variant="secondary" className="h-4 px-1.5 text-[10px]">
+            <Badge
+              key={t}
+              variant="secondary"
+              className="h-4 px-1.5 text-[10px] max-md:h-auto max-md:rounded-md max-md:border max-md:border-[var(--m-border-soft)] max-md:bg-[var(--m-elevated)] max-md:px-2 max-md:py-[2.5px] max-md:font-semibold max-md:text-[var(--m-text-2)]"
+            >
               {t}
             </Badge>
           ))}
           {overflow > 0 && (
-            <span className="text-[10px] text-muted-foreground">+{overflow}</span>
+            <span className="text-[10px] text-muted-foreground max-md:text-[10.5px] max-md:text-[var(--m-text-3)]">
+              +{overflow}
+            </span>
           )}
           {c?.is_blocked && (
             <Badge variant="destructive" className="h-4 px-1.5 text-[10px]">
@@ -164,7 +201,7 @@ export function ConversationListItem({
             </Badge>
           )}
           {unread > 0 && (
-            <Badge className="ml-auto h-4 min-w-4 px-1.5 text-[10px]">{unread}</Badge>
+            <Badge className="ml-auto h-4 min-w-4 px-1.5 text-[10px] max-md:hidden">{unread}</Badge>
           )}
         </div>
       </div>

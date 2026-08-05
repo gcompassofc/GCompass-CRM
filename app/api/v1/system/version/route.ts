@@ -9,6 +9,7 @@ import type { NextRequest } from "next/server";
 
 import { fail, ok } from "@/lib/api/wrappers";
 import { loadAuthUser } from "@/lib/auth/server";
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
 import { logger } from "@/lib/logger";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { extractChangelogSection } from "@/lib/system/changelog";
@@ -20,6 +21,22 @@ export const dynamic = "force-dynamic";
 const AGENT_OFFLINE_AFTER_MS = 24 * 60 * 60 * 1000;
 
 export async function GET(_req: NextRequest): Promise<Response> {
+  // A tabela `system_version` é alimentada pelo agente do instalador, que não
+  // existe na demo. Sem esta saída o rodapé pedia a versão e levava 500 a cada
+  // navegação.
+  if (IS_DEMO_MODE) {
+    return ok({
+      current_version: "demo",
+      latest_version: null,
+      off_release: false,
+      compare_failed: false,
+      has_known_release: false,
+      changelog_raw: null,
+      agent_last_seen_at: null,
+      agent_online: false,
+    });
+  }
+
   const user = await loadAuthUser();
   // `unauthenticated` (não `unauthorized`): esse último é reservado ao segredo
   // interno das rotas host↔app (lib/api/errors.ts) — aqui falta é sessão.

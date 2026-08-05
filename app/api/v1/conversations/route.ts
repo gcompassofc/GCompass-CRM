@@ -12,10 +12,38 @@ import { createClient } from "@/lib/supabase/server";
 
 import { listConversationsHandler } from "./_handler";
 
+import { MOCK_DEV_CONVERSATIONS } from "@/lib/mock-dev-data";
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
+
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
+
+  if (IS_DEMO_MODE) {
+    // Os filtros VALEM na demo. Devolver a lista inteira sempre fazia os chips
+    // ("Fila", "Minhas", "Fechadas") parecerem quebrados: clicar não mudava
+    // nada, e é justamente a fila que a tela existe para separar.
+    const sp = req.nextUrl.searchParams;
+    const assignedTo = sp.get("assigned_to");
+    const status = sp.get("status");
+    const busca = sp.get("search")?.trim().toLowerCase() ?? "";
+    const EU_DEMO = "00000000-0000-0000-0000-000000000001";
+
+    const lista = MOCK_DEV_CONVERSATIONS.filter((c) => {
+      if (assignedTo === "unassigned" && c.assigned_to_user_id !== null) return false;
+      if (assignedTo === "me" && c.assigned_to_user_id !== EU_DEMO) return false;
+      if (status && c.status !== status) return false;
+      if (busca) {
+        const alvo = `${c.contacts?.display_name ?? ""} ${c.contacts?.phone_number ?? ""} ${c.last_message_preview ?? ""}`;
+        if (!alvo.toLowerCase().includes(busca)) return false;
+      }
+      return true;
+    });
+
+    return ok(lista, { requestId, meta: { cursor: null, has_more: false } });
+  }
+
   const supabase = await createClient();
 
   const {

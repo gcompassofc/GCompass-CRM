@@ -29,7 +29,27 @@ interface RawMembershipRow {
  * - organizations: id IN fn_user_org_ids()  (orgs_select)
  * - platform_admins: only platform admins read (so non-admins get null — correct)
  */
+import { env } from "@/lib/env";
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
+
 export async function loadAuthUser(): Promise<AuthUser | null> {
+  if (IS_DEMO_MODE) {
+    return {
+      id: "00000000-0000-0000-0000-000000000001",
+      email: "admin@deskcomm.com",
+      full_name: "Administrador (Dev Local)",
+      avatar_url: null,
+      is_platform_admin: true,
+      organizations: [
+        {
+          organization_id: "00000000-0000-0000-0000-000000000002",
+          organization_name: "Deskcomm Local Org",
+          role: "admin",
+        },
+      ],
+    };
+  }
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -146,6 +166,7 @@ export async function requireAuth(): Promise<AuthUser> {
  * Use only in Server Components / Server Actions (cookie session).
  */
 export async function isMfaEnrolled(): Promise<boolean> {
+  if (IS_DEMO_MODE) return true;
   const supabase = await createClient();
   const { data } = await supabase.auth.mfa.listFactors();
   return !!data?.totp?.some((f) => f.status === "verified");
@@ -156,5 +177,6 @@ export async function isMfaEnrolled(): Promise<boolean> {
  * `manager`/`agent`/`viewer` are optional in MVP.
  */
 export function requiresMfa(role: Role | undefined, isPlatformAdmin: boolean): boolean {
+  if (IS_DEMO_MODE) return false;
   return isPlatformAdmin || role === "admin";
 }

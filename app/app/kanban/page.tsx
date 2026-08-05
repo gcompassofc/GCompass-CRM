@@ -4,6 +4,8 @@ import { Kanban } from "@/lib/ui/icons";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { ROLE_RANK } from "@/lib/auth/types";
 import { createClient } from "@/lib/supabase/server";
+import { IS_DEMO_MODE } from "@/lib/demo-mode";
+import { MOCK_DEV_PIPELINES } from "@/lib/mock-dev-data";
 import { FunisClient, type FunilDaLista } from "./_client";
 
 export const dynamic = "force-dynamic";
@@ -32,15 +34,23 @@ export default async function KanbanPickerPage() {
   const activeOrg = await resolveActiveOrg(user);
   if (!activeOrg) redirect("/app");
 
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("crm_pipelines")
-    .select("id, name, slug, description, position, is_default")
-    .eq("organization_id", activeOrg.orgId)
-    .eq("is_archived", false)
-    .order("position");
+  // Na demo não há Postgres para consultar: a query iria ao host falso e a
+  // tela anunciaria "Sem pipelines configurados" — dizendo que a organização
+  // não tem funil quando o que faltou foi banco.
+  let funis: FunilDaLista[];
+  if (IS_DEMO_MODE) {
+    funis = MOCK_DEV_PIPELINES as FunilDaLista[];
+  } else {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("crm_pipelines")
+      .select("id, name, slug, description, position, is_default")
+      .eq("organization_id", activeOrg.orgId)
+      .eq("is_archived", false)
+      .order("position");
 
-  const funis = (data ?? []) as FunilDaLista[];
+    funis = (data ?? []) as FunilDaLista[];
+  }
   const podeGerenciar = ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager;
 
   return (
