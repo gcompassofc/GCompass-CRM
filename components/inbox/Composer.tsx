@@ -135,7 +135,12 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
       <div
         className={cn(
           "relative border-t border-border bg-background px-2 pt-1.5 sm:px-3 sm:pt-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))]",
-          "max-md:border-[var(--m-border-soft)] max-md:bg-[var(--m-bg)] max-md:px-3 max-md:pt-2",
+          // No celular a barra de escrever é a última coisa antes da borda do
+          // aparelho: com padding fino ela fica colada no gesto de voltar do
+          // sistema e o toque erra o alvo. Folga maior embaixo, sempre somada
+          // ao safe-area do iPhone.
+          "max-md:border-[var(--m-border-soft)] max-md:bg-[var(--m-bg)] max-md:px-3 max-md:pt-2.5",
+          "max-md:pb-[calc(1rem+env(safe-area-inset-bottom))]",
           mode === "note" && "border-warning/40 bg-warning-bg max-md:bg-[rgba(255,194,76,0.05)]",
         )}
       >
@@ -178,7 +183,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             Nota interna
           </button>
         </div>
-        <div className="flex items-end gap-1.5 sm:gap-2">
+        <div className="flex items-end gap-1.5 sm:gap-2 max-md:gap-2">
           {mode === "reply" && <AttachMenu disabled={isDisabled} onPick={setPendingFile} />}
           {mode === "reply" && (
             <DraftReplyButton conversationId={conversationId} disabled={isDisabled} onDraft={applyDraft} />
@@ -227,6 +232,9 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
               // 16px no celular NÃO é capricho: abaixo disso o iOS dá zoom no
               // campo ao focar e a tela inteira desalinha, sem voltar sozinha.
               "max-md:rounded-xl max-md:border-[var(--m-border-soft)] max-md:bg-[var(--m-elevated)] max-md:text-[16px] max-md:text-[var(--m-text-1)] max-md:placeholder:text-[var(--m-text-3)]",
+              // Campo tão alto quanto os botões ao lado (44px = alvo mínimo de
+              // toque), senão a linha fica fina e o dedo erra a borda.
+              "max-md:min-h-11 max-md:px-3.5 max-md:py-2.5",
               mode === "note" && "max-md:border-[rgba(255,194,76,0.38)]",
             )}
             disabled={isDisabled}
@@ -236,12 +244,12 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
             <Button
               type="button"
               size="icon"
-              className="h-9 w-9 shrink-0"
+              className="h-9 w-9 shrink-0 max-md:h-11 max-md:w-11"
               onClick={handleSubmit}
               disabled={isDisabled || !text.trim()}
               aria-label="Enviar"
             >
-              <PaperPlaneTilt size={16} weight="fill" aria-hidden />
+              <PaperPlaneTilt className="size-4 max-md:size-5" weight="fill" aria-hidden />
             </Button>
           ) : (
             <AudioRecorder conversationId={conversationId} disabled={isDisabled} />

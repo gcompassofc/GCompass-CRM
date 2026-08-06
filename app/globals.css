@@ -229,6 +229,13 @@
 
   html {
     color-scheme: light;
+    /* O Safari do iOS ignora `user-scalable=no` desde o iOS 10 — sem isto o
+       pinch continua funcionando e a tela fica torta. `pan-x pan-y` deixa o
+       scroll normal passar e barra só pinch e duplo-toque-pra-zoom, que é o
+       comportamento de app nativo (WhatsApp). Não impede zoom por
+       acessibilidade do sistema, que é feito fora da página. */
+    touch-action: pan-x pan-y;
+    -webkit-text-size-adjust: 100%;
   }
   [data-theme="dark"] {
     color-scheme: dark;
