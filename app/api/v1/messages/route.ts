@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
 
-  // Na demo a mensagem "sai" mas não viaja: não há WAHA para entregá-la.
+  // Na demo a mensagem "sai" mas não viaja: não há transporte para entregá-la.
   // Ela volta com `status: "sent"` para a bolha aparecer na conversa com o
   // tique de enviada — o botão de enviar é a interação central da tela, e um
   // composer que engole o texto faria a demo parecer quebrada.
