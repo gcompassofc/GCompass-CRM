@@ -48,12 +48,19 @@ function AppShellInterno({ sidebarCollapsed, children }: AppShellProps) {
         </SheetContent>
       </Sheet>
 
-      {/* `min-w-0` NÃO é enfeite: um filho de flex tem `min-width: auto` por
-          padrão e se recusa a encolher abaixo do próprio conteúdo. Sem ele a
-          coluna media 438px numa tela de 380px (medido) e o app inteiro rolava
-          para o lado — em TODA tela, não só nesta. `overflow-x-hidden` é o
-          cinto de segurança: conteúdo largo (tabela, código) rola dentro do
-          seu próprio container, nunca empurrando a página. */}
+      {/* `min-w-0` é o que permite a coluna de conteúdo ENCOLHER. Um flex item
+          nasce com `min-width: auto`, ou seja, nunca fica menor que o conteúdo —
+          então qualquer bloco largo (uma fila de abas, uma tabela) empurrava a
+          PÁGINA INTEIRA para o lado em vez de rolar dentro da própria caixa, e
+          o conteúdo sumia sem nada indicando que existia.
+
+          Medido duas vezes, por caminhos independentes: no detalhe do agente
+          (seis abas) a página estourava 476px na horizontal, e no inbox a
+          coluna media 438px numa tela de 380px. Isolado ancestral por
+          ancestral: é este o que decide.
+
+          `overflow-x-hidden` é o cinto de segurança: conteúdo largo rola dentro
+          do seu próprio container, nunca empurrando a página. */}
       <div
         className={cn(
           "flex min-h-screen min-w-0 flex-1 flex-col overflow-x-hidden transition-[margin] duration-200 ml-0",

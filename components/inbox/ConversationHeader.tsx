@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/auth/AuthProvider";
 import { useClaimConversation } from "@/hooks/inbox/useClaimConversation";
 import { useReleaseConversation } from "@/hooks/inbox/useReleaseConversation";
 import { useCloseConversation } from "@/hooks/inbox/useCloseConversation";
+import { useResumeAiAttendance } from "@/hooks/inbox/useResumeAiAttendance";
 import { ReassignDialog } from "@/components/inbox/ReassignDialog";
 import { SnoozeButton } from "@/components/inbox/SnoozeButton";
 import { CRMSidePanel } from "@/components/inbox/CRMSidePanel";
@@ -24,6 +25,12 @@ interface Props {
 
 const STATUS_LABEL: Record<string, string> = {
   open: "Aberta",
+  // É EXATAMENTE o estado em que a passagem para humano deixa a conversa
+  // (`performHumanHandoff`: 'ai_handling' → 'pending'), e o rótulo faltava — toda
+  // conversa escalada mostrava `pending` cru no rosto do atendente. O
+  // `conversationStatusSchema` não lista 'pending' porque valida ENTRADA da API;
+  // quem escreve este estado é o motor, e a tela precisa saber lê-lo.
+  pending: "Aguardando atendente",
   claimed: "Em atendimento",
   ai_handling: "IA atendendo",
   closed: "Fechada",
@@ -50,6 +57,7 @@ export function ConversationHeader({ conversation, onBack }: Props) {
   const claim = useClaimConversation();
   const release = useReleaseConversation();
   const close = useCloseConversation();
+  const retomar = useResumeAiAttendance();
   const [reassignOpen, setReassignOpen] = useState(false);
   const [crmPanelOpen, setCrmPanelOpen] = useState(false);
 
@@ -61,6 +69,18 @@ export function ConversationHeader({ conversation, onBack }: Props) {
   const isOpen = status === "open" || conversation.assigned_to_user_id == null;
   const temp = metaDaConversa(conversation);
   const isMobile = useIsMobile();
+
+  /**
+   * A conversa saiu do atendimento automático? As DUAS travas contam: o silêncio
+   * na conversa e o `force_human` no contato. Olhar só o silêncio deixaria de
+   * oferecer a volta justamente no caso em que ela mais falta — o contato travado
+   * com a conversa já liberada, em que nenhum envio automático sai e nada na tela
+   * explica por quê.
+   */
+  const silenciada =
+    conversation.bot_silenced_until !== null && conversation.bot_silenced_until !== undefined;
+  const emAtendimentoHumano =
+    (silenciada || c?.force_human === true) && status !== "closed" && status !== "archived";
 
   return (
     <div className="sticky top-0 z-10 border-b border-border/60 bg-background/80 backdrop-blur-xl max-md:flex max-md:flex-col max-md:border-[var(--m-border-soft)] max-md:bg-[var(--m-bg)] md:flex md:items-center md:justify-between md:gap-2 px-3 py-2.5 md:px-4 md:py-3 max-md:p-0">
@@ -94,6 +114,20 @@ export function ConversationHeader({ conversation, onBack }: Props) {
             <Badge variant="outline" className="h-4 px-1.5 text-[10px] shrink-0 max-md:hidden">
               {STATUS_LABEL[status] ?? status}
             </Badge>
+            {/* Sem esta marca, a conversa em que o robô está calado tem
+                exatamente a mesma cara de uma conversa normal — e ninguém
+                entende por que as respostas automáticas pararam.
+                Aparece TAMBÉM no celular (sem `max-md:hidden`): é justamente
+                de longe do computador que se estranha o silêncio do agente. */}
+            {emAtendimentoHumano && (
+              <Badge
+                variant="outline"
+                className="h-4 shrink-0 px-1.5 text-[10px] max-md:border-[var(--m-morno)] max-md:text-[var(--m-morno)]"
+                data-testid="badge-atendimento-humano"
+              >
+                Automático pausado
+              </Badge>
+            )}
           </div>
           {phone && (
             <p className="mt-0.5 hidden sm:flex items-center gap-1 text-[11px] text-muted-foreground max-md:mt-px max-md:flex max-md:text-[11.5px] max-md:text-[var(--m-text-2)]">
@@ -145,6 +179,20 @@ export function ConversationHeader({ conversation, onBack }: Props) {
             onClick={() => release.mutate({ conversation_id: conversation.id })}
           >
             Liberar
+          </Button>
+        )}
+        {/* A volta. Fica ANTES de transferir/fechar porque é a ação que a pessoa
+            procura quando terminou o que tinha para fazer aqui. */}
+        {emAtendimentoHumano && (
+          <Button
+            size="sm"
+            variant="outline"
+            className={ACAO_MOBILE}
+            disabled={retomar.isPending}
+            data-testid="devolver-ao-automatico"
+            onClick={() => retomar.mutate({ conversation_id: conversation.id })}
+          >
+            {retomar.isPending ? "Devolvendo..." : "Devolver ao automático"}
           </Button>
         )}
         {/* Antes escondida abaixo de `sm` — transferir é justamente o que se
