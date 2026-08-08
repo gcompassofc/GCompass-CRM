@@ -1,7 +1,8 @@
 import { env } from "@/lib/env";
 
 /**
- * Modo VITRINE: o app roda inteiro sem Supabase, WAHA, Redis ou Docker.
+ * Modo VITRINE: o app roda inteiro sem banco, sem canal de mensagens, sem
+ * Redis e sem Docker.
  *
  * Ligado quando `NEXT_PUBLIC_SUPABASE_URL` aponta para o host de demonstração
  * — um endereço que não resolve. É o que permite abrir o produto no

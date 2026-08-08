@@ -1,5 +1,6 @@
 /**
- * Dados de demonstração para rodar o app SEM Supabase, WAHA ou Docker.
+ * Dados de demonstração para rodar o app SEM banco, sem canal de mensagens e
+ * sem Docker.
  *
  * Ligados por `NEXT_PUBLIC_SUPABASE_URL=https://demo.supabase.co` (ver
  * `lib/auth/server.ts` e as rotas em `app/api/v1/`). É modo de VITRINE, não

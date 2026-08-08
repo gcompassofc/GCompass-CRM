@@ -52,7 +52,17 @@ export function generateMetadata(): Metadata {
   };
 }
 
+// App instalável em celular: viewport travado como o do WhatsApp. Sem pinch-zoom
+// e sem duplo-toque, senão o usuário zoomando um balão desalinha a tela inteira
+// e não tem gesto óbvio pra voltar. `interactive-widget` impede que o teclado
+// virtual encolha o layout viewport — a barra de escrever sobe junto com ele.
 export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  interactiveWidget: "resizes-content",
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#faf9f6" },
     { media: "(prefers-color-scheme: dark)", color: "#161510" },

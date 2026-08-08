@@ -29,11 +29,11 @@ export function AttachMenu({ disabled, onPick }: Props) {
             type="button"
             size="icon"
             variant="ghost"
-            className="h-9 w-9 shrink-0"
+            className="h-9 w-9 shrink-0 max-md:h-11 max-md:w-11"
             aria-label="Anexar"
             disabled={disabled}
           >
-            <Plus size={18} weight="regular" aria-hidden />
+            <Plus className="size-[18px] max-md:size-6" weight="regular" aria-hidden />
           </Button>
         </PopoverTrigger>
         <PopoverContent align="start" side="top" className="w-52 p-1">
