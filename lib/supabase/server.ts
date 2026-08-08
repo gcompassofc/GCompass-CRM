@@ -14,6 +14,14 @@ export async function createClient() {
   const cookieStore = await cookies();
 
   return createServerClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+    // O @supabase/ssr usa PKCE por padrão, e PKCE é incompatível com este app em
+    // dois pontos: o GoTrue passa a emitir `token_hash=pkce_...`, que o
+    // `verifyOtp` de app/auth/confirm/route.ts não lê (o par do PKCE seria
+    // `exchangeCodeForSession`); e a validação depende de um code_verifier em
+    // cookie que o SameSite=Strict abaixo — doutrina do projeto — não envia numa
+    // navegação vinda do cliente de e-mail. O efeito era o link de redefinir
+    // senha morrer em /login?error=link_invalido.
+    auth: { flowType: "implicit" },
     cookies: {
       getAll() {
         return cookieStore.getAll();

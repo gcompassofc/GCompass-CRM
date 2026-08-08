@@ -6,6 +6,7 @@
  * — o caller decide se isso é fatal ou não. Convites NÃO devem falhar silenciosamente
  * em prod; em dev, o log permite que o flow continue sem credenciais reais.
  */
+import * as Sentry from "@sentry/nextjs";
 import { Resend } from "resend";
 
 interface SendArgs {
@@ -53,6 +54,15 @@ export async function sendEmail(args: SendArgs): Promise<SendResult> {
       );
       return { ok: false, error: "not_configured" };
     }
+    // Em prod isto era silêncio absoluto: convite "enviado" na tela, nada na
+    // caixa de ninguém, nada no log. O único rastro era email_dispatched:false
+    // no audit — que ninguém vai ler procurando por isto. Sentry, não console:
+    // o operador precisa ser avisado sem ter que suspeitar primeiro.
+    Sentry.captureMessage("Email não enviado: RESEND_API_KEY ausente", {
+      level: "warning",
+      tags: { subsystem: "email" },
+      extra: { subject: args.subject, tags: args.tags },
+    });
     return { ok: false, error: "not_configured" };
   }
 
@@ -69,6 +79,13 @@ export async function sendEmail(args: SendArgs): Promise<SendResult> {
 
     if (error) {
       const isRateLimit = String(error.name || "").toLowerCase().includes("rate");
+      // Domínio não verificado e chave revogada caem aqui, e são justamente as
+      // falhas que o operador precisa ver depois de configurar o Resend.
+      Sentry.captureMessage("Envio de email recusado pelo Resend", {
+        level: isRateLimit ? "warning" : "error",
+        tags: { subsystem: "email", reason: isRateLimit ? "rate_limited" : "send_failed" },
+        extra: { subject: args.subject, resend_error: error.message },
+      });
       return {
         ok: false,
         error: isRateLimit ? "rate_limited" : "send_failed",

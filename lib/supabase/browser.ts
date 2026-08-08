@@ -32,6 +32,11 @@ export function createClient() {
   }
 
   _client = createBrowserClient(url, key, {
+    // Mesmo motivo do server.ts: PKCE (o default do @supabase/ssr) emitiria
+    // `token_hash=pkce_...` nos links de e-mail, que o verifyOtp de
+    // app/auth/confirm/route.ts não lê. Os dois clients têm que concordar no
+    // fluxo — o e-mail pode ser pedido de qualquer um dos dois.
+    auth: { flowType: "implicit" },
     // D-01.01: cookie name canônico alinhado ao middleware/server.
     cookieOptions: {
       name: "sb-deskcomm-auth",
