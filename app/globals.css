@@ -24,13 +24,17 @@
   --color-border: rgba(0, 0, 0, 0.08);
   --color-border-strong: rgba(0, 0, 0, 0.16);
 
-  /* Accent — Apple San Francisco Blue (#007aff) */
+  /* Accent — Apple San Francisco Blue, escurecido para leitura.
+     O #007aff original media 4.02:1 com texto branco, abaixo dos 4.5:1 do WCAG
+     2 AA. O axe não acusava porque as specs de a11y rodam no tema escuro, mas o
+     par `bg-accent` + branco é o mesmo aqui — quem usa o app no claro lia com o
+     mesmo déficit. #0069d9 mede 5.22:1 (medido, não estimado). */
   --color-accent-50:  #f0f7ff;
   --color-accent-100: #e0effe;
   --color-accent-200: #bae0fd;
   --color-accent-300: #7cc5fb;
   --color-accent-400: #36a5f7;
-  --color-accent-500: #007aff;
+  --color-accent-500: #0069d9;
   --color-accent-600: #0062cc;
   --color-accent-700: #004fb3;
   --color-accent-800: #003e8c;
@@ -150,13 +154,18 @@
   --color-border: rgba(255, 255, 255, 0.08);
   --color-border-strong: rgba(255, 255, 255, 0.16);
 
-  /* Accent — Apple Electric Indigo / Blue (#0a84ff) */
+  /* Accent — Apple Electric Indigo / Blue, escurecido para leitura.
+     O #0a84ff original dava 3.64:1 com texto branco, abaixo dos 4.5:1 do WCAG
+     2 AA — e `bg-accent` + `text-accent-foreground` é o par do botão primário,
+     do item ativo do sidebar e do submit do login. #0a6ecc mede 5.10:1 (medido,
+     não estimado) e mantém o mesmo azul. Ao mexer aqui, meça de novo: é o valor
+     que quatro specs de a11y vigiam. */
   --color-accent-50:  #f0f7ff;
   --color-accent-100: #e0effe;
   --color-accent-200: #bae0fd;
   --color-accent-300: #7cc5fb;
   --color-accent-400: #409cff;
-  --color-accent-500: #0a84ff;
+  --color-accent-500: #0a6ecc;
   --color-accent-600: #0066cc;
   --color-accent-700: #004fb3;
   --color-accent-800: #003e8c;
