@@ -144,6 +144,18 @@ const schema = z.object({
     .default("false")
     .transform((v) => v === "true"),
 
+  // E-mail transacional (Resend). Opcional: sem a chave, convites não saem e a
+  // UI mostra o link de aceite na tela — o app sobe normalmente. Declaradas aqui
+  // para aparecerem no contrato de env em vez de serem lidas cruas do process.env.
+  RESEND_API_KEY: z.string().optional().default(""),
+  RESEND_FROM_EMAIL: z.string().optional().default(""),
+
+  // Assinatura HMAC dos convites de equipe (lib/auth/invite-token.ts). Opcional
+  // de verdade: na falta dela o segredo cai em INTERNAL_SECRET, que é required
+  // acima — o literal "dev-fallback" do módulo é inalcançável em produção.
+  // Serve para rotacionar a chave dos convites sem derrubar o resto do sistema.
+  INVITE_TOKEN_SECRET: z.string().optional().default(""),
+
   // App URLs
   NEXT_PUBLIC_APP_URL: z
     .string()
@@ -203,6 +215,13 @@ if (!env.OPENAI_API_KEY) {
 if (!env.IMPERSONATE_COOKIE_SECRET || env.IMPERSONATE_COOKIE_SECRET.length < 32) {
   console.warn(
     "[env] IMPERSONATE_COOKIE_SECRET not set or shorter than 32 chars — impersonate flow will return 503 at runtime.",
+  );
+}
+if (!env.RESEND_API_KEY) {
+  console.warn(
+    "[env] No RESEND_API_KEY set — team invite emails will NOT be delivered. " +
+      "The invite is still created and the accept link is shown in the UI. " +
+      "Password reset is unaffected: it is sent by Supabase Auth, not by Resend.",
   );
 }
 
