@@ -13,7 +13,7 @@ set -euo pipefail
 ENV_FILE=".env.local"
 [ -f "$ENV_FILE" ] || { echo "Rode na raiz do repositório (falta $ENV_FILE)."; exit 1; }
 
-senha=$(grep -E '^REDIS_SENHA_LOCAL=' "$ENV_FILE" | head -1 | cut -d= -f2- || true)
+senha=$(grep -E '^REDIS_SENHA_LOCAL=' "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '\r' || true)
 if [ -z "$senha" ]; then
   senha=$(node -e 'process.stdout.write(require("crypto").randomBytes(24).toString("base64url"))')
   printf '\n# Senha do Redis local (scripts/servicos-locais-fechados.sh)\nREDIS_SENHA_LOCAL=%s\n' "$senha" >> "$ENV_FILE"
@@ -44,13 +44,16 @@ docker run -d --name gcrm-srh --restart unless-stopped \
   hiett/serverless-redis-http:latest >/dev/null
 
 echo "WAHA (mantém a sessão do WhatsApp)..."
-waha_env=$(envs_de gcrm-waha | grep -vE '^(PUPPETEER_SKIP_DOWNLOAD|NODE_OPTIONS|WAHA_GOWS_PATH|WAHA_GOWS_SOCKET|CHOKIDAR_USEPOLLING|CHOKIDAR_INTERVAL|WAHA_ZIPPER|GODEBUG)=')
+waha_env=$(envs_de gcrm-waha | grep -vE '^(PUPPETEER_SKIP_DOWNLOAD|NODE_OPTIONS|WAHA_GOWS_PATH|WAHA_GOWS_SOCKET|CHOKIDAR_USEPOLLING|CHOKIDAR_INTERVAL|WAHA_ZIPPER|GODEBUG|WHATSAPP_HOOK_HMAC|WHATSAPP_HOOK_HMAC_KEY)=')
+# Assinatura dos avisos: o WAHA só assina com WHATSAPP_HOOK_HMAC_KEY (o nome
+# antigo, WHATSAPP_HOOK_HMAC, é ignorado). Mesmo segredo do app.
+hmac=$(grep -E '^WAHA_HMAC_SECRET=' "$ENV_FILE" | head -1 | cut -d= -f2- | tr -d '"\r' || true)
 docker rm -f gcrm-waha >/dev/null 2>&1 || true
 args=()
 while IFS= read -r linha; do args+=(-e "$linha"); done <<< "$waha_env"
 docker run -d --name gcrm-waha --restart unless-stopped \
   -p 127.0.0.1:3030:3000 \
-  "${args[@]}" \
+  "${args[@]}" -e "WHATSAPP_HOOK_HMAC_KEY=${hmac}" \
   --add-host host.docker.internal:host-gateway \
   -v gcrm-waha-data:/app/.sessions -v gcrm-waha-media:/app/.media \
   devlikeapro/waha:noweb >/dev/null

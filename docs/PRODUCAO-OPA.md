@@ -33,8 +33,8 @@ Nada aqui foi publicado ainda: banco, servidor e domínio de produção não exi
 | D1 | Onde roda o app | VPS **separada** só para o CRM (2 vCPU, 4 GB). Dá para usar a VPS do n8n (EasyPanel, modo Traefik do kit), mas aí uma falha no n8n alcança os dados dos leads |
 | D2 | Endereço | `crm.opailhabela.com.br` (registro A no DNS da OPA apontando para a VPS) |
 | D3 | Conta do Supabase | Conta da G-Compass ou da OPA. Plano pago para produção: o grátis pausa o projeto parado e não guarda backup diário. Região **São Paulo (sa-east-1)** |
-| D4 | Números de WhatsApp | O WAHA **Core** (grátis) atende **um** número. Um número por corretor mais o OPA Lembretes pede o WAHA **Plus** (pago). Conferir no site da WAHA antes de assinar |
-| D5 | Gerente vê integrações, token e comissão? (P10 da auditoria) | Hoje vê. A matriz de papéis diz "só admin" |
+| D4 | Números de WhatsApp | **Resolvido:** desde a versão 2026.6.1 o WAHA gratuito atende **números ilimitados** (o Plus deixou de existir). Testado no local (2026.9.2): várias sessões no mesmo contêiner. Um número por corretor mais o OPA Lembretes cabe sem custo de licença; o limite real é memória da VPS. Doação opcional: 5 dólares por mês, sem benefício |
+| D5 | Gerente vê integrações, token e comissão? (P10 da auditoria) | **Decidido em 30/10/2026: vê.** O `preparar-opa.ts` grava `gerente_ve_receita: true` |
 | D6 | Chave da IA do copiloto | Chave Anthropic da OPA com limite de gasto. Sem chave, o copiloto funciona por regras |
 | D7 | E-mail dos convites | Opcional (Resend). Sem ele, a tela Membros mostra o link para mandar pelo WhatsApp |
 

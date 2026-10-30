@@ -191,6 +191,8 @@ async function main() {
   if (!("roleta" in opa)) faltando.roleta = [];
   if (!("roleta_pausados" in opa)) faltando.roleta_pausados = [];
   if (!("dominios_imovel" in opa)) faltando.dominios_imovel = DOMINIOS_IMOVEL;
+  // Decisão do Allyson (30/10/2026): o gerente vê receita, comissão e integrações.
+  if (!("gerente_ve_receita" in opa)) faltando.gerente_ve_receita = true;
   if (Object.keys(faltando).length) {
     const { error } = await admin.rpc("fn_opa_mesclar_config", { p_org: orgId, p_parcial: faltando });
     if (error) throw new Error(`configuração: ${error.message}`);

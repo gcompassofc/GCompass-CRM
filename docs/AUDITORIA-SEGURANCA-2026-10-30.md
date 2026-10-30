@@ -98,10 +98,10 @@ Achado junto: o CPF da base **não está cifrado de verdade**. A função `encry
 | P4 | Fechado | 0115: escrita de configuração só gerente+, operação corretor+, exclusão gerente+; mensagens idem | migration 0115 |
 | P5 | Fechado | Bloqueio por conta + IP (5) e teto geral da conta (30) | `lib/auth/rate-limit.ts` |
 | P6 | Fechado no local | Redis com senha; Redis, ponte e WAHA só em 127.0.0.1. Portas do Supabase CLI seguem em 0.0.0.0 (firewall do Windows) | `scripts/servicos-locais-fechados.sh` |
-| P7 | Mitigado | WAHA Core não assina. Em produção o webhook anda só na rede interna (`WAHA_WEBHOOK_BASE_URL=http://app:3000`) e a porta do WAHA não é publicada | `.env.producao.example` |
+| P7 | Fechado | O WAHA gratuito assina sim: o projeto usava a variável errada (`WHATSAPP_HOOK_HMAC` no lugar de `WHATSAPP_HOOK_HMAC_KEY`). Corrigido nos composes e exigência ligada: aviso sem assinatura ou com assinatura falsa dá 401, aviso real do WAHA entra | `docker-compose*.yml`, `.env.producao.example` |
 | P8 | Fechado | CSP (connect-src, img-src, frame-ancestors, base-uri, form-action) e HSTS em tempo de execução | `lib/seguranca/csp.ts` |
 | P9 | Fechado | Sentry desligado por padrão; Next 16 parou de imprimir os argumentos das Server Functions (a senha do login ia para o log) | `lib/sentry/dsn.ts`, `next.config.ts` |
-| P10 | Aberto | Decisão do Allyson | `docs/PRODUCAO-OPA.md` D5 |
+| P10 | Decidido | Allyson: o gerente vê integrações, token e comissão (comportamento atual mantido) | `scripts/producao/preparar-opa.ts` |
 | P11 | Fechado | Roleta, configuração e motivos de perda por funções atômicas | migration 0115 |
 | P12 | Aberto | Baixo risco | |
 | P13 | Fechado | Gatilho: URL https dos domínios aceitos; foto como nome do arquivo do site ou URL aceita | migration 0115 |

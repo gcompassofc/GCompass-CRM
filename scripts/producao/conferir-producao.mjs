@@ -86,6 +86,11 @@ checa(!env.SENTRY_DSN || /^(off|false|0)$/i.test(env.SENTRY_DSN) || !/58fabf8ad5
 checa(env.CADASTRO_ABERTO !== "true", "cadastro do app fechado (só convite)", "CADASTRO_ABERTO=true");
 forteOuAviso(env.NODE_ENV === "production", "NODE_ENV=production", `está ${env.NODE_ENV || "vazio"}`);
 forteOuAviso((env.NEXT_PUBLIC_APP_URL ?? "").startsWith("https://"), "app em https", env.NEXT_PUBLIC_APP_URL ?? "");
+checa(
+  env.WAHA_WEBHOOK_REQUIRE_SIGNATURE === "true" && (env.WAHA_HMAC_SECRET ?? "").length >= 16,
+  "avisos do WhatsApp só entram assinados",
+  "WAHA_WEBHOOK_REQUIRE_SIGNATURE=true e WAHA_HMAC_SECRET preenchido",
+);
 if (!LOCAL) {
   checa(/^http:\/\/(waha|localhost|127\.0\.0\.1)[:/]/.test(env.WAHA_API_BASE_URL ?? ""), "WAHA só pela rede interna", `WAHA_API_BASE_URL=${env.WAHA_API_BASE_URL}`);
   if (env.OWNER_PASSWORD) aviso("OWNER_PASSWORD ainda no arquivo", "depois da instalação, apague o valor (a senha já está no Supabase)");

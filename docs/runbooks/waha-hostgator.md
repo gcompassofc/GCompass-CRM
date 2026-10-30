@@ -139,7 +139,9 @@ services:
     environment:
       WAHA_API_KEY: ${WAHA_API_KEY}                       # plaintext rotacionado
       WHATSAPP_HOOK_URL: ${WAHA_WEBHOOK_BASE_URL}/api/v1/webhooks/waha
-      WHATSAPP_HOOK_HMAC: ${WAHA_HMAC_SECRET}
+      # O nome certo é WHATSAPP_HOOK_HMAC_KEY: com WHATSAPP_HOOK_HMAC o WAHA ignora
+      # e não assina nada (medido em 30/10/2026, WAHA 2026.9.2 Core).
+      WHATSAPP_HOOK_HMAC_KEY: ${WAHA_HMAC_SECRET}
       WAHA_DEFAULT_ENGINE: NOWEB
       WAHA_DASHBOARD_ENABLED: "false"                     # sem dashboard em prod
 ```
