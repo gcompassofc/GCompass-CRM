@@ -316,13 +316,8 @@ export async function carregarConfig(supabase: SupabaseClient, orgId: string): P
  * admin: quem chama já conferiu que a pessoa é gerente ou administrador da org.
  */
 export async function salvarConfig(admin: SupabaseClient, orgId: string, parcial: Partial<ConfigOpa>): Promise<void> {
-  const { data } = await admin.from("organizations").select("settings").eq("id", orgId).single();
-  const settings = ((data as { settings: Record<string, unknown> | null }).settings ?? {}) as Record<string, unknown>;
-  const opa = (settings.opa ?? {}) as Record<string, unknown>;
-  const { error } = await admin
-    .from("organizations")
-    .update({ settings: { ...settings, opa: { ...opa, ...parcial } } })
-    .eq("id", orgId);
+  // Mescla no banco numa instrução só: não apaga a pausa da roleta gravada no meio (0115).
+  const { error } = await admin.rpc("fn_opa_mesclar_config", { p_org: orgId, p_parcial: parcial });
   if (error) throw new Error(`salvarConfig: ${error.message}`);
 }
 

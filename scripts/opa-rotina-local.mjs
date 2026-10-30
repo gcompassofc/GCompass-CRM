@@ -1,7 +1,8 @@
 /**
- * Rotina local do CRM da OPA: chama o cron do copiloto a cada minuto, como o
- * cron do servidor faz em produção (vercel.ts / crontab do kit self-host).
- * Sem ela, no localhost a IA só relê a conversa quando alguém abre a ficha.
+ * Rotina local do CRM da OPA: chama a cada minuto o cron do copiloto e o da
+ * cifra dos dados pessoais, como o cron do servidor faz em produção (vercel.ts /
+ * crontab do kit self-host). Sem ela, no localhost a IA só relê a conversa
+ * quando alguém abre a ficha, e contato novo fica sem a versão cifrada.
  *
  * Run: node scripts/opa-rotina-local.mjs   (Ctrl+C para parar)
  */
@@ -24,19 +25,32 @@ if (!segredo) {
   process.exit(1);
 }
 
+async function cifrar() {
+  try {
+    const r = await fetch(`${base}/api/v1/cron/cifrar-dados`, { headers: { Authorization: `Bearer ${segredo}` } });
+    const d = (await r.json().catch(() => ({})))?.data ?? {};
+    if (!r.ok || d.contatos || d.mensagens || d.configurada === false) {
+      console.info(new Date().toLocaleTimeString("pt-BR"), "cifra", r.status, JSON.stringify(d));
+    }
+  } catch {
+    // o tick do copiloto já avisa quando o app não responde
+  }
+}
+
 async function tick() {
+  await cifrar();
   try {
     const r = await fetch(`${base}/api/v1/cron/opa-copiloto`, {
       headers: { Authorization: `Bearer ${segredo}` },
     });
     const corpo = await r.json().catch(() => ({}));
     const n = corpo?.data?.analisados ?? 0;
-    if (!r.ok || n > 0) console.log(new Date().toLocaleTimeString("pt-BR"), r.status, JSON.stringify(corpo.data ?? corpo));
+    if (!r.ok || n > 0) console.info(new Date().toLocaleTimeString("pt-BR"), r.status, JSON.stringify(corpo.data ?? corpo));
   } catch (e) {
-    console.log(new Date().toLocaleTimeString("pt-BR"), "sem resposta do app:", String(e).slice(0, 120));
+    console.info(new Date().toLocaleTimeString("pt-BR"), "sem resposta do app:", String(e).slice(0, 120));
   }
 }
 
-console.log(`Copiloto lendo conversas a cada minuto em ${base}`);
+console.info(`Copiloto lendo conversas a cada minuto em ${base}`);
 await tick();
 setInterval(tick, 60_000);

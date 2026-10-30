@@ -56,10 +56,11 @@ describe("0082 · proposta de reativação chega ao clone", () => {
       sql(`select relrowsecurity from pg_class where relname='crm_lead_reactivations'`),
     ).toBe("t");
     expect(
+      // 0115: sem FOR ALL; corretor+ insere e altera, só gerente+ apaga.
       sql(`select count(*) from pg_policies
-            where tablename='crm_lead_reactivations'
-              and policyname='tenant_isolation_crm_lead_reactivations_all'`),
-    ).toBe("1");
+            where tablename = 'crm_lead_reactivations' and cmd in ('INSERT','UPDATE','DELETE')
+              and coalesce(qual, with_check) like '%fn_role_at_least%'`),
+    ).toBe("3");
   });
 
   it("DENTRO da publicação de realtime — proposta é estado, não telemetria", () => {

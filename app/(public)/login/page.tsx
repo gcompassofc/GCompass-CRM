@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { LoginForm } from "@/components/auth/LoginForm";
 import { branding } from "@/lib/branding";
+import { env } from "@/lib/env";
 
 export const metadata = { title: "Entrar" };
 
@@ -53,15 +54,19 @@ export default async function LoginPage({
             Esqueci minha senha
           </Link>
         </p>
-        <p className="text-muted-foreground">
-          Não tem conta?{" "}
-          <Link
-            href="/signup"
-            className="font-medium text-foreground underline underline-offset-4"
-          >
-            Criar conta
-          </Link>
-        </p>
+        {env.CADASTRO_ABERTO === "true" ? (
+          <p className="text-muted-foreground">
+            Não tem conta?{" "}
+            <Link
+              href="/signup"
+              className="font-medium text-foreground underline underline-offset-4"
+            >
+              Criar conta
+            </Link>
+          </p>
+        ) : (
+          <p className="text-muted-foreground">O acesso é por convite da sua equipe.</p>
+        )}
       </div>
     </div>
   );

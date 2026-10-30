@@ -3,6 +3,7 @@ import { cookieSecure } from "@/lib/supabase/cookie-secure";
 import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/lib/env";
 import { isPublicPath } from "@/lib/auth/public-paths";
+import { cabecalhoHsts, montarCsp } from "@/lib/seguranca/csp";
 import { IS_DEMO_MODE } from "@/lib/demo-mode";
 import {
   verifyImpersonateCookieEdge,
@@ -13,6 +14,19 @@ const COOKIE_NAME = "sb-deskcomm-auth";
 
 export async function proxy(request: NextRequest) {
   const response = NextResponse.next({ request: { headers: request.headers } });
+
+  // CSP e HSTS em tempo de execução (lib/seguranca/csp.ts).
+  response.headers.set(
+    "Content-Security-Policy",
+    montarCsp({
+      supabaseUrl: env.NEXT_PUBLIC_SUPABASE_URL,
+      appUrl: env.NEXT_PUBLIC_APP_URL,
+      dev: process.env.NODE_ENV !== "production",
+      imagensExtras: process.env.CSP_IMG_EXTRA,
+    }),
+  );
+  const hsts = cabecalhoHsts(env.NEXT_PUBLIC_APP_URL);
+  if (hsts) response.headers.set("Strict-Transport-Security", hsts);
 
   // Inject X-Request-Id for downstream correlation (audit log, error wrappers).
   const requestId = request.headers.get("x-request-id") ?? crypto.randomUUID();
@@ -91,6 +105,22 @@ export async function proxy(request: NextRequest) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("next", pathname + search);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // Quem cadastrou o segundo fator só passa com a sessão elevada (aal2). Sem
+  // isto, a senha sozinha abria o app e a API (auditoria de 30/10/2026, P3).
+  // O nível vem do próprio JWT já validado acima; não vai à rede.
+  const { data: nivel } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (nivel?.nextLevel === "aal2" && nivel.currentLevel !== "aal2") {
+    if (pathname.startsWith("/api/")) {
+      return new NextResponse(
+        JSON.stringify({ error: { code: "mfa_required", message: "Confirme o segundo fator" } }),
+        { status: 401, headers: { "content-type": "application/json", "x-request-id": requestId } },
+      );
+    }
+    const mfaUrl = new URL("/login/mfa", request.url);
+    mfaUrl.searchParams.set("next", pathname + search);
+    return NextResponse.redirect(mfaUrl);
   }
 
   // EPIC-11 S-11.07: validate impersonate cookie on /app/* paths. Middleware

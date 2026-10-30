@@ -9118,3 +9118,1169 @@ grant execute on function public.fn_user_role_in(uuid) to authenticated, service
 grant execute on function public.fn_role_at_least(uuid, text) to authenticated, service_role;
 
 notify pgrst, 'reload schema';
+
+-- ============================================================================
+-- APÊNDICE 0110_opa_imoveis_copiloto (CRM da OPA) — espelho exato da migration 20261030000000.
+-- ============================================================================
+set search_path = public, extensions;
+
+-- 0110 · CRM da OPA: imóveis e copiloto de IA.
+--
+-- imoveis: o acervo da imobiliária dentro do CRM, para o lead nascer ligado ao
+-- imóvel de entrada e para o cruzamento lead x imóvel. Na OPA a fonte é o Painel
+-- (D1 opa-imoveis); aqui fica a cópia que o CRM lê. Chave natural: (org, codigo).
+--
+-- copiloto_sugestoes: o que a IA leu na conversa do WhatsApp e propõe gravar no
+-- lead (finalidade, região, momento...). Nada entra no lead sem o corretor
+-- confirmar: a sugestão nasce 'pendente' e vira 'aceita' ou 'recusada'.
+-- `evidencia` guarda o trecho da conversa que sustenta a sugestão, para o
+-- corretor decidir sem reler a conversa inteira.
+
+create table if not exists public.imoveis (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  codigo text not null,
+  slug text,
+  titulo text not null,
+  tipo text,
+  finalidade text,
+  preco_venda_cents bigint,
+  preco_locacao_cents bigint,
+  condominio_cents bigint,
+  iptu_cents bigint,
+  bairro text,
+  regiao text,
+  area_m2 numeric,
+  area_terreno_m2 numeric,
+  dormitorios integer,
+  suites integer,
+  vagas integer,
+  descricao text,
+  caracteristicas text[] not null default '{}',
+  fotos text[] not null default '{}',
+  url_site text,
+  off_market boolean not null default false,
+  status text not null default 'ativo',
+  captador_user_id uuid references auth.users(id) on delete set null,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint imoveis_status_check check (status in ('ativo', 'reservado', 'vendido', 'inativo'))
+);
+
+create unique index if not exists imoveis_org_codigo_uq on public.imoveis (organization_id, codigo);
+create index if not exists imoveis_org_bairro_idx on public.imoveis (organization_id, bairro);
+
+alter table public.imoveis enable row level security;
+
+drop policy if exists imoveis_select_member on public.imoveis;
+create policy imoveis_select_member on public.imoveis for select to authenticated
+  using (organization_id in (select public.fn_user_org_ids()));
+
+drop policy if exists imoveis_write_member on public.imoveis;
+create policy imoveis_write_member on public.imoveis for all to authenticated
+  using (organization_id in (select public.fn_user_org_ids()))
+  with check (organization_id in (select public.fn_user_org_ids()));
+
+create table if not exists public.copiloto_sugestoes (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  lead_id uuid not null references public.crm_leads(id) on delete cascade,
+  campo text not null,
+  valor text not null,
+  evidencia text,
+  confianca numeric,
+  origem text not null default 'ia',
+  status text not null default 'pendente',
+  decidido_por uuid references auth.users(id) on delete set null,
+  decidido_em timestamptz,
+  created_at timestamptz not null default now(),
+  constraint copiloto_status_check check (status in ('pendente', 'aceita', 'recusada'))
+);
+
+-- Uma sugestão pendente por campo e lead: a análise nova substitui a anterior.
+create unique index if not exists copiloto_pendente_uq
+  on public.copiloto_sugestoes (lead_id, campo) where status = 'pendente';
+create index if not exists copiloto_org_status_idx on public.copiloto_sugestoes (organization_id, status);
+
+alter table public.copiloto_sugestoes enable row level security;
+
+-- Vê a sugestão quem vê o lead: o EXISTS roda sob o RLS de crm_leads
+-- (fn_can_view_lead), então o corretor só enxerga as sugestões dos leads dele.
+drop policy if exists copiloto_member on public.copiloto_sugestoes;
+create policy copiloto_member on public.copiloto_sugestoes for all to authenticated
+  using (
+    organization_id in (select public.fn_user_org_ids())
+    and exists (select 1 from public.crm_leads l where l.id = copiloto_sugestoes.lead_id)
+  )
+  with check (
+    organization_id in (select public.fn_user_org_ids())
+    and exists (select 1 from public.crm_leads l where l.id = copiloto_sugestoes.lead_id)
+  );
+
+-- Trava por etapa: campos do lead (custom_fields -> 'opa') que precisam estar
+-- confirmados para o negócio ENTRAR na etapa. Fica no banco para valer em
+-- qualquer porta (quadro arrastado, ficha, API, MCP). Lista explícita por etapa,
+-- sem herança: "Sem momento" e "Perdido" ficam sem trava de propósito.
+alter table public.crm_stages add column if not exists campos_obrigatorios text[] not null default '{}';
+
+create or replace function public.fn_trava_campos_da_etapa()
+returns trigger
+language plpgsql
+as $$
+declare
+  exigidos text[];
+  faltando text[];
+begin
+  if new.stage_id is not distinct from old.stage_id then
+    return new;
+  end if;
+  select campos_obrigatorios into exigidos from public.crm_stages where id = new.stage_id;
+  if exigidos is null or cardinality(exigidos) = 0 then
+    return new;
+  end if;
+  select coalesce(array_agg(c), '{}') into faltando
+    from unnest(exigidos) as c
+   where coalesce(nullif(trim(new.custom_fields -> 'opa' ->> c), ''), null) is null;
+  if cardinality(faltando) > 0 then
+    raise exception 'Para avançar, confirme antes: %.', array_to_string(faltando, ', ')
+      using errcode = 'P0001', hint = 'trava_campos_etapa';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_trava_campos_da_etapa on public.crm_leads;
+create trigger trg_trava_campos_da_etapa
+  before update of stage_id on public.crm_leads
+  for each row execute function public.fn_trava_campos_da_etapa();
+
+-- ============================================================================
+-- APÊNDICE 0111_opa_visitas_lembretes_meta (CRM da OPA) — espelho exato da migration 20261030120000.
+-- ============================================================================
+set search_path = public, extensions;
+
+-- 0111 · CRM da OPA: visitas, mensagens agendadas e eventos do Meta.
+--
+-- visitas: ficha de visita do protótipo (interesse 1 a 5, gostou, não gostou,
+-- objeção, próximo passo). Agendada ou feita.
+--
+-- lembretes_agendados: "Agendar mensagem" da ficha e os avisos do OPA
+-- Lembretes. Sai pelo número OPA Lembretes quando o envio for ligado; até lá
+-- fica na fila com status.
+--
+-- eventos_meta: o que vai para a API de Conversões. Nasce por gatilho quando o
+-- negócio entra numa etapa com evento (crm_stages.evento_meta), uma vez por
+-- negócio e evento (mover o mesmo card duas vezes não manda duas vezes).
+-- "Venda realizada" leva o valor da comissão, nunca o VGV.
+
+create table if not exists public.visitas (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  lead_id uuid not null references public.crm_leads(id) on delete cascade,
+  imovel_codigo text,
+  status text not null default 'feita',
+  quando timestamptz not null,
+  quem text,
+  chegada text,
+  interesse smallint,
+  gostou text,
+  nao_gostou text,
+  objecao text,
+  proximo_passo text,
+  observacoes text,
+  registrada_por uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  constraint visitas_status_check check (status in ('agendada', 'feita', 'cancelada')),
+  constraint visitas_interesse_check check (interesse is null or interesse between 1 and 5)
+);
+create index if not exists visitas_lead_idx on public.visitas (lead_id, quando desc);
+
+alter table public.visitas enable row level security;
+drop policy if exists visitas_member on public.visitas;
+create policy visitas_member on public.visitas for all to authenticated
+  using (
+    organization_id in (select public.fn_user_org_ids())
+    and exists (select 1 from public.crm_leads l where l.id = visitas.lead_id)
+  )
+  with check (
+    organization_id in (select public.fn_user_org_ids())
+    and exists (select 1 from public.crm_leads l where l.id = visitas.lead_id)
+  );
+
+create table if not exists public.lembretes_agendados (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  lead_id uuid references public.crm_leads(id) on delete cascade,
+  para_user_id uuid references auth.users(id) on delete set null,
+  quando timestamptz not null,
+  mensagem text not null,
+  origem text not null default 'manual',
+  status text not null default 'pendente',
+  criado_por uuid references auth.users(id) on delete set null,
+  created_at timestamptz not null default now(),
+  constraint lembretes_status_check check (status in ('pendente', 'enviado', 'cancelado'))
+);
+create index if not exists lembretes_org_quando_idx on public.lembretes_agendados (organization_id, status, quando);
+
+alter table public.lembretes_agendados enable row level security;
+drop policy if exists lembretes_member on public.lembretes_agendados;
+create policy lembretes_member on public.lembretes_agendados for all to authenticated
+  using (
+    organization_id in (select public.fn_user_org_ids())
+    and (lead_id is null or exists (select 1 from public.crm_leads l where l.id = lembretes_agendados.lead_id))
+  )
+  with check (
+    organization_id in (select public.fn_user_org_ids())
+    and (lead_id is null or exists (select 1 from public.crm_leads l where l.id = lembretes_agendados.lead_id))
+  );
+
+alter table public.crm_stages add column if not exists evento_meta text;
+
+create table if not exists public.eventos_meta (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  lead_id uuid not null references public.crm_leads(id) on delete cascade,
+  evento text not null,
+  valor_cents bigint,
+  status text not null default 'na_fila',
+  resposta text,
+  created_at timestamptz not null default now(),
+  enviado_em timestamptz,
+  constraint eventos_meta_status_check check (status in ('na_fila', 'enviado', 'aceito', 'recusado'))
+);
+create unique index if not exists eventos_meta_uma_vez_uq on public.eventos_meta (lead_id, evento);
+create index if not exists eventos_meta_org_idx on public.eventos_meta (organization_id, created_at desc);
+
+alter table public.eventos_meta enable row level security;
+drop policy if exists eventos_meta_member on public.eventos_meta;
+create policy eventos_meta_member on public.eventos_meta for select to authenticated
+  using (
+    organization_id in (select public.fn_user_org_ids())
+    and exists (select 1 from public.crm_leads l where l.id = eventos_meta.lead_id)
+  );
+
+create or replace function public.fn_evento_meta_da_etapa()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  ev text;
+  valor bigint;
+begin
+  if tg_op = 'UPDATE' and new.stage_id is not distinct from old.stage_id then
+    return new;
+  end if;
+  select evento_meta into ev from public.crm_stages where id = new.stage_id;
+  if ev is null or ev = '' then
+    return new;
+  end if;
+  valor := case
+    when ev = 'Venda realizada' then nullif(new.custom_fields -> 'venda' ->> 'comissao_cents', '')::bigint
+    else null
+  end;
+  insert into public.eventos_meta (organization_id, lead_id, evento, valor_cents)
+  values (new.organization_id, new.id, ev, valor)
+  on conflict (lead_id, evento) do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_evento_meta_da_etapa on public.crm_leads;
+create trigger trg_evento_meta_da_etapa
+  after insert or update of stage_id on public.crm_leads
+  for each row execute function public.fn_evento_meta_da_etapa();
+
+-- ============================================================================
+-- APÊNDICE 0112_cifra_dados_pessoais (CRM da OPA) — espelho exato da migration 20261030180000.
+-- ============================================================================
+set search_path = public, extensions;
+
+-- 0112: cifra de dados pessoais em repouso, fase 1 (colunas ao lado).
+--
+-- Objetivo: dump do banco não entrega nome, telefone, e-mail e conversa dos leads.
+-- A cifra é feita no servidor Next (lib/crypto/dados-pessoais.ts, AES-256-GCM,
+-- chave fora do banco). O banco só vê `pii1.v1.<base64url>`.
+--
+-- Fases (cada uma é uma migration revisada à parte):
+--   1. (esta) colunas cifradas + índice cego ao lado das de texto puro;
+--      scripts/cifrar-dados-pessoais.ts preenche. Nada deixa de funcionar.
+--   2. o app passa a gravar e ler pelas colunas cifradas (camada de dados
+--      decifra para quem a RLS já deixou ver); busca por telefone/e-mail
+--      vai para o índice cego.
+--   3. texto puro vira NULL e um trigger recusa gravar texto puro de novo.
+--
+-- Busca por nome em fase 3: decifrar no servidor a lista que a RLS libera
+-- (centenas a poucos milhares por org) e filtrar em memória.
+
+alter table public.contacts
+  add column if not exists nome_cifrado text,
+  add column if not exists telefone_cifrado text,
+  add column if not exists email_cifrado text,
+  add column if not exists telefone_indice text,
+  add column if not exists email_indice text,
+  add column if not exists cifrado_em timestamptz;
+
+comment on column public.contacts.nome_cifrado is 'pii1: AES-256-GCM, AAD org|nome. Abrir só no servidor (lib/crypto/dados-pessoais.ts).';
+comment on column public.contacts.telefone_indice is 'HMAC-SHA256 do telefone normalizado (55+DDD+número) com chave própria e org; busca exata e dedupe.';
+
+-- O check só aceita o formato cifrado: um bug que grave texto puro aqui falha alto.
+alter table public.contacts drop constraint if exists contacts_pii_formato;
+alter table public.contacts add constraint contacts_pii_formato check (
+  (nome_cifrado is null or nome_cifrado like 'pii1.%')
+  and (telefone_cifrado is null or telefone_cifrado like 'pii1.%')
+  and (email_cifrado is null or email_cifrado like 'pii1.%')
+);
+
+create index if not exists contacts_telefone_indice_idx on public.contacts (organization_id, telefone_indice) where telefone_indice is not null;
+create index if not exists contacts_email_indice_idx on public.contacts (organization_id, email_indice) where email_indice is not null;
+
+alter table public.messages
+  add column if not exists corpo_cifrado text;
+
+alter table public.messages drop constraint if exists messages_pii_formato;
+alter table public.messages add constraint messages_pii_formato check (corpo_cifrado is null or corpo_cifrado like 'pii1.%');
+
+-- ============================================================================
+-- APÊNDICE 0113_opa_endurecimento (CRM da OPA) — espelho exato da migration 20261030190000.
+-- ============================================================================
+set search_path = public, extensions;
+
+-- 0113: endurecimento da camada OPA (auditoria de segurança de 30/10/2026).
+--
+-- Achados confirmados com ataque real no Supabase local:
+--   A1  token do webhook de entrada legível por qualquer membro (organizations.settings)
+--   A2  corretor alterava preço e apagava a carteira inteira (policy `for all` em imoveis)
+--   A3  valor da "Venda realizada" (que vai ao Meta) forjável gravando custom_fields.venda
+--   M1  viewer escrevia em visitas, sugestões e lembretes
+--   M3  ganhar negócio sem trava (duas abas = duas vendas, dois leads no mesmo imóvel)
+--   M9  corretor via e assumia lead sem dono (visibility_mode padrão)
+--   B1  lembrete pessoal de um corretor visível e cancelável pelos colegas
+--   B2  linha com organization_id diferente da do lead
+--   B7  trava de etapa só no update e sem search_path
+
+-- ── A1: segredo da org fora de settings ─────────────────────────────────────
+create table if not exists public.opa_segredos (
+  organization_id uuid primary key references public.organizations(id) on delete cascade,
+  entrada_token text not null,
+  atualizado_em timestamptz not null default now()
+);
+alter table public.opa_segredos enable row level security;
+-- Sem policy nenhuma: só o service_role (servidor) lê e grava.
+revoke all on public.opa_segredos from anon, authenticated;
+
+insert into public.opa_segredos (organization_id, entrada_token)
+select id, settings->'opa'->>'entrada_token'
+from public.organizations
+where settings->'opa'->>'entrada_token' is not null
+on conflict (organization_id) do update set entrada_token = excluded.entrada_token, atualizado_em = now();
+
+update public.organizations
+set settings = jsonb_set(settings, '{opa}', (settings->'opa') - 'entrada_token')
+where settings->'opa' ? 'entrada_token';
+
+-- ── A2: carteira de imóveis, leitura para a equipe, escrita só gestor ─────
+drop policy if exists imoveis_write_member on public.imoveis;
+drop policy if exists imoveis_write_gestor on public.imoveis;
+create policy imoveis_write_gestor on public.imoveis for all to authenticated
+  using (public.fn_role_at_least(organization_id, 'manager'))
+  with check (public.fn_role_at_least(organization_id, 'manager'));
+
+-- ── M1 + B2: escrever exige papel de atendente e a mesma org do lead ───────
+drop policy if exists copiloto_member on public.copiloto_sugestoes;
+drop policy if exists copiloto_select on public.copiloto_sugestoes;
+drop policy if exists copiloto_write on public.copiloto_sugestoes;
+create policy copiloto_select on public.copiloto_sugestoes for select to authenticated
+  using (exists (select 1 from public.crm_leads l where l.id = lead_id and l.organization_id = copiloto_sugestoes.organization_id));
+create policy copiloto_write on public.copiloto_sugestoes for all to authenticated
+  using (
+    public.fn_role_at_least(organization_id, 'agent')
+    and exists (select 1 from public.crm_leads l where l.id = lead_id and l.organization_id = copiloto_sugestoes.organization_id)
+  )
+  with check (
+    public.fn_role_at_least(organization_id, 'agent')
+    and exists (select 1 from public.crm_leads l where l.id = lead_id and l.organization_id = copiloto_sugestoes.organization_id)
+  );
+
+drop policy if exists visitas_member on public.visitas;
+drop policy if exists visitas_select on public.visitas;
+drop policy if exists visitas_write on public.visitas;
+create policy visitas_select on public.visitas for select to authenticated
+  using (exists (select 1 from public.crm_leads l where l.id = lead_id and l.organization_id = visitas.organization_id));
+create policy visitas_write on public.visitas for all to authenticated
+  using (
+    public.fn_role_at_least(organization_id, 'agent')
+    and exists (select 1 from public.crm_leads l where l.id = lead_id and l.organization_id = visitas.organization_id)
+  )
+  with check (
+    public.fn_role_at_least(organization_id, 'agent')
+    and exists (select 1 from public.crm_leads l where l.id = lead_id and l.organization_id = visitas.organization_id)
+  );
+
+-- B1: lembrete sem lead é pessoal (de quem recebe ou de quem criou); gestor vê todos.
+drop policy if exists lembretes_member on public.lembretes_agendados;
+drop policy if exists lembretes_select on public.lembretes_agendados;
+drop policy if exists lembretes_write on public.lembretes_agendados;
+create policy lembretes_select on public.lembretes_agendados for select to authenticated
+  using (
+    case when lead_id is null
+      then organization_id in (select public.fn_user_org_ids())
+        and (para_user_id = auth.uid() or criado_por = auth.uid() or public.fn_role_at_least(organization_id, 'manager'))
+      else exists (select 1 from public.crm_leads l where l.id = lead_id and l.organization_id = lembretes_agendados.organization_id)
+    end
+  );
+create policy lembretes_write on public.lembretes_agendados for all to authenticated
+  using (
+    public.fn_role_at_least(organization_id, 'agent')
+    and case when lead_id is null
+      then para_user_id = auth.uid() or criado_por = auth.uid() or public.fn_role_at_least(organization_id, 'manager')
+      else exists (select 1 from public.crm_leads l where l.id = lead_id and l.organization_id = lembretes_agendados.organization_id)
+    end
+  )
+  with check (
+    public.fn_role_at_least(organization_id, 'agent')
+    and case when lead_id is null
+      then para_user_id = auth.uid() or public.fn_role_at_least(organization_id, 'manager')
+      else exists (select 1 from public.crm_leads l where l.id = lead_id and l.organization_id = lembretes_agendados.organization_id)
+    end
+  );
+
+-- ── A3: custom_fields.venda só muda pela função de ganho ──────────────────
+-- Quem chama pelo PostgREST (authenticated) não grava nem apaga a venda.
+-- Rotinas do servidor (service_role) podem regravar custom_fields, mas não
+-- derrubam uma venda já registrada (corrida do copiloto, achado M5).
+create or replace function public.fn_protege_venda()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if (new.custom_fields->'venda') is not distinct from (old.custom_fields->'venda') then
+    return new;
+  end if;
+  if current_user in ('authenticated', 'anon') then
+    raise exception 'A venda só é registrada pelo botão Ganhar negócio.' using errcode = '42501';
+  end if;
+  if old.custom_fields ? 'venda' and not (coalesce(new.custom_fields, '{}'::jsonb) ? 'venda') then
+    new.custom_fields := jsonb_set(coalesce(new.custom_fields, '{}'::jsonb), '{venda}', old.custom_fields->'venda');
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_protege_venda on public.crm_leads;
+create trigger trg_protege_venda before update of custom_fields on public.crm_leads
+  for each row execute function public.fn_protege_venda();
+
+-- ── A3 + M3: ganhar negócio atômico ───────────────────────────────────────
+create or replace function public.fn_opa_ganhar_negocio(
+  p_lead uuid,
+  p_imovel_codigo text,
+  p_valor_cents bigint default null,
+  p_data date default current_date
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_lead record;
+  v_imovel record;
+  v_etapa uuid;
+  v_vgv bigint;
+  v_comissao bigint;
+  v_fechado timestamptz;
+begin
+  if v_uid is null then
+    raise exception 'Sessão expirada.' using errcode = '42501';
+  end if;
+
+  select id, organization_id, pipeline_id, contact_id, owner_user_id, status, custom_fields
+    into v_lead
+    from crm_leads where id = p_lead
+    for update;
+  if not found
+     or not public.fn_can_view_lead(v_lead.organization_id, v_lead.owner_user_id)
+     or not public.fn_role_at_least(v_lead.organization_id, 'agent') then
+    raise exception 'Lead não encontrado.' using errcode = 'P0002';
+  end if;
+  if v_lead.status <> 'open' then
+    raise exception 'Este negócio já foi encerrado.' using errcode = 'P0001';
+  end if;
+
+  select id, codigo, preco_venda_cents, status into v_imovel
+    from imoveis
+    where organization_id = v_lead.organization_id and codigo = p_imovel_codigo
+    for update;
+  if not found then
+    raise exception 'Escolha o imóvel vendido.' using errcode = 'P0001';
+  end if;
+  if v_imovel.status = 'vendido' then
+    raise exception 'Esse imóvel já está como vendido no acervo.' using errcode = 'P0001';
+  end if;
+
+  if p_data is null or p_data > current_date + 1 or p_data < current_date - 365 then
+    raise exception 'Data da venda fora do intervalo (até um ano atrás, nunca no futuro).' using errcode = 'P0001';
+  end if;
+
+  v_vgv := coalesce(p_valor_cents, v_imovel.preco_venda_cents);
+  if v_vgv is null or v_vgv <= 0 then
+    raise exception 'O imóvel não tem valor pedido: marque “fechou por outro valor”.' using errcode = 'P0001';
+  end if;
+  -- Comissão da OPA: 3% do VGV, calculada aqui, nunca recebida do navegador.
+  v_comissao := round(v_vgv * 0.03);
+
+  select id into v_etapa from crm_stages
+    where organization_id = v_lead.organization_id and pipeline_id = v_lead.pipeline_id and is_won
+    order by position limit 1;
+  if v_etapa is null then
+    raise exception 'O funil não tem etapa de venda.' using errcode = 'P0001';
+  end if;
+
+  v_fechado := (p_data::text || ' 12:00:00-03')::timestamptz;
+  update crm_leads set
+    stage_id = v_etapa,
+    status = 'won',
+    closed_at = v_fechado,
+    value_cents = v_vgv,
+    stage_changed_at = v_fechado,
+    last_activity_at = now(),
+    custom_fields = coalesce(custom_fields, '{}'::jsonb) || jsonb_build_object('venda', jsonb_build_object(
+      'imovel_codigo', v_imovel.codigo,
+      'vgv_cents', v_vgv,
+      'valor_pedido_cents', v_imovel.preco_venda_cents,
+      'outro_valor', p_valor_cents is not null,
+      'comissao_cents', v_comissao,
+      'data', p_data::text,
+      'registrado_por', v_uid
+    ))
+  where id = v_lead.id;
+
+  update imoveis set status = 'vendido', updated_at = now() where id = v_imovel.id;
+
+  insert into crm_lead_activities (organization_id, lead_id, contact_id, source_module, type, payload, performed_by_user_id)
+  values (v_lead.organization_id, v_lead.id, v_lead.contact_id, 'opa', 'venda_realizada', jsonb_build_object(
+    'imovel_codigo', v_imovel.codigo,
+    'vgv_cents', v_vgv,
+    'comissao_cents', v_comissao,
+    'evento_meta', jsonb_build_object('nome', 'Venda realizada', 'valor_cents', v_comissao, 'status', 'na_fila')
+  ), v_uid);
+
+  return jsonb_build_object('vgv_cents', v_vgv, 'comissao_cents', v_comissao, 'imovel_codigo', v_imovel.codigo);
+end;
+$$;
+
+revoke all on function public.fn_opa_ganhar_negocio(uuid, text, bigint, date) from public, anon;
+grant execute on function public.fn_opa_ganhar_negocio(uuid, text, bigint, date) to authenticated;
+
+-- ── B7: trava de etapa também no insert, com search_path fixo ─────────────
+-- No insert, só vale para quem entra pelo PostgREST (corretor pulando etapa);
+-- entrada de lead e seed rodam como service_role.
+create or replace function public.fn_trava_campos_da_etapa()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+declare
+  exigidos text[];
+  faltando text[];
+begin
+  if tg_op = 'UPDATE' and new.stage_id is not distinct from old.stage_id then
+    return new;
+  end if;
+  if tg_op = 'INSERT' and current_user not in ('authenticated', 'anon') then
+    return new;
+  end if;
+  select campos_obrigatorios into exigidos from public.crm_stages where id = new.stage_id;
+  if exigidos is null or cardinality(exigidos) = 0 then
+    return new;
+  end if;
+  select coalesce(array_agg(c), '{}') into faltando
+    from unnest(exigidos) as c
+   where coalesce(nullif(trim(new.custom_fields -> 'opa' ->> c), ''), null) is null;
+  if cardinality(faltando) > 0 then
+    raise exception 'Para avançar, confirme antes: %.', array_to_string(faltando, ', ')
+      using errcode = 'P0001', hint = 'trava_campos_etapa';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists trg_trava_campos_da_etapa on public.crm_leads;
+create trigger trg_trava_campos_da_etapa before insert or update of stage_id on public.crm_leads
+  for each row execute function public.fn_trava_campos_da_etapa();
+
+-- ── M9: na OPA o corretor vê só os próprios leads ─────────────────────────
+update public.organizations
+set settings = jsonb_set(coalesce(settings, '{}'::jsonb), '{visibility_mode}', '"own"')
+where slug = 'opa';
+
+-- ============================================================================
+-- APÊNDICE 0114_base_endurecimento (CRM da OPA) — espelho exato da migration 20261030200000.
+-- ============================================================================
+set search_path = public, extensions;
+
+-- 0114: endurecimento da base (auditoria de segurança de 30/10/2026).
+--
+--   C1  mídia forjada: corretor gravava mensagem "recebida" com media_url
+--       apontando para fora; o servidor buscava levando a chave da WAHA e
+--       devolvia HTML na origem do CRM (reproduzido no Supabase local).
+--   A2  emit_event / fn_log_event aceitavam org de outro tenant.
+--   M1  retrieve_top_k_chunks devolvia a base de conhecimento de outro tenant.
+--   M2  toda função nova nascia executável pela anon key.
+--   M4  bucket lgpd-exports legível por qualquer membro (não só admin).
+--   M6  contatos fora do modo de visibilidade: corretor lia nome e telefone
+--       da carteira inteira (reproduzido: corretora via os 23 contatos).
+
+-- ── C1: mensagem recebida só nasce pelo servidor (webhook da WAHA/Meta) ─────
+create or replace function public.fn_protege_midia_da_mensagem()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if current_user not in ('authenticated', 'anon') then
+    return new;
+  end if;
+  if tg_op = 'INSERT' and new.direction = 'inbound' then
+    raise exception 'Mensagem recebida só entra pelo canal do WhatsApp.' using errcode = '42501';
+  end if;
+  if tg_op = 'UPDATE' and (
+    new.media_url is distinct from old.media_url
+    or new.media_storage_path is distinct from old.media_storage_path
+    or new.direction is distinct from old.direction
+  ) then
+    raise exception 'Mídia e direção da mensagem não mudam pela sessão do usuário.' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_protege_midia_da_mensagem on public.messages;
+create trigger trg_protege_midia_da_mensagem before insert or update on public.messages
+  for each row execute function public.fn_protege_midia_da_mensagem();
+
+-- ── A2: evento só na org de quem chama ─────────────────────────────────────
+create or replace function public.emit_event(
+  p_event_type text,
+  p_entity_kind text,
+  p_entity_id uuid,
+  p_payload jsonb default '{}'::jsonb,
+  p_metadata jsonb default '{}'::jsonb,
+  p_organization_id uuid default null::uuid
+)
+returns uuid
+language plpgsql
+security definer
+set search_path to 'public'
+as $function$
+declare
+  v_org_id uuid;
+  v_event_id uuid;
+begin
+  v_org_id := p_organization_id;
+  if v_org_id is null then
+    -- Try to resolve from caller's first org (best-effort; trigger callers MUST pass it)
+    select organization_id into v_org_id
+      from public.user_organizations
+      where user_id = auth.uid() and revoked_at is null
+      limit 1;
+  end if;
+  if v_org_id is null then
+    raise exception 'emit_event: organization_id obrigatorio';
+  end if;
+  -- Sessão de usuário só emite na própria org (antes: qualquer org, disparando
+  -- automações e IA de outro tenant). Servidor e triggers sem sessão seguem livres.
+  if auth.uid() is not null
+     and not public.fn_is_platform_admin()
+     and v_org_id not in (select public.fn_user_org_ids()) then
+    raise exception 'emit_event: organização fora do seu acesso' using errcode = '42501';
+  end if;
+
+  insert into public.event_log
+    (organization_id, event_type, entity_kind, entity_id, payload, metadata)
+  values
+    (v_org_id, p_event_type, p_entity_kind, p_entity_id,
+     coalesce(p_payload, '{}'::jsonb),
+     coalesce(p_metadata, '{}'::jsonb)
+       || jsonb_build_object('emitted_at', extract(epoch from now())))
+  returning id into v_event_id;
+
+  return v_event_id;
+end $function$;
+
+-- ── M1: base de conhecimento só da própria org, k limitado ─────────────────
+create or replace function public.retrieve_top_k_chunks(
+  p_organization_id uuid,
+  p_kb_version_id uuid,
+  p_embedding vector,
+  p_k integer default 5,
+  p_threshold real default 0.40
+)
+returns table(chunk_id uuid, knowledge_source_id uuid, content text, similarity real, metadata jsonb)
+language sql
+stable security definer
+set search_path to 'public', 'pg_temp'
+as $function$
+  select
+    c.id as chunk_id,
+    c.knowledge_source_id,
+    c.content,
+    (1 - (c.embedding <=> p_embedding))::real as similarity,
+    c.metadata
+  from public.ai_chunks c
+  where c.organization_id = p_organization_id
+    and c.kb_version_id   = p_kb_version_id
+    and (auth.uid() is null
+         or public.fn_is_platform_admin()
+         or p_organization_id in (select public.fn_user_org_ids()))
+    and (1 - (c.embedding <=> p_embedding)) >= p_threshold
+  order by c.embedding <=> p_embedding asc
+  limit least(greatest(p_k, 0), 50);
+$function$;
+
+-- ── M2: função nova não nasce aberta para a anon key ───────────────────────
+alter default privileges in schema public revoke execute on functions from public;
+alter default privileges in schema public revoke execute on functions from anon;
+-- Função de gatilho: o disparo não consulta EXECUTE, então ninguém da sessão precisa dele.
+revoke execute on function public.fn_evento_meta_da_etapa() from public, anon, authenticated;
+revoke execute on function public.fn_protege_venda() from public, anon;
+revoke execute on function public.fn_protege_midia_da_mensagem() from public, anon;
+revoke execute on function public.fn_trava_campos_da_etapa() from public, anon;
+
+-- ── M4: exportação LGPD só para o admin da org ─────────────────────────────
+drop policy if exists tenant_read_lgpd_exports on storage.objects;
+create policy tenant_read_lgpd_exports on storage.objects for select to authenticated
+  using (
+    bucket_id = 'lgpd-exports'
+    and public.fn_role_at_least((split_part(name, '/', 1))::uuid, 'admin')
+  );
+
+-- ── M6: contato segue a visibilidade do lead e da conversa ─────────────────
+-- Gestor e leitura veem a org toda (como em fn_can_view_lead). O atendente vê
+-- o contato de um lead ou conversa que ele pode ver, ou o que ele mesmo criou.
+create or replace function public.fn_can_view_contact(p_contact uuid, p_org uuid, p_criado_por uuid)
+returns boolean
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select case
+    when public.fn_is_platform_admin() then true
+    when public.fn_user_role_in_org(p_org) is null then false
+    when public.fn_user_role_in_org(p_org) <> 'agent' then true
+    when p_criado_por = auth.uid() then true
+    when coalesce((select settings->>'visibility_mode' from public.organizations where id = p_org), 'own_and_unassigned') = 'all' then true
+    else exists (
+      select 1 from public.crm_leads l
+       where l.contact_id = p_contact and l.organization_id = p_org
+         and public.fn_can_view_lead(p_org, l.owner_user_id)
+    ) or exists (
+      select 1 from public.conversations c
+       where c.contact_id = p_contact and c.organization_id = p_org
+         and public.fn_can_view_conversation(p_org, c.assigned_to_user_id)
+    )
+  end;
+$$;
+revoke execute on function public.fn_can_view_contact(uuid, uuid, uuid) from public, anon;
+grant execute on function public.fn_can_view_contact(uuid, uuid, uuid) to authenticated;
+
+drop policy if exists tenant_isolation_contacts_all on public.contacts;
+drop policy if exists contacts_select on public.contacts;
+drop policy if exists contacts_insert on public.contacts;
+drop policy if exists contacts_update on public.contacts;
+drop policy if exists contacts_delete on public.contacts;
+create policy contacts_select on public.contacts for select to authenticated
+  using (public.fn_can_view_contact(id, organization_id, created_by_user_id));
+create policy contacts_insert on public.contacts for insert to authenticated
+  with check (
+    (organization_id in (select public.fn_user_org_ids()) and public.fn_role_at_least(organization_id, 'agent'))
+    or public.fn_is_platform_admin()
+  );
+create policy contacts_update on public.contacts for update to authenticated
+  using (public.fn_role_at_least(organization_id, 'agent') and public.fn_can_view_contact(id, organization_id, created_by_user_id))
+  with check (organization_id in (select public.fn_user_org_ids()) or public.fn_is_platform_admin());
+create policy contacts_delete on public.contacts for delete to authenticated
+  using (public.fn_role_at_least(organization_id, 'manager') or public.fn_is_platform_admin());
+
+-- ── Lead não se apaga pelo atendente: perde-se com motivo (fica o histórico).
+-- Antes o corretor apagava o próprio lead pelo PostgREST (reproduzido).
+drop policy if exists crm_leads_delete on public.crm_leads;
+create policy crm_leads_delete on public.crm_leads for delete to authenticated
+  using (
+    public.fn_is_platform_admin()
+    or (organization_id in (select public.fn_user_org_ids()) and public.fn_role_at_least(organization_id, 'manager'))
+  );
+
+-- ============================================================================
+-- APÊNDICE 0115_papeis_roleta_dominios (CRM da OPA) — espelho exato da migration 20261030210000.
+-- ============================================================================
+set search_path = public, extensions;
+
+-- 0115: fecha P4, P11 e P13 da auditoria de 30/10/2026.
+--
+-- P4: ~50 tabelas da base tinham uma policy FOR ALL que só conferia se a pessoa
+--     era membro da org. Corretor ou leitor reescrevia agente de IA, credencial
+--     de IA, sessão de WhatsApp e apagava mensagem pelo PostgREST.
+--     Agora: leitura segue para o membro; escrita de configuração só gerente+;
+--     escrita operacional só corretor+ e exclusão só gerente+.
+--     O worker e as rotinas usam service_role, que não passa por RLS.
+-- P11: roleta e configuração regravavam o settings inteiro (ler, mesclar no app,
+--     gravar). Pausa de corretor se perdia se entrasse lead no mesmo instante.
+-- P13: URL do site e fotos do imóvel aceitavam qualquer domínio.
+
+-- ---------------------------------------------------------------------------
+-- P4. Policies por papel
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  -- Configuração e registros do sistema: só gerente ou admin escreve.
+  config text[] := array[
+    'ai_agent_runs','ai_agent_versions','ai_faq_items','ai_provider_credentials',
+    'ai_router_decisions','ai_router_members','ai_routers','before_send_traces',
+    'channel_knobs','channel_session_health','channel_sessions','channel_session_warmup',
+    'cron_jobs','disclosure_template_pointers','disclosure_template_versions',
+    'flywheel_distiller_proposals','flywheel_judge_verdicts',
+    'followup_flow_pointers','followup_flow_versions','judge_alignment_pool',
+    'knowledge_searches','lead_state_transitions','llm_calls','meta_templates','metrics',
+    'org_memory_entries','org_memory_pointers','org_memory_versions','outbound_copies',
+    'pacing_ledger','playbook_pointers','playbook_versions','promise_table_pointers',
+    'promise_table_versions','reentry_knob_pointers','reentry_knob_versions',
+    'reentry_template_pointers','reentry_template_versions','send_ledger',
+    'skill_activations','skill_pointers','skill_versions'
+  ];
+  -- Trabalho do dia: corretor escreve, só gerente apaga.
+  operacional text[] := array[
+    'agent_cases','agent_inbox_items','crm_lead_reactivations','crm_lead_risk_states',
+    'crm_lead_scores','followup_enrollment_events','followup_enrollments','idempotency_keys',
+    'job_queue','lead_checkpoints','lead_notes','lead_state','storage_redaction_queue'
+  ];
+  t text;
+  pol record;
+  membro constant text := '(organization_id in (select public.fn_user_org_ids()) or public.fn_is_platform_admin())';
+begin
+  foreach t in array config || operacional loop
+    if to_regclass('public.' || t) is null then
+      raise notice '0115: tabela % não existe, pulando', t;
+      continue;
+    end if;
+    -- Remove as policies de escrita/ALL antigas (as de SELECT ficam).
+    for pol in
+      select policyname from pg_policies
+      where schemaname = 'public' and tablename = t and cmd in ('ALL','INSERT','UPDATE','DELETE')
+    loop
+      execute format('drop policy %I on public.%I', pol.policyname, t);
+    end loop;
+
+    if not exists (select 1 from pg_policies where schemaname = 'public' and tablename = t and cmd = 'SELECT') then
+      execute format('create policy %I on public.%I for select to authenticated using %s', t || '_select', t, membro);
+    end if;
+
+    if t = any(config) then
+      execute format(
+        'create policy %I on public.%I for all to authenticated
+           using (public.fn_is_platform_admin() or public.fn_role_at_least(organization_id, ''manager''))
+           with check (public.fn_is_platform_admin() or public.fn_role_at_least(organization_id, ''manager''))',
+        t || '_write_gestor', t);
+    else
+      execute format(
+        'create policy %I on public.%I for insert to authenticated
+           with check (public.fn_is_platform_admin() or public.fn_role_at_least(organization_id, ''agent''))',
+        t || '_insert', t);
+      execute format(
+        'create policy %I on public.%I for update to authenticated
+           using (public.fn_is_platform_admin() or public.fn_role_at_least(organization_id, ''agent''))
+           with check (public.fn_is_platform_admin() or public.fn_role_at_least(organization_id, ''agent''))',
+        t || '_update', t);
+      execute format(
+        'create policy %I on public.%I for delete to authenticated
+           using (public.fn_is_platform_admin() or public.fn_role_at_least(organization_id, ''manager''))',
+        t || '_delete', t);
+    end if;
+  end loop;
+end $$;
+
+-- agent_case_events é trilha: corretor registra, ninguém da sessão altera nem apaga.
+do $$
+begin
+  if to_regclass('public.agent_case_events') is not null then
+    drop policy if exists tenant_isolation_agent_case_events_insert on public.agent_case_events;
+    drop policy if exists agent_case_events_insert on public.agent_case_events;
+    create policy agent_case_events_insert on public.agent_case_events for insert to authenticated
+      with check (public.fn_is_platform_admin() or public.fn_role_at_least(organization_id, 'agent'));
+  end if;
+end $$;
+
+-- Mensagens: só quem vê a conversa altera; só gerente apaga.
+drop policy if exists messages_update on public.messages;
+create policy messages_update on public.messages for update to authenticated
+  using (
+    public.fn_is_platform_admin()
+    or (public.fn_role_at_least(organization_id, 'agent')
+        and exists (select 1 from public.conversations c where c.id = messages.conversation_id))
+  )
+  with check (
+    public.fn_is_platform_admin()
+    or (public.fn_role_at_least(organization_id, 'agent')
+        and exists (select 1 from public.conversations c where c.id = messages.conversation_id))
+  );
+
+drop policy if exists messages_delete on public.messages;
+create policy messages_delete on public.messages for delete to authenticated
+  using (public.fn_is_platform_admin() or public.fn_role_at_least(organization_id, 'manager'));
+
+-- ---------------------------------------------------------------------------
+-- P11. Roleta e configuração atômicas
+-- ---------------------------------------------------------------------------
+
+-- Próximo corretor da roleta, com a linha da org travada: duas entradas ao
+-- mesmo tempo não pegam o mesmo corretor nem apagam a pausa de alguém.
+create or replace function public.fn_opa_proximo_da_roleta(p_org uuid)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_opa jsonb;
+  v_roleta text[];
+  v_pausados text[];
+  v_ultimo text;
+  v_i int;
+  v_passo int;
+  v_n int;
+  v_proximo text;
+begin
+  select coalesce(settings->'opa', '{}'::jsonb) into v_opa
+  from public.organizations where id = p_org
+  for update;
+  if not found then
+    raise exception 'Organização não encontrada' using errcode = 'P0002';
+  end if;
+
+  v_roleta := array(select jsonb_array_elements_text(coalesce(v_opa->'roleta', '[]'::jsonb)));
+  v_pausados := array(select jsonb_array_elements_text(coalesce(v_opa->'roleta_pausados', '[]'::jsonb)));
+  v_n := coalesce(array_length(v_roleta, 1), 0);
+  v_ultimo := v_opa->>'roleta_ultimo';
+  v_i := coalesce(array_position(v_roleta, v_ultimo), 0);
+
+  for v_passo in 1..v_n loop
+    v_i := (v_i % v_n) + 1;
+    if not (v_roleta[v_i] = any(v_pausados)) then
+      v_proximo := v_roleta[v_i];
+      exit;
+    end if;
+  end loop;
+
+  if v_proximo is null then
+    raise exception 'Roleta da OPA vazia ou toda pausada (organizations.settings.opa.roleta).' using errcode = 'P0001';
+  end if;
+
+  update public.organizations
+  set settings = jsonb_set(coalesce(settings, '{}'::jsonb), '{opa,roleta_ultimo}', to_jsonb(v_proximo), true)
+  where id = p_org;
+
+  return v_proximo::uuid;
+end;
+$$;
+
+-- Mescla parte da configuração em settings.opa numa instrução só.
+create or replace function public.fn_opa_mesclar_config(p_org uuid, p_parcial jsonb)
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.organizations
+  set settings = jsonb_set(
+    coalesce(settings, '{}'::jsonb),
+    '{opa}',
+    coalesce(settings->'opa', '{}'::jsonb) || coalesce(p_parcial, '{}'::jsonb),
+    true
+  )
+  where id = p_org;
+$$;
+
+-- Garante os motivos de perda no funil sem regravar o settings inteiro.
+create or replace function public.fn_opa_garantir_motivos(p_pipeline uuid, p_motivos text[])
+returns void
+language sql
+security definer
+set search_path = public
+as $$
+  update public.crm_pipelines
+  set settings = jsonb_set(
+    coalesce(settings, '{}'::jsonb),
+    '{lost_reasons}',
+    to_jsonb(array(
+      select distinct m from (
+        select jsonb_array_elements_text(coalesce(settings->'lost_reasons', '[]'::jsonb)) as m
+        union
+        select unnest(p_motivos)
+      ) x where m is not null and m <> ''
+    )),
+    true
+  )
+  where id = p_pipeline;
+$$;
+
+-- Só o servidor (service_role) chama: quem chama já conferiu o papel.
+revoke all on function public.fn_opa_proximo_da_roleta(uuid) from public, anon, authenticated;
+revoke all on function public.fn_opa_mesclar_config(uuid, jsonb) from public, anon, authenticated;
+revoke all on function public.fn_opa_garantir_motivos(uuid, text[]) from public, anon, authenticated;
+grant execute on function public.fn_opa_proximo_da_roleta(uuid) to service_role;
+grant execute on function public.fn_opa_mesclar_config(uuid, jsonb) to service_role;
+grant execute on function public.fn_opa_garantir_motivos(uuid, text[]) to service_role;
+
+-- ---------------------------------------------------------------------------
+-- P13. Domínios aceitos no imóvel
+-- ---------------------------------------------------------------------------
+
+-- URL: https obrigatório; com settings.opa.dominios_imovel preenchido, o host
+-- tem de ser um deles ou subdomínio deles. Vale também para a importação.
+-- Foto: o CRM guarda o NOME do arquivo do site ("imagens_523107") e monta o
+-- endereço em lib/opa/imoveis.ts (fotoUrl). Nome simples passa; endereço
+-- completo segue a regra da URL; javascript:, data: e afins são recusados.
+create or replace function public.fn_url_de_imovel_ok(p_url text, p_dominios text[])
+returns boolean
+language sql
+immutable
+as $$
+  select p_url is null or p_url = '' or (
+    p_url ~* '^https://[a-z0-9.-]+(:[0-9]+)?(/|$)'
+    and (
+      coalesce(array_length(p_dominios, 1), 0) = 0
+      or exists (
+        select 1 from unnest(p_dominios) d
+        where lower(substring(p_url from '^https://([^/:]+)')) = lower(d)
+           or lower(substring(p_url from '^https://([^/:]+)')) like '%.' || lower(d)
+      )
+    )
+  );
+$$;
+
+create or replace function public.fn_valida_urls_do_imovel()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_dominios text[];
+  v_url text;
+begin
+  select array(select jsonb_array_elements_text(coalesce(settings->'opa'->'dominios_imovel', '[]'::jsonb)))
+  into v_dominios
+  from public.organizations where id = new.organization_id;
+
+  if not public.fn_url_de_imovel_ok(new.url_site, v_dominios) then
+    raise exception 'URL do imóvel fora dos domínios aceitos: %', new.url_site using errcode = 'P0001';
+  end if;
+  foreach v_url in array coalesce(new.fotos, '{}'::text[]) loop
+    if v_url !~ '^[A-Za-z0-9_.-]{1,160}$' and not public.fn_url_de_imovel_ok(v_url, v_dominios) then
+      raise exception 'Foto do imóvel fora dos domínios aceitos: %', v_url using errcode = 'P0001';
+    end if;
+  end loop;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_valida_urls_do_imovel on public.imoveis;
+create trigger trg_valida_urls_do_imovel
+  before insert or update of url_site, fotos on public.imoveis
+  for each row execute function public.fn_valida_urls_do_imovel();
+
+revoke all on function public.fn_valida_urls_do_imovel() from public, anon, authenticated;
+
+-- Domínios da OPA (o site e o armazenamento de fotos). Só preenche se ainda não houver.
+update public.organizations
+set settings = jsonb_set(
+  coalesce(settings, '{}'::jsonb), '{opa,dominios_imovel}',
+  '["opailhabela.com.br","r2.dev","r2.cloudflarestorage.com"]'::jsonb, true)
+where settings ? 'opa' and not (settings->'opa' ? 'dominios_imovel');
+
+-- ============================================================================
+-- APÊNDICE 0116_cifra_fase2_pendentes (CRM da OPA) — espelho exato da migration 20261030220000.
+-- ============================================================================
+set search_path = public, extensions;
+
+-- 0116: cifra dos dados pessoais, fase 2 (escrita).
+--
+-- A chave fica fora do banco, então quem cifra é o app: a rotina
+-- /api/v1/cron/cifrar-dados (a cada minuto) pega o que está pendente e grava as
+-- colunas *_cifrado da 0112. Vale para tudo que entra, venha do WhatsApp, do
+-- webhook do site, da tela ou da base.
+--
+-- Estes gatilhos garantem que o cifrado nunca fique velho: se o texto puro mudar
+-- sem o cifrado mudar junto, o cifrado é apagado e a linha volta para a fila.
+-- A fase 3 (apagar o texto puro) só vem depois que a leitura usar o cifrado.
+
+create or replace function public.fn_contato_cifra_pendente()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if tg_op = 'INSERT' then
+    -- Linha nova sem cifrado vai para a fila.
+    if new.nome_cifrado is null and new.telefone_cifrado is null and new.email_cifrado is null then
+      new.cifrado_em := null;
+    end if;
+    return new;
+  end if;
+
+  if new.name is distinct from old.name and new.nome_cifrado is not distinct from old.nome_cifrado then
+    new.nome_cifrado := null;
+    new.cifrado_em := null;
+  end if;
+  if new.phone_number is distinct from old.phone_number and new.telefone_cifrado is not distinct from old.telefone_cifrado then
+    new.telefone_cifrado := null;
+    new.telefone_indice := null;
+    new.cifrado_em := null;
+  end if;
+  if new.email is distinct from old.email and new.email_cifrado is not distinct from old.email_cifrado then
+    new.email_cifrado := null;
+    new.email_indice := null;
+    new.cifrado_em := null;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_contato_cifra_pendente on public.contacts;
+create trigger trg_contato_cifra_pendente
+  before insert or update of name, phone_number, email on public.contacts
+  for each row execute function public.fn_contato_cifra_pendente();
+
+create or replace function public.fn_mensagem_cifra_pendente()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if new.body is distinct from old.body and new.corpo_cifrado is not distinct from old.corpo_cifrado then
+    new.corpo_cifrado := null;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_mensagem_cifra_pendente on public.messages;
+create trigger trg_mensagem_cifra_pendente
+  before update of body on public.messages
+  for each row execute function public.fn_mensagem_cifra_pendente();
+
+revoke all on function public.fn_contato_cifra_pendente() from public, anon, authenticated;
+revoke all on function public.fn_mensagem_cifra_pendente() from public, anon, authenticated;
+
+-- Fila: índices parciais só com o que falta cifrar.
+create index if not exists contacts_cifra_pendente_idx
+  on public.contacts (created_at) where cifrado_em is null;
+create index if not exists messages_cifra_pendente_idx
+  on public.messages (created_at) where corpo_cifrado is null and body is not null;
+
+notify pgrst, 'reload schema';

@@ -13,7 +13,8 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 const SECRET = (): string =>
-  process.env.INVITE_TOKEN_SECRET ?? process.env.INTERNAL_SECRET ?? "dev-fallback";
+  // `||` e não `??`: variável vazia no .env assinaria o convite com chave vazia.
+  process.env.INVITE_TOKEN_SECRET || process.env.INTERNAL_SECRET || "dev-fallback";
 
 export interface InvitePayload {
   invite_id: string;

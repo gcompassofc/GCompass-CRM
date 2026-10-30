@@ -402,10 +402,7 @@ export async function perderNegocio(formData: FormData): Promise<ResultadoEtapa>
   const settings = ((funil as { settings: Record<string, unknown> | null }).settings ?? {}) as Record<string, unknown>;
   const atuais = new Set((settings.lost_reasons as string[] | undefined) ?? []);
   if (!atuais.has(motivo)) {
-    await admin
-      .from("crm_pipelines")
-      .update({ settings: { ...settings, lost_reasons: [...new Set([...atuais, ...config.motivos_perda.map((m) => m.motivo)])] } })
-      .eq("id", pipelineId);
+    await admin.rpc("fn_opa_garantir_motivos", { p_pipeline: pipelineId, p_motivos: config.motivos_perda.map((m) => m.motivo) });
   }
 
   const { data: etapa } = await supabase

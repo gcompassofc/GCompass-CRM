@@ -27,6 +27,7 @@ export type SignUpResult =
  * diferenciamos. Rate limit de envio de e-mail é do próprio GoTrue.
  */
 export async function signUp(input: SignupInput): Promise<SignUpResult> {
+  if (env.CADASTRO_ABERTO !== "true") return { ok: false, error: "signup_failed" };
   const parsed = signupSchema.safeParse(input);
   if (!parsed.success) {
     return {

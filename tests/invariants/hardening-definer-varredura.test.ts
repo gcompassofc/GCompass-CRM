@@ -86,6 +86,13 @@ const AUTHENTICATED_PERMITIDO: readonly Excecao[] = [
       "declarado pela migration 0034 e não há call site de RPC para removê-lo " +
       "com segurança sem medir o disparo de cada trigger.",
   },
+  {
+    fn: "fn_opa_ganhar_negocio(uuid,text,bigint,date)",
+    razao:
+      "Botão Ganhar negócio do CRM da OPA chama com a sessão do corretor " +
+      "(app/app/leads/actions.ts, ganharNegocio). A função confere auth.uid(), " +
+      "fn_can_view_lead e papel agent+, e trava lead e imóvel (migration 0113).",
+  },
 ];
 
 interface Definer {

@@ -120,7 +120,8 @@ $function$;
 -- ── M2: função nova não nasce aberta para a anon key ───────────────────────
 alter default privileges in schema public revoke execute on functions from public;
 alter default privileges in schema public revoke execute on functions from anon;
-revoke execute on function public.fn_evento_meta_da_etapa() from public, anon;
+-- Função de gatilho: o disparo não consulta EXECUTE, então ninguém da sessão precisa dele.
+revoke execute on function public.fn_evento_meta_da_etapa() from public, anon, authenticated;
 revoke execute on function public.fn_protege_venda() from public, anon;
 revoke execute on function public.fn_protege_midia_da_mensagem() from public, anon;
 revoke execute on function public.fn_trava_campos_da_etapa() from public, anon;

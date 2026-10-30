@@ -29,6 +29,11 @@ export interface AuthRateLimits {
   ip: number;
   /** Tentativas por identificador na janela (omita para não contar por ele). */
   id?: number;
+  /**
+   * Teto da conta somando todos os IPs (só no bloqueio por falha de login).
+   * Com IP conhecido, o `id` vale por conta + IP e este é o teto geral.
+   */
+  idTotal?: number;
   windowSec: number;
 }
 
@@ -110,7 +115,7 @@ export async function authRateLimited(
  *  - signup e convite: fluxos raros por pessoa, teto baixo.
  */
 export const AUTH_LIMITS = {
-  login: { ip: 60, id: 5, windowSec: 300 },
+  login: { ip: 60, id: 5, idTotal: 30, windowSec: 300 },
   signup: { ip: 20, windowSec: 3600 },
   reset: { ip: 30, id: 3, windowSec: 3600 },
   invite_accept: { ip: 60, windowSec: 3600 },
@@ -124,17 +129,33 @@ export const AUTH_LIMITS = {
  * Aqui a consulta vem antes do provedor (só assim o ataque é barrado *antes*
  * de acontecer) e o incremento vem depois, apenas quando a senha errou.
  *
- * Efeito: N senhas erradas trancam a conta pela janela, inclusive contra quem
- * distribui as tentativas por muitos IPs. Acertar na 3ª não custa nada.
+ * Com IP conhecido, as N falhas contam por conta + IP: quem erra de propósito a
+ * senha de um corretor tranca só a própria origem, e o corretor segue entrando
+ * do celular dele (auditoria de 30/10/2026, P5). O ataque espalhado por muitos
+ * IPs bate no teto geral da conta (`idTotal`), mais alto. Sem IP, vale o teto
+ * antigo por conta. Acertar na 3ª não custa nada.
  */
-export async function contaBloqueadaPorFalhas(email: string, limits: AuthRateLimits): Promise<boolean> {
-  if (limits.id === undefined) return false;
-  const atual = await peekRateLimit(`auth:login_fail:id:${opaque(email)}`, limits.windowSec);
-  return atual >= limits.id;
+async function chavesDeFalha(email: string, limits: AuthRateLimits): Promise<Array<{ chave: string; teto: number }>> {
+  if (limits.id === undefined) return [];
+  const conta = `auth:login_fail:id:${opaque(email)}`;
+  const ip = await clientIp();
+  if (ip === null || limits.idTotal === undefined) return [{ chave: conta, teto: limits.id }];
+  return [
+    { chave: `${conta}:ip:${opaque(ip)}`, teto: limits.id },
+    { chave: conta, teto: limits.idTotal },
+  ];
 }
 
-/** Registra uma senha errada no contador da conta. */
+export async function contaBloqueadaPorFalhas(email: string, limits: AuthRateLimits): Promise<boolean> {
+  for (const { chave, teto } of await chavesDeFalha(email, limits)) {
+    if ((await peekRateLimit(chave, limits.windowSec)) >= teto) return true;
+  }
+  return false;
+}
+
+/** Registra uma senha errada nos contadores da conta. */
 export async function registrarFalhaDeLogin(email: string, limits: AuthRateLimits): Promise<void> {
-  if (limits.id === undefined) return;
-  await checkRateLimit(`auth:login_fail:id:${opaque(email)}`, limits.id, limits.windowSec);
+  for (const { chave, teto } of await chavesDeFalha(email, limits)) {
+    await checkRateLimit(chave, teto, limits.windowSec);
+  }
 }

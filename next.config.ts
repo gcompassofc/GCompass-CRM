@@ -12,6 +12,9 @@ const nextConfig: NextConfig = {
   // Aditivo — não afeta o deploy Vercel.
   output: "standalone",
   reactStrictMode: true,
+  // O Next 16 imprime os argumentos de cada Server Function no terminal: o
+  // login aparecia com a senha em texto puro no log. Desligado.
+  logging: { serverFunctions: false },
   poweredByHeader: false,
   // typedRoutes moved out of experimental in Next 15.5+
   typedRoutes: true,

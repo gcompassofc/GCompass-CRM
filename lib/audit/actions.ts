@@ -183,6 +183,8 @@ export type AuditAction =
   | "auth.signup_failed"
   | "auth.signup_confirmed"
   | "auth.signup_provision_failed"
+  /** Conta criada pelo link do convite, com o cadastro fechado (fork G-Compass). */
+  | "auth.signup_by_invite"
   | "auth.email_link_rejected"
   | "auth.password_reset_requested"
   | "auth.password_reset_request_failed"

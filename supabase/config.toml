@@ -50,9 +50,22 @@ additional_redirect_urls = [
 jwt_expiry = 3600
 enable_refresh_token_rotation = true
 refresh_token_reuse_interval = 10
-enable_signup = true # Signup self-service (/signup) — provisiona tenant em /auth/confirm
+# Fork G-Compass: cadastro fechado, a equipe entra por convite (auditoria de
+# 30/10/2026, P2). Para reabrir no local: true aqui e CADASTRO_ABERTO=true no app.
+enable_signup = false
+
+# Tetos por IP a cada 5 min. Em produção (Supabase Cloud) valem os do painel
+# Auth > Rate Limits; no kit self-host, GOTRUE_RATE_LIMIT_HEADER=X-Forwarded-For
+# é obrigatório, senão o GoTrue não conta nada (P1).
+[auth.rate_limit]
+sign_in_sign_ups = 30
+token_verifications = 30
+token_refresh = 150
+email_sent = 30
 
 [auth.email]
+# Atenção: este aqui liga o PROVEDOR de e-mail (login com senha). Com false,
+# ninguém entra. Quem fecha o cadastro é o [auth] enable_signup acima.
 enable_signup = true
 double_confirm_changes = true
 enable_confirmations = true

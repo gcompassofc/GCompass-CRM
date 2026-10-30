@@ -3,7 +3,8 @@
  *
  * Behavior matrix:
  *  - Invalid/expired token         → render error
- *  - Unauthenticated user          → render CTA → /login?next=...
+ *  - Unauthenticated user          → cria a senha ali mesmo (cadastro fechado) ou
+ *                                    entra pelo /login?next=... se já tem conta
  *  - Authenticated, email mismatch → render mismatch + sign-out CTA
  *  - Authenticated, email match    → form posts to Server Action which inserts
  *                                    membership and redirects to /app/inbox
@@ -14,15 +15,28 @@ import { verifyInviteToken } from "@/lib/auth/invite-token";
 import { authRateLimited, AUTH_LIMITS } from "@/lib/auth/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 import { acceptInviteAction } from "@/app/actions/team/acceptInvite";
+import { criarContaPeloConvite } from "@/app/actions/team/criarContaPeloConvite";
 
 export const dynamic = "force-dynamic";
 
 interface PageProps {
   params: Promise<{ token: string }>;
+  searchParams: Promise<{ erro?: string }>;
 }
 
-export default async function AcceptInvitePage({ params }: PageProps) {
+const ERROS: Record<string, string> = {
+  convite: "Este convite não vale mais. Peça um novo.",
+  tentativas: "Muitas tentativas. Aguarde alguns minutos.",
+  nome: "Escreva seu nome.",
+  senha: "A senha precisa ter pelo menos 12 caracteres.",
+  confirma: "As duas senhas não são iguais.",
+  existe: "Esse e-mail já tem conta. Entre com a sua senha para aceitar o convite.",
+  falhou: "Não deu para criar o acesso agora. Tente de novo.",
+};
+
+export default async function AcceptInvitePage({ params, searchParams }: PageProps) {
   const { token } = await params;
+  const { erro } = await searchParams;
 
   // O gargalo de enumeração é AQUI, não no aceite: a rota é pública e cada
   // GET testa um token. Sem teto, varrer o espaço de tokens sai de graça
@@ -63,15 +77,53 @@ export default async function AcceptInvitePage({ params }: PageProps) {
       <Shell>
         <h1 className="text-xl font-semibold">Você foi convidado</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Para aceitar o convite como <strong>{payload.role}</strong>, faça login com o email{" "}
+          Crie sua senha para entrar como <strong>{payload.role}</strong> com o e-mail{" "}
           <strong>{payload.email}</strong>.
         </p>
-        <Link
-          href={`/login?next=${next}`}
-          className="mt-4 inline-block rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
-        >
-          Fazer login
-        </Link>
+        {erro && ERROS[erro] && (
+          <p role="alert" className="mt-4 rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {ERROS[erro]}
+          </p>
+        )}
+        <form action={criarContaPeloConvite.bind(null, token)} className="mt-4 space-y-3">
+          <input
+            name="nome"
+            required
+            autoComplete="name"
+            placeholder="Seu nome"
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+          />
+          <input
+            name="senha"
+            type="password"
+            required
+            minLength={12}
+            autoComplete="new-password"
+            placeholder="Senha (12 caracteres ou mais)"
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+          />
+          <input
+            name="confirma"
+            type="password"
+            required
+            minLength={12}
+            autoComplete="new-password"
+            placeholder="Repita a senha"
+            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+          />
+          <button
+            type="submit"
+            className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+          >
+            Criar acesso e entrar
+          </button>
+        </form>
+        <p className="mt-4 text-sm text-muted-foreground">
+          Já tem conta?{" "}
+          <Link href={`/login?next=${next}`} className="font-medium text-foreground underline underline-offset-4">
+            Entrar
+          </Link>
+        </p>
       </Shell>
     );
   }

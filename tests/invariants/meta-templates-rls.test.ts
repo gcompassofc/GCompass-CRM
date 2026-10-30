@@ -87,7 +87,8 @@ describe("0088 · o espelho de templates da Meta chega ao clone", () => {
     expect(
       sql(`select policyname from pg_policies
             where schemaname = 'public' and tablename = 'meta_templates' order by 1`),
-    ).toBe("tenant_isolation_meta_templates_all");
+      // 0115: leitura do membro, escrita só gerente ou admin (configuração).
+    ).toBe("meta_templates_select\nmeta_templates_write_gestor");
   });
 
   it("membro da org A escreve na própria org e lê de volta", () => {

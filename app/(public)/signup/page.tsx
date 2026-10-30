@@ -1,11 +1,15 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 import { SignupForm } from "@/components/auth/SignupForm";
 import { branding } from "@/lib/branding";
+import { env } from "@/lib/env";
 
 export const metadata = { title: "Criar conta" };
 
 export default function SignupPage() {
+  // Cadastro só por convite, salvo CADASTRO_ABERTO=true.
+  if (env.CADASTRO_ABERTO !== "true") redirect("/login");
   return (
     <div className="space-y-6">
       <div className="space-y-1.5 text-center">

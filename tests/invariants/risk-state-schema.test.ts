@@ -48,10 +48,11 @@ describe("0078 · estado de risco chega ao clone", () => {
       sql(`select relrowsecurity from pg_class where relname = 'crm_lead_risk_states'`),
     ).toBe("t");
     expect(
+      // 0115: sem FOR ALL; corretor+ insere e altera, só gerente+ apaga.
       sql(`select count(*) from pg_policies
-            where tablename = 'crm_lead_risk_states'
-              and policyname = 'tenant_isolation_crm_lead_risk_states_all'`),
-    ).toBe("1");
+            where tablename = 'crm_lead_risk_states' and cmd in ('INSERT','UPDATE','DELETE')
+              and coalesce(qual, with_check) like '%fn_role_at_least%'`),
+    ).toBe("3");
   });
 
   it("DENTRO da publicação de realtime — e o score continua FORA", () => {

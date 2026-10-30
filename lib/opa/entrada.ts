@@ -45,36 +45,15 @@ export function normalizarTelefone(bruto: string): string {
   return `+${d}`;
 }
 
-interface Settings {
-  opa?: { roleta?: string[]; roleta_ultimo?: string | null; roleta_pausados?: string[]; [k: string]: unknown };
-  [k: string]: unknown;
-}
-
-/** Próximo corretor da roleta, na ordem gravada em organizations.settings.opa.roleta. */
+/**
+ * Próximo corretor da roleta, na ordem gravada em organizations.settings.opa.roleta,
+ * pulando quem está pausado. A função trava a linha da org: duas entradas ao
+ * mesmo tempo não caem no mesmo corretor nem apagam a pausa de alguém (0115).
+ */
 async function proximoDaRoleta(admin: SupabaseClient, orgId: string): Promise<string> {
-  const { data } = await admin.from("organizations").select("settings").eq("id", orgId).single();
-  const settings = ((data as { settings: Settings } | null)?.settings ?? {}) as Settings;
-  const roleta = settings.opa?.roleta ?? [];
-  const pausados = new Set(settings.opa?.roleta_pausados ?? []);
-  if (roleta.filter((u) => !pausados.has(u)).length === 0) {
-    throw new Error("Roleta da OPA vazia ou toda pausada (organizations.settings.opa.roleta).");
-  }
-  // Próximo depois do último, pulando quem está fora da roleta agora.
-  const ultimo = settings.opa?.roleta_ultimo ?? null;
-  let i = roleta.indexOf(ultimo ?? "");
-  let proximo = "";
-  for (let passo = 0; passo < roleta.length; passo++) {
-    i = (i + 1) % roleta.length;
-    if (!pausados.has(roleta[i]!)) {
-      proximo = roleta[i]!;
-      break;
-    }
-  }
-  await admin
-    .from("organizations")
-    .update({ settings: { ...settings, opa: { ...(settings.opa ?? {}), roleta_ultimo: proximo } } })
-    .eq("id", orgId);
-  return proximo;
+  const { data, error } = await admin.rpc("fn_opa_proximo_da_roleta", { p_org: orgId });
+  if (error || !data) throw new Error(error?.message ?? "Roleta da OPA sem corretor disponível.");
+  return data as string;
 }
 
 async function funilCompradores(admin: SupabaseClient, orgId: string) {

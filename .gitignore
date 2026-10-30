@@ -19,6 +19,7 @@ build/
 .env*
 !.env.example
 !.env.hostgator.example
+!.env.producao.example
 
 # Testing & coverage
 coverage/

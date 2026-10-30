@@ -130,3 +130,35 @@ describe("sem IP identificável — o balde global que era um DoS", () => {
     expect(veredito).toEqual([false, false, true]);
   });
 });
+
+describe("bloqueio por falha de login (auditoria 30/10/2026, P5)", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  it("quem erra a senha de outra pessoa tranca só o próprio IP", async () => {
+    const { contaBloqueadaPorFalhas, registrarFalhaDeLogin } = await import("./rate-limit");
+    const limites = { ip: 100, id: 3, idTotal: 20, windowSec: 300 };
+    const alvo = "corretora@example.com";
+
+    comIp("203.0.113.66"); // o atacante
+    for (let i = 0; i < 3; i++) await registrarFalhaDeLogin(alvo, limites);
+    expect(await contaBloqueadaPorFalhas(alvo, limites)).toBe(true);
+
+    comIp("198.51.100.7"); // a dona da conta, no celular dela
+    expect(await contaBloqueadaPorFalhas(alvo, limites)).toBe(false);
+  });
+
+  it("o ataque espalhado por muitos IPs bate no teto geral da conta", async () => {
+    const { contaBloqueadaPorFalhas, registrarFalhaDeLogin } = await import("./rate-limit");
+    const limites = { ip: 100, id: 3, idTotal: 5, windowSec: 300 };
+    const alvo = "gerente@example.com";
+
+    for (let i = 0; i < 5; i++) {
+      comIp(`192.0.2.${i}`);
+      await registrarFalhaDeLogin(alvo, limites);
+    }
+    comIp("192.0.2.200");
+    expect(await contaBloqueadaPorFalhas(alvo, limites)).toBe(true);
+  });
+});

@@ -79,6 +79,11 @@ const schema = z.object({
   // assine — aí a verificação passa a ser obrigatória.
   WAHA_WEBHOOK_REQUIRE_SIGNATURE: z.string().optional().default("false"),
 
+  // Fork G-Compass: "true" reabre o /signup self-service. Fechado por padrão;
+  // a equipe entra por convite (auditoria de 30/10/2026, P2). Em produção,
+  // feche também no GoTrue (GOTRUE_DISABLE_SIGNUP=true / Auth > Providers).
+  CADASTRO_ABERTO: z.string().optional().default("false"),
+
   // Upstash Redis
   UPSTASH_REDIS_REST_URL: required("UPSTASH_REDIS_REST_URL"),
   UPSTASH_REDIS_REST_TOKEN: required("UPSTASH_REDIS_REST_TOKEN"),

@@ -7,7 +7,11 @@
  *
  *   SENTRY_DSN=off           → desliga toda a telemetria (nada é enviado)
  *   SENTRY_DSN=<seu-dsn>     → manda os erros pro SEU Sentry
- *   SENTRY_DSN=  (vazio)     → usa o Sentry da comunidade (padrão)
+ *   SENTRY_DSN=  (vazio)     → nada é enviado (padrão deste fork)
+ *   SENTRY_DSN=comunidade    → manda para o Sentry da comunidade do projeto original
+ *
+ * Fork G-Compass: o padrão virou desligado. Relatório de erro de CRM leva dado de
+ * lead, e o Sentry da comunidade é de terceiro (LGPD; auditoria de 30/10/2026, P9).
  *
  * Vale para servidor (process.env) e navegador (window.__PUBLIC_ENV__.SENTRY_DSN,
  * injetado em runtime pelo <PublicEnvScript/>). O DSN não é segredo — DSNs do Sentry
@@ -18,8 +22,8 @@ export const DEFAULT_SENTRY_DSN =
 
 export function resolveSentryDsn(value: string | undefined | null): string | undefined {
   const v = (value ?? "").trim().toLowerCase() === "off" ? "off" : (value ?? "").trim();
-  if (v === "off" || v === "false" || v === "0") return undefined;
-  return v.length > 0 ? v : DEFAULT_SENTRY_DSN;
+  if (v === "off" || v === "false" || v === "0" || v.length === 0) return undefined;
+  return v.toLowerCase() === "comunidade" ? DEFAULT_SENTRY_DSN : v;
 }
 
 /**

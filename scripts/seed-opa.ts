@@ -19,6 +19,7 @@ import { randomBytes } from "node:crypto";
 import { PADRAO } from "../lib/opa/config";
 import { analisarPorRegras, type MensagemLida } from "../lib/opa/copiloto";
 import { registrarEntrada } from "../lib/opa/entrada";
+import { FUNIS, TRAVADAS, linhaDeImovel, type ImovelJson } from "../lib/opa/estrutura";
 
 const envFile = fs.readFileSync(path.join(process.cwd(), ".env.local"), "utf8");
 const env: Record<string, string> = {};
@@ -60,60 +61,6 @@ const EQUIPE = [
   { chave: "cristian", nome: "Cristian Spengler", email: "cristian@opa.local", papel: "agent", tel: "+5512991005532" },
 ] as const;
 type Chave = (typeof EQUIPE)[number]["chave"];
-
-// ---------------------------------------------------------------- funis
-
-const FUNIS = [
-  {
-    slug: "compradores",
-    nome: "Compradores",
-    padrao: true,
-    etapas: [
-      ["lead-recebido", "Lead recebido", "#0071C6", 1],
-      ["primeiro-contato", "Primeiro contato", "#2B8FD6", 24],
-      ["diagnostico", "Diagnóstico feito", "#156187", 72],
-      ["selecao", "Seleção enviada", "#3E86A8", 72],
-      ["visita-agendada", "Visita agendada", "#1F7AA8", 168],
-      ["visita-realizada", "Visita realizada", "#4C93B8", 72],
-      ["proposta", "Proposta feita", "#23506B", 168],
-      ["negociacao", "Negociação", "#1B4560", 336],
-      ["fechamento", "Fechamento", "#0B3D57", 720],
-      ["sem-momento", "Sem momento", "#8FA3AE", null],
-    ],
-  },
-  {
-    slug: "captacao",
-    nome: "Captação de imóvel",
-    padrao: false,
-    etapas: [
-      ["radar", "Oportunidade do Radar", "#5A6B75", 168],
-      ["contato", "Contato / candidatura", "#0071C6", 360],
-      ["triagem", "Triagem", "#2B8FD6", 72],
-      ["visita-avaliacao", "Visita de avaliação", "#156187", 72],
-      ["parecer", "Parecer de preço", "#3E86A8", 72],
-      ["proposta-trabalho", "Proposta de trabalho", "#1F7AA8", 168],
-      ["contrato", "Contrato", "#23506B", 168],
-      ["publicado", "Imóvel publicado", "#0B3D57", null],
-    ],
-  },
-  {
-    slug: "relacionamento",
-    nome: "Relacionamento com proprietário",
-    padrao: false,
-    etapas: [
-      ["observacao", "No ar em observação", "#0071C6", 360],
-      ["parecer-enviado", "Parecer enviado", "#156187", 168],
-      ["ajuste-proposto", "Ajuste proposto", "#3E86A8", 168],
-      ["ajuste-aplicado", "Ajuste aplicado", "#1F7AA8", null],
-      ["sem-tracao", "Sem tração", "#8FA3AE", null],
-    ],
-  },
-] as const;
-
-/** Do diagnóstico em diante (menos Sem momento e Perdido) o lead precisa dos 4 campos. */
-const TRAVADAS = new Set([
-  "diagnostico", "selecao", "visita-agendada", "visita-realizada", "proposta", "negociacao", "fechamento", "vendido",
-]);
 
 // ---------------------------------------------------------------- leads
 
@@ -284,29 +231,6 @@ const LEADS: LeadDemo[] = [
 
 // ---------------------------------------------------------------- execução
 
-interface ImovelJson {
-  codigo: string;
-  slug?: string;
-  titulo: string;
-  tipo?: string;
-  finalidade?: string;
-  precoVenda?: number | null;
-  precoLocacao?: number | null;
-  condominio?: number | null;
-  iptu?: number | null;
-  bairro?: string;
-  regiao?: string;
-  area?: number | null;
-  areaTerreno?: number | null;
-  dormitorios?: number | null;
-  suites?: number | null;
-  vagas?: number | null;
-  descricao?: string;
-  caracteristicas?: string[];
-  fotos?: string[];
-}
-
-const cents = (v: number | null | undefined) => (v ? Math.round(v * 100) : null);
 
 async function main() {
   // Empresa: refaz do zero.
@@ -337,7 +261,7 @@ async function main() {
     "criar org",
   );
   const orgId = (org as { id: string }).id;
-  console.log("org", orgId);
+  console.info("org", orgId);
 
   // A base cria um funil padrão junto com a empresa; a OPA usa os dela.
   await q(admin.from("crm_stages").delete().eq("organization_id", orgId), "limpar etapas padrão");
@@ -383,6 +307,7 @@ async function main() {
             roleta: ["luana", "paulo", "rodrigo", "cristian"].map((c) => usuarios[c]),
             roleta_ultimo: null,
             gerente_ve_receita: true,
+            dominios_imovel: ["opailhabela.com.br", "r2.dev", "r2.cloudflarestorage.com"],
           },
         },
       })
@@ -474,34 +399,11 @@ async function main() {
   // Imóveis reais do site
   const brutos = JSON.parse(fs.readFileSync(IMOVEIS_JSON, "utf8")) as ImovelJson[];
   const captadores: Chave[] = ["marco", "cristian", "rodrigo", "luana", "paulo"];
-  const linhas = brutos.map((i, n) => ({
-    organization_id: orgId,
-    codigo: i.codigo,
-    slug: i.slug ?? null,
-    titulo: i.titulo,
-    tipo: i.tipo ?? null,
-    finalidade: i.finalidade ?? null,
-    preco_venda_cents: cents(i.precoVenda),
-    preco_locacao_cents: cents(i.precoLocacao),
-    condominio_cents: cents(i.condominio),
-    iptu_cents: cents(i.iptu),
-    bairro: i.bairro ?? null,
-    regiao: i.regiao ?? null,
-    area_m2: i.area ?? null,
-    area_terreno_m2: i.areaTerreno ?? null,
-    dormitorios: i.dormitorios ?? null,
-    suites: i.suites ?? null,
-    vagas: i.vagas ?? null,
-    descricao: i.descricao ?? null,
-    caracteristicas: i.caracteristicas ?? [],
-    fotos: i.fotos ?? [],
-    url_site: i.slug ? `https://opailhabela.com.br/imovel/${i.slug}/` : null,
-    captador_user_id: usuarios[captadores[n % captadores.length]!],
-  }));
+  const linhas = brutos.map((i, n) => linhaDeImovel(i, orgId, usuarios[captadores[n % captadores.length]!]!));
   const imoveis = await q(admin.from("imoveis").insert(linhas).select("*"), "imóveis");
   type ImovelRow = (typeof linhas)[number] & { id: string };
   const acervo = imoveis as ImovelRow[];
-  console.log("imóveis", acervo.length);
+  console.info("imóveis", acervo.length);
 
   // Três imóveis de alto padrão viram off market (o da proposta do Otávio e mais dois).
   const offMarket = new Set<string>();
@@ -627,7 +529,7 @@ async function main() {
       decidido_em: confirmados.has(s.campo) ? ha(ultima) : null,
     }));
     if (sugestoes.length) await q(admin.from("copiloto_sugestoes").insert(sugestoes), `sugestões ${l.nome}`);
-    console.log(`lead ${l.nome}: ${imovel.codigo}, ${sugestoes.length} sugestões`);
+    console.info(`lead ${l.nome}: ${imovel.codigo}, ${sugestoes.length} sugestões`);
   }
 
   // Off market no acervo.
@@ -684,12 +586,12 @@ async function main() {
     nome: "Renata Fontes", telefone: "(11) 98554-4478", imovelCodigo: outro.codigo, origem: "meta",
     campanha: CAMP_COMPRA, conjunto: "Interesse Ilhabela 35-60", anuncio: `Vídeo ${outro.bairro ?? "casa"}`, em: ha(40),
   });
-  console.log("entrada Renata:", volta.tipo);
+  console.info("entrada Renata:", volta.tipo);
   const novo = escolher({ regiao: "Sul" });
   const roleta = await registrarEntrada(admin, orgId, {
     nome: "Bruno Câmara", telefone: "(11) 97720-1188", imovelCodigo: novo.codigo, origem: "site", em: ha(25),
   });
-  console.log("entrada Bruno:", roleta.tipo, "para", EQUIPE.find((p) => usuarios[p.chave] === roleta.donoId)?.nome);
+  console.info("entrada Bruno:", roleta.tipo, "para", EQUIPE.find((p) => usuarios[p.chave] === roleta.donoId)?.nome);
 
   // Captação e relacionamento com proprietário (pipelines do protótipo).
   const proprietarios = [
@@ -765,7 +667,7 @@ async function main() {
     "agendada Gustavo",
   );
 
-  console.log(`\nPronto. Entrar com marco@opa.local (gestor) ou luana@opa.local (corretora), senha ${SENHA}`);
+  console.info(`\nPronto. Entrar com marco@opa.local (gestor) ou luana@opa.local (corretora), senha ${SENHA}`);
 }
 
 main().catch((e) => {

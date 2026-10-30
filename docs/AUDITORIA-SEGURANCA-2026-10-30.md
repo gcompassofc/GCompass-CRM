@@ -88,6 +88,31 @@ Achado junto: o CPF da base **não está cifrado de verdade**. A função `encry
 
 ## 4. Pendente, em ordem de prioridade
 
+### Situação em 30/10/2026, segunda rodada (preparo para produção)
+
+| # | Situação | O que foi feito | Onde |
+|---|---|---|---|
+| P1 | Parcial | Tetos do GoTrue no `config.toml`. Local não conta (o CLI não liga `GOTRUE_RATE_LIMIT_HEADER`); no Supabase Cloud os limites por IP valem. CAPTCHA espera o app mandar o token | `supabase/config.toml`, `docs/PRODUCAO-OPA.md` §3 e §9 |
+| P2 | Fechado | Cadastro fechado no GoTrue e no app (`CADASTRO_ABERTO`); convite cria a conta com senha de 12+ | `app/actions/team/criarContaPeloConvite.ts` |
+| P3 | Fechado | Proxy exige aal2 de quem tem fator: tela volta para `/login/mfa`, API responde 401 | `proxy.ts` |
+| P4 | Fechado | 0115: escrita de configuração só gerente+, operação corretor+, exclusão gerente+; mensagens idem | migration 0115 |
+| P5 | Fechado | Bloqueio por conta + IP (5) e teto geral da conta (30) | `lib/auth/rate-limit.ts` |
+| P6 | Fechado no local | Redis com senha; Redis, ponte e WAHA só em 127.0.0.1. Portas do Supabase CLI seguem em 0.0.0.0 (firewall do Windows) | `scripts/servicos-locais-fechados.sh` |
+| P7 | Mitigado | WAHA Core não assina. Em produção o webhook anda só na rede interna (`WAHA_WEBHOOK_BASE_URL=http://app:3000`) e a porta do WAHA não é publicada | `.env.producao.example` |
+| P8 | Fechado | CSP (connect-src, img-src, frame-ancestors, base-uri, form-action) e HSTS em tempo de execução | `lib/seguranca/csp.ts` |
+| P9 | Fechado | Sentry desligado por padrão; Next 16 parou de imprimir os argumentos das Server Functions (a senha do login ia para o log) | `lib/sentry/dsn.ts`, `next.config.ts` |
+| P10 | Aberto | Decisão do Allyson | `docs/PRODUCAO-OPA.md` D5 |
+| P11 | Fechado | Roleta, configuração e motivos de perda por funções atômicas | migration 0115 |
+| P12 | Aberto | Baixo risco | |
+| P13 | Fechado | Gatilho: URL https dos domínios aceitos; foto como nome do arquivo do site ou URL aceita | migration 0115 |
+| Convite | Fechado | `INVITE_TOKEN_SECRET` vazio no `.env` assinava convite com chave vazia (`??` virou `\|\|`) | `lib/auth/invite-token.ts` |
+| Cifra | Fase 2 feita | Rotina `/api/v1/cron/cifrar-dados` a cada minuto; gatilhos devolvem para a fila o que mudou (0116) | `lib/crypto/cifrar-pendentes.ts` |
+
+Testes: 22 de 22 conferências no app rodando (`teste-prep-producao.cjs`), 34 testes unitários, e o
+banco zerado com `scripts/test-db.sh` (instalação, reaplicação e invariantes).
+
+### Lista original
+
 | # | Grav. | O que | Por quê | Como |
 |---|---|---|---|---|
 | P1 | Alta | Força bruta direto no GoTrue | 200 tentativas em 0,2 s; o limite do app não vale nesse caminho | Em produção: rate limit do GoTrue (`[auth.rate_limit]` / `GOTRUE_RATE_LIMIT_*`), CAPTCHA Turnstile nativo do GoTrue, senha mínima de 12, regra de WAF no `/auth/v1/token` |
