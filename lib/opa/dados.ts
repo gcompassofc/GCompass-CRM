@@ -4,11 +4,15 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 import type { Imovel } from "./imoveis";
+import { emLotes, todasAsPaginas } from "./lotes";
 
 /**
  * Leitura das telas da OPA. Lead, conversa e sugestão saem pelo cliente da
- * sessão: o RLS da base (fn_can_view_lead / fn_can_view_conversation) decide o
- * que cada papel vê, então o corretor recebe só os leads dele sem filtro aqui.
+ * sessão: o RLS da base (escopo calculado uma vez por consulta, migration 0117)
+ * decide o que cada papel vê, então o corretor recebe só os leads dele sem filtro aqui.
+ *
+ * Base grande: as listas vão em páginas de 1.000 e as buscas por id em lotes
+ * (lib/opa/lotes.ts); erro de consulta derruba a tela em vez de virar lista vazia.
  */
 
 /** Prazo de primeira resposta, em minutos (regra da OPA: pago 1 h, orgânico 3 h). */
@@ -152,39 +156,44 @@ export async function carregarLeadsSemCache(
     .eq("slug", opts.funil ?? "compradores")
     .maybeSingle();
 
-  let consulta = supabase
-    .from("crm_leads")
-    .select(
-      "id, title, status, stage_id, pipeline_id, owner_user_id, value_cents, source, tags, custom_fields, contact_id, created_at, contacts(name, phone_number), crm_stages(name, slug, color, position)",
-    )
-    .eq("organization_id", orgId);
-  // A ficha abre também negócio ganho ou perdido; as listas só mostram os abertos.
-  if (opts.leadId) {
-    consulta = consulta.eq("id", opts.leadId);
-  } else {
-    consulta = consulta.eq("status", "open");
+  const consulta = () => {
+    let c = supabase
+      .from("crm_leads")
+      .select(
+        "id, title, status, stage_id, pipeline_id, owner_user_id, value_cents, source, tags, custom_fields, contact_id, created_at, contacts(name, phone_number), crm_stages(name, slug, color, position)",
+      )
+      .eq("organization_id", orgId);
+    // A ficha abre também negócio ganho ou perdido; as listas só mostram os abertos.
+    if (opts.leadId) return c.eq("id", opts.leadId);
+    c = c.eq("status", "open");
     // funil "todos": a base inteira (tela Leads); senão, só o funil pedido.
-    if (opts.funil !== "todos" && funil) consulta = consulta.eq("pipeline_id", (funil as { id: string }).id);
-  }
+    if (opts.funil !== "todos" && funil) c = c.eq("pipeline_id", (funil as { id: string }).id);
+    return c;
+  };
 
-  const { data: linhas, error } = await consulta;
-  if (error) throw new Error(`carregarLeads: ${error.message}`);
-  const leads = (linhas ?? []) as unknown as LinhaLead[];
+  let leads: LinhaLead[];
+  try {
+    leads = (await todasAsPaginas((de, ate) => consulta().order("created_at", { ascending: false }).order("id").range(de, ate))) as unknown as LinhaLead[];
+  } catch (e) {
+    throw new Error(`carregarLeads: ${e instanceof Error ? e.message : String(e)}`);
+  }
   if (leads.length === 0) return [];
 
-  const contatos = leads.map((l) => l.contact_id);
-  const { data: conversas } = await supabase
-    .from("conversations")
-    .select("id, contact_id, last_message_at, last_message_preview, last_inbound_at, last_outbound_at")
-    .eq("organization_id", orgId)
-    .in("contact_id", contatos);
-
-  const { data: pend } = await supabase
-    .from("copiloto_sugestoes")
-    .select("lead_id")
-    .eq("organization_id", orgId)
-    .eq("status", "pendente")
-    .in("lead_id", leads.map((l) => l.id));
+  const contatos = [...new Set(leads.map((l) => l.contact_id))];
+  const [conversas, pend] = await Promise.all([
+    emLotes(contatos, (lote) =>
+      supabase
+        .from("conversations")
+        .select("id, contact_id, last_message_at, last_message_preview, last_inbound_at, last_outbound_at")
+        .eq("organization_id", orgId)
+        .in("contact_id", lote),
+    ),
+    emLotes(
+      leads.map((l) => l.id),
+      (lote) =>
+        supabase.from("copiloto_sugestoes").select("lead_id").eq("organization_id", orgId).eq("status", "pendente").in("lead_id", lote),
+    ),
+  ]);
 
   const pendPorLead = new Map<string, number>();
   for (const p of (pend ?? []) as Array<{ lead_id: string }>) {
@@ -401,25 +410,12 @@ export async function carregarPrimeiraResposta(orgId: string, contatos: string[]
   const mapa = new Map<string, number | null>();
   if (contatos.length === 0) return mapa;
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("messages")
-    .select("contact_id, direction, sent_at")
-    .eq("organization_id", orgId)
-    .in("contact_id", contatos)
-    .order("sent_at", { ascending: true })
-    .limit(5000);
-  const porContato = new Map<string, { entrada?: number; resposta?: number }>();
-  for (const m of (data ?? []) as Array<{ contact_id: string; direction: string; sent_at: string }>) {
-    const atual = porContato.get(m.contact_id) ?? {};
-    const t = Date.parse(m.sent_at);
-    if (m.direction === "inbound" && atual.entrada === undefined) atual.entrada = t;
-    if (m.direction === "outbound" && atual.entrada !== undefined && atual.resposta === undefined) atual.resposta = t;
-    porContato.set(m.contact_id, atual);
-  }
-  for (const c of contatos) {
-    const x = porContato.get(c);
-    mapa.set(c, x?.entrada !== undefined && x.resposta !== undefined ? Math.round((x.resposta - x.entrada) / 60_000) : null);
-  }
+  // A conta sai pronta do banco (migration 0117): sem lista no endereço e sem
+  // trazer todas as mensagens para cá.
+  const { data, error } = await supabase.rpc("fn_opa_primeira_resposta", { p_org: orgId, p_contatos: contatos });
+  if (error) throw new Error(`carregarPrimeiraResposta: ${error.message}`);
+  const minutos = (data ?? {}) as Record<string, number | null>;
+  for (const c of contatos) mapa.set(c, minutos[c] ?? null);
   return mapa;
 }
 

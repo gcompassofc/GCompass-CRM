@@ -207,12 +207,12 @@ function CartaoFila({ l, i, im, dono, prazos }: { l: LeadOpa; i: number; im?: Im
 export default async function FilaPage({
   searchParams,
 }: {
-  searchParams: Promise<{ aba?: string; corretor?: string }>;
+  searchParams: Promise<{ aba?: string; corretor?: string; tudo?: string }>;
 }) {
   const user = await requireAuth();
   const org = await resolveActiveOrg(user);
   if (!org) redirect("/app");
-  const { aba: abaBruta = "todos", corretor } = await searchParams;
+  const { aba: abaBruta = "todos", corretor, tudo } = await searchParams;
   const aba: Aba = (["todos", "esperando", "pago", "organico"] as const).includes(abaBruta as Aba) ? (abaBruta as Aba) : "todos";
 
   const [todos, imoveis, equipe, config] = await Promise.all([
@@ -235,13 +235,21 @@ export default async function FilaPage({
   const aguardando = lista.filter((l) => l.conversa?.esperandoMin != null);
   const respondidos = lista.filter((l) => l.conversa?.esperandoMin == null);
   const [primeiro, ...resto] = aguardando;
+  // A fila desenha os 30 mais urgentes de cada bloco; "Ver todos" abre o resto.
+  // Com 1.500 leads abertos a página passava de 4 MB e 8 segundos.
+  const LIMITE = 30;
+  const mostrarTudo = tudo === "1";
+  const restoVisivel = mostrarTudo ? resto : resto.slice(0, LIMITE);
+  const respondidosVisiveis = mostrarTudo ? respondidos : respondidos.slice(0, LIMITE);
+  const escondidos = resto.length - restoVisivel.length + respondidos.length - respondidosVisiveis.length;
   const pz = config.prazos;
   const nomeDono = (l: LeadOpa) => equipe.get(l.donoId ?? "")?.nome.split(" ")[0];
 
-  const link = (a: Aba) => {
+  const link = (a: Aba, comTudo = false) => {
     const p = new URLSearchParams();
     if (a !== "todos") p.set("aba", a);
     if (corretor) p.set("corretor", corretor);
+    if (comTudo) p.set("tudo", "1");
     return `/app/fila${p.size ? `?${p}` : ""}`;
   };
 
@@ -294,7 +302,7 @@ export default async function FilaPage({
               <p className="text-[15px] font-semibold text-[#0a2d40]">Na fila</p>
               <span className="text-[13px] text-[#5b7284]">{resto.length}</span>
             </div>
-            {resto.map((l, i) => (
+            {restoVisivel.map((l, i) => (
               <CartaoFila key={l.id} l={l} i={i + 2} im={porCodigo.get(l.imovelCodigo ?? "")} dono={nomeDono(l)} prazos={pz} />
             ))}
           </section>
@@ -310,13 +318,21 @@ export default async function FilaPage({
               <span className="ml-1 hidden text-[13px] font-medium text-[#2a7ca8] group-open:inline">esconder</span>
             </summary>
             <div className="mt-3 flex flex-col gap-3">
-              {respondidos.map((l, i) => (
+              {respondidosVisiveis.map((l, i) => (
                 <CartaoFila key={l.id} l={l} i={aguardando.length + i + 1} im={porCodigo.get(l.imovelCodigo ?? "")} dono={nomeDono(l)} prazos={pz} />
               ))}
             </div>
           </details>
         )}
 
+        {escondidos > 0 && (
+          <Link
+            href={link(aba, true)}
+            className="inline-flex h-11 items-center justify-center self-center rounded-full bg-white px-5 text-[14px] font-semibold text-[#12455f] hover:bg-[#e7f0f5]"
+          >
+            Ver todos ({escondidos} a mais)
+          </Link>
+        )}
       </CorpoOpa>
     </>
   );

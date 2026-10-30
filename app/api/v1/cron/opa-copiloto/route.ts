@@ -15,6 +15,7 @@ import { fail, ok } from "@/lib/api/wrappers";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 import { analisarLead } from "@/lib/opa/analisar";
+import { emLotes } from "@/lib/opa/lotes";
 import { mesmoSegredo } from "@/lib/opa/segredos";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -52,11 +53,10 @@ async function handle(req: NextRequest): Promise<Response> {
   }
   if (ultimaPorContato.size === 0) return ok({ analisados: 0 }, { requestId });
 
-  const { data: leads } = await admin
-    .from("crm_leads")
-    .select("id, organization_id, contact_id, custom_fields")
-    .eq("status", "open")
-    .in("contact_id", [...ultimaPorContato.keys()]);
+  // Em lotes: 500 contatos num `.in()` só passam do limite de tamanho do endereço.
+  const leads = await emLotes([...ultimaPorContato.keys()], (lote) =>
+    admin.from("crm_leads").select("id, organization_id, contact_id, custom_fields").eq("status", "open").in("contact_id", lote),
+  );
 
   const pendentes = ((leads ?? []) as Array<{
     id: string;

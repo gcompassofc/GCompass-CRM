@@ -55,6 +55,8 @@ export interface ColunaQuadro {
   trava: boolean;
   total: number;
   cartoes: CartaoQuadro[];
+  /** Leads da etapa que não vieram para o quadro (limite por coluna). */
+  ocultos: number;
 }
 
 const brl = (c: number) =>
@@ -129,7 +131,7 @@ export function QuadroOpa({ colunas: inicial }: { colunas: ColunaQuadro[] }) {
                   <span className="size-2.5 shrink-0 rounded-full" style={{ background: col.cor ?? "#2a7ca8" }} />
                   <span className="truncate">{col.nome}</span>
                 </p>
-                <span className="shrink-0 rounded-full bg-white px-2 text-[12px] font-semibold tabular-nums text-[#34566b]">{col.cartoes.length}</span>
+                <span className="shrink-0 rounded-full bg-white px-2 text-[12px] font-semibold tabular-nums text-[#34566b]">{col.cartoes.length + col.ocultos}</span>
               </div>
               <div className="mt-2 flex min-h-7 items-center justify-between gap-2">
                 <span className="text-[12px] text-[#5b7284]">{col.total ? brl(col.total) : ""}</span>
@@ -278,6 +280,11 @@ export function QuadroOpa({ colunas: inicial }: { colunas: ColunaQuadro[] }) {
                 </div>
               )}
             </Droppable>
+            {col.ocultos > 0 && (
+              <Link href="/app/leads" className="mt-2 rounded-[18px] bg-white px-3 py-2.5 text-center text-[13px] font-semibold text-[#2a7ca8]">
+                Mais {col.ocultos} nesta etapa. Ver na lista
+              </Link>
+            )}
           </section>
         ))}
       </div>

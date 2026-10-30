@@ -61,23 +61,39 @@ export default async function PipelinePage({
       .eq("pipeline_id", funil.id)
       .eq("is_archived", false)
       .order("position"),
-    supabase.from("crm_leads").select("pipeline_id").eq("organization_id", org.orgId).eq("status", "open"),
-    supabase
-      .from("crm_leads")
-      .select("status")
-      .eq("organization_id", org.orgId)
-      .eq("pipeline_id", funil.id)
-      .neq("status", "open")
-      .gte("closed_at", inicioMes.toISOString()),
+    // Contagens pelo banco: buscar as linhas parava em 1.000 e errava o número.
+    Promise.all(
+      funis.map(async (f) => {
+        const { count } = await supabase
+          .from("crm_leads")
+          .select("id", { count: "exact", head: true })
+          .eq("organization_id", org.orgId)
+          .eq("status", "open")
+          .eq("pipeline_id", f.id);
+        return { pipeline_id: f.id, n: count ?? 0 };
+      }),
+    ).then((data) => ({ data })),
+    Promise.all(
+      (["won", "lost"] as const).map(async (status) => {
+        const { count } = await supabase
+          .from("crm_leads")
+          .select("id", { count: "exact", head: true })
+          .eq("organization_id", org.orgId)
+          .eq("pipeline_id", funil.id)
+          .eq("status", status)
+          .gte("closed_at", inicioMes.toISOString());
+        return { status, n: count ?? 0 };
+      }),
+    ).then((data) => ({ data })),
   ]);
 
   const leads = filtrarCorretor(leadsRaw, corretor).sort(ordem);
   const porCodigo = new Map(imoveis.map((i) => [i.codigo, i]));
   const acervo = imoveis.filter((i) => i.status !== "vendido");
   const porFunil = new Map<string, number>();
-  for (const c of (contagens ?? []) as Array<{ pipeline_id: string }>) porFunil.set(c.pipeline_id, (porFunil.get(c.pipeline_id) ?? 0) + 1);
-  const ganhos = ((fechados ?? []) as Array<{ status: string }>).filter((f) => f.status === "won").length;
-  const perdidos = ((fechados ?? []) as Array<{ status: string }>).filter((f) => f.status === "lost").length;
+  for (const c of contagens) porFunil.set(c.pipeline_id, c.n);
+  const ganhos = fechados.find((f) => f.status === "won")?.n ?? 0;
+  const perdidos = fechados.find((f) => f.status === "lost")?.n ?? 0;
 
   // Ganho e perdido são resultado, não coluna (decisão 3 do protótipo).
   const etapas = ((etapasRaw ?? []) as Array<{
@@ -98,8 +114,12 @@ export default async function PipelinePage({
     lembretePorEtapa.set(r.etapa, atual ? atual : r.quando);
   }
 
+  // Até 25 cartões por etapa (os primeiros na ordem do funil); o número da etapa
+  // e o valor somam todos. A afinidade só é calculada para o que aparece.
+  const LIMITE_COLUNA = 25;
   const colunas: ColunaQuadro[] = etapas.map((e) => {
-    const daqui = leads.filter((l) => l.etapa.id === e.id);
+    const todosDaEtapa = leads.filter((l) => l.etapa.id === e.id);
+    const daqui = todosDaEtapa.slice(0, LIMITE_COLUNA);
     return {
       id: e.id,
       nome: e.name,
@@ -107,7 +127,8 @@ export default async function PipelinePage({
       evento: e.evento_meta,
       lembrete: lembretePorEtapa.get(e.name) ?? null,
       trava: (e.campos_obrigatorios ?? []).length > 0,
-      total: daqui.reduce((s, l) => s + (l.valorCents ?? 0), 0),
+      total: todosDaEtapa.reduce((s, l) => s + (l.valorCents ?? 0), 0),
+      ocultos: todosDaEtapa.length - daqui.length,
       cartoes: daqui.map((l): CartaoQuadro => {
         const im = porCodigo.get(l.imovelCodigo ?? "");
         const parecidos = acervo.filter(

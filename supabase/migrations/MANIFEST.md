@@ -155,6 +155,7 @@ aplica.
 | `20261030200000` | `0114_base_endurecimento` | Auditoria de 30/10/2026, base: mídia forjada barrada, `emit_event` e `retrieve_top_k_chunks` com checagem de membro, `fn_can_view_contact`, exclusão de lead só gerente. |
 | `20261030210000` | `0115_papeis_roleta_dominios` | Auditoria P4, P11 e P13: escrita das tabelas da base por papel (configuração só gerente+, operação corretor+, exclusão gerente+), roleta e configuração atômicas, domínios aceitos nas URLs do imóvel. |
 | `20261030220000` | `0116_cifra_fase2_pendentes` | Cifra fase 2: gatilhos devolvem para a fila o contato ou a mensagem cujo texto puro mudou; índices parciais da fila lida por `/api/v1/cron/cifrar-dados`. |
+| `20261030230000` | `0117_desempenho_visibilidade` | Teste de carga (1.500 leads, 30 mil mensagens): as regras de leitura de leads, conversas, contatos, atividades e vínculos deixam de chamar uma função por linha e usam `fn_escopo_visao()`, calculada uma vez por consulta (370 ms para 2 ms, visibilidade conferida igual por pessoa). Índice de mensagens por contato e `fn_opa_primeira_resposta` (conta no banco, sem lista no endereço e sem corte de 5.000 mensagens). |
 
 ## Reproducibility
 

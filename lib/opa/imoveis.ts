@@ -73,8 +73,17 @@ export interface PerfilLead {
   imovelEntrada?: Pick<Imovel, "bairro" | "regiao" | "preco_venda_cents" | "suites"> | null;
 }
 
+// A afinidade roda lead x imóvel (1.500 x 71 na carga de teste) e repete os
+// mesmos bairros e faixas: o texto sem acento fica guardado.
+const semAcentoCache = new Map<string, string>();
+
 function semAcento(s: string): string {
-  return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const pronto = semAcentoCache.get(s);
+  if (pronto !== undefined) return pronto;
+  const t = s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  if (semAcentoCache.size > 5000) semAcentoCache.clear();
+  semAcentoCache.set(s, t);
+  return t;
 }
 
 function tetoDaFaixa(faixa?: string): number | null {

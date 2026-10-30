@@ -65,12 +65,12 @@ const TEMPERATURA: Record<string, { icone: Icone; tom: "alerta" | "aviso" | "cla
 export default async function LeadsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ aba?: string; q?: string; corretor?: string }>;
+  searchParams: Promise<{ aba?: string; q?: string; corretor?: string; pagina?: string }>;
 }) {
   const user = await requireAuth();
   const org = await resolveActiveOrg(user);
   if (!org) redirect("/app");
-  const { aba = "todos", q, corretor } = await searchParams;
+  const { aba = "todos", q, corretor, pagina: paginaBruta } = await searchParams;
   const supabase = await createClient();
 
   const [todos, imoveis, equipe, { data: funis }] = await Promise.all([
@@ -99,13 +99,19 @@ export default async function LeadsPage({
     .sort((a, b) => Date.parse(b.criadoEm) - Date.parse(a.criadoEm));
   const filtro = ABAS.find((a) => a[0] === aba) ?? ABAS[0]!;
   const lista = base.filter((l) => filtro[3](l, compradores));
+  // A base cresce: a tela desenha 50 por vez (com 1.500 leads eram 7 MB de página).
+  const POR_PAGINA = 50;
+  const paginas = Math.max(1, Math.ceil(lista.length / POR_PAGINA));
+  const pagina = Math.min(paginas, Math.max(1, Number.parseInt(paginaBruta ?? "1", 10) || 1));
+  const visiveis = lista.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
   const esperando = base.filter((l) => l.conversa?.esperandoMin != null).length;
   const offMarket = base.filter((l) => l.offMarket !== null).length;
-  const link = (a: string) => {
+  const link = (a: string, pg = 1) => {
     const p = new URLSearchParams();
     if (a !== "todos") p.set("aba", a);
     if (q) p.set("q", q);
     if (corretor) p.set("corretor", corretor);
+    if (pg > 1) p.set("pagina", String(pg));
     return `/app/leads${p.size ? `?${p}` : ""}`;
   };
 
@@ -164,7 +170,7 @@ export default async function LeadsPage({
 
         <Cartao bloco className="p-3 md:p-4">
           <ul className="flex flex-col">
-            {lista.map((l) => {
+            {visiveis.map((l) => {
               const im = porCodigo.get(l.imovelCodigo ?? "");
               const dono = equipe.get(l.donoId ?? "");
               const IconeOrigem = ICONE_ORIGEM[l.origem.canal ?? ""] ?? UserPlus;
@@ -248,6 +254,25 @@ export default async function LeadsPage({
             })}
           </ul>
           {lista.length === 0 && <Vazio titulo="Nenhum lead aqui" texto="Troque a aba ou limpe a busca." />}
+          {paginas > 1 && (
+            <nav aria-label="Páginas" className="flex flex-wrap items-center justify-between gap-3 px-2 pb-1 pt-4 text-[14px] text-[#5b7284]">
+              <span>
+                {(pagina - 1) * POR_PAGINA + 1} a {Math.min(pagina * POR_PAGINA, lista.length)} de {lista.length}
+              </span>
+              <span className="flex gap-2">
+                {pagina > 1 && (
+                  <Link href={link(filtro[0], pagina - 1)} className="inline-flex h-10 items-center rounded-full bg-[#f2f6f9] px-4 font-semibold text-[#12455f]">
+                    Anteriores
+                  </Link>
+                )}
+                {pagina < paginas && (
+                  <Link href={link(filtro[0], pagina + 1)} className="inline-flex h-10 items-center rounded-full bg-[#12455f] px-4 font-semibold text-white">
+                    Próximos
+                  </Link>
+                )}
+              </span>
+            </nav>
+          )}
         </Cartao>
 
         <p className={cn("flex flex-wrap items-center gap-4 px-2 text-[12px] text-[#5b7284]")}>
