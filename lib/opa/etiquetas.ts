@@ -36,6 +36,7 @@ const MOMENTO: Array<[RegExp, string]> = [
   [/agora|3 meses/i, "Comprar em até 3 meses"],
   [/6 meses|1 ano/i, "Em até 1 ano"],
   [/pesquisando|sem pressa/i, "Sem pressa"],
+  [/vender/i, "Precisa vender outro imóvel"],
 ];
 
 const INTERESSE: Array<[RegExp, string]> = [

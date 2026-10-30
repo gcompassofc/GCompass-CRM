@@ -430,3 +430,56 @@ export async function perderNegocio(formData: FormData): Promise<ResultadoEtapa>
   revalidatePath("/app/hoje");
   return { ok: true };
 }
+
+// ---------------------------------------------------------------- ligação
+
+export type ResultadoLigacao = "atendeu" | "nao_atendeu" | "retorno";
+
+const ROTULO_LIGACAO: Record<ResultadoLigacao, string> = {
+  atendeu: "atendeu",
+  nao_atendeu: "não atendeu",
+  retorno: "pediu retorno",
+};
+
+/**
+ * Ligação em um toque. Pela regra de distribuição da OPA, ligação registrada no
+ * card conta como contato: para o relógio da primeira resposta, como o
+ * "Respondi" da fila. Tentativa sem resposta fica contada no lead.
+ */
+export async function registrarLigacao(leadId: string, resultado: ResultadoLigacao): Promise<{ ok: boolean; erro?: string }> {
+  const { user, org, supabase } = await contexto();
+  if (org.role === "viewer") return { ok: false, erro: "Seu acesso é só de leitura." };
+  if (!Object.hasOwn(ROTULO_LIGACAO, resultado)) return { ok: false, erro: "Resultado inválido." };
+  const { data: lead } = await supabase
+    .from("crm_leads")
+    .select("id, contact_id")
+    .eq("organization_id", org.orgId)
+    .eq("id", leadId)
+    .maybeSingle();
+  if (!lead) return { ok: false, erro: "Lead não encontrado." };
+
+  const agora = new Date().toISOString();
+  const { error } = await supabase.from("crm_lead_activities").insert({
+    organization_id: org.orgId,
+    lead_id: leadId,
+    contact_id: (lead as { contact_id: string | null }).contact_id,
+    source_module: "opa",
+    type: "ligacao",
+    payload: { resultado },
+    performed_at: agora,
+    performed_by_user_id: user.id,
+    actor_kind: "user",
+  });
+  if (error) return { ok: false, erro: erroParaTela(error) };
+
+  await mudarCampos(leadId, (cf) => ({
+    ...cf,
+    respondido_em: agora,
+    ultima_ligacao: { em: agora, resultado },
+    tentativas_ligacao: resultado === "nao_atendeu" ? (Number(cf.tentativas_ligacao) || 0) + 1 : 0,
+  }));
+  revalidatePath("/app/fila");
+  revalidatePath("/app/hoje");
+  revalidatePath(`/app/leads/${leadId}`);
+  return { ok: true };
+}

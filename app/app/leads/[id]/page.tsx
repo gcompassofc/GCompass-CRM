@@ -19,6 +19,7 @@ import {
 } from "@/lib/opa/dados";
 import { contarEtiquetas, etiquetasDoLead } from "@/lib/opa/etiquetas";
 import { afinidade, precoCheio, precoPrincipal } from "@/lib/opa/imoveis";
+import { RegistrarLigacao } from "./_ligacao";
 import { proximaMensagem } from "@/lib/opa/mensagens";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -278,7 +279,7 @@ export default async function LeadPage({
 
   const dono = equipe.get(lead.donoId ?? "");
   const feitos = diagnosticoCompleto(lead.campos);
-  const mensagem = proximaMensagem({
+  const modelo = proximaMensagem({
     nome: lead.nome,
     corretor: primeiroNome(dono?.nome) || "o corretor",
     etapa: lead.etapa.slug,
@@ -289,6 +290,18 @@ export default async function LeadPage({
     offMarket: lead.offMarket,
     voltouCom: imovelDaVolta,
   });
+  // Cliente esperando e a IA já leu a última mensagem dele: o rascunho dela
+  // responde ao que ele perguntou; o modelo do Kit segue o roteiro do diagnóstico.
+  const ultimaEntrada = lead.conversa?.ultimaEm ? Date.parse(lead.conversa.ultimaEm) : NaN;
+  const rascunhoValido =
+    lead.copiloto.motor === "ia" &&
+    Boolean(lead.copiloto.mensagem) &&
+    lead.conversa?.esperandoMin != null &&
+    Boolean(lead.copiloto.respondendo_a) &&
+    Date.parse(lead.copiloto.respondendo_a ?? "") >= ultimaEntrada - 1000;
+  const mensagem = rascunhoValido
+    ? { motivo: "Resposta à última mensagem do cliente, escrita pela IA. Confira antes de mandar.", texto: lead.copiloto.mensagem! }
+    : modelo;
   const etiquetas = etiquetasDoLead(lead, entrada);
   const nEtiquetas = contarEtiquetas(etiquetas);
   const aberto = lead.status === "open";
@@ -308,6 +321,8 @@ export default async function LeadPage({
       texto:
         a.type === "lead_voltou"
           ? `Voltou por outro formulário (${a.payload.vez}º), sem roleta`
+          : a.type === "ligacao"
+            ? `Ligação: ${a.payload.resultado === "atendeu" ? "atendeu" : a.payload.resultado === "retorno" ? "pediu retorno" : "não atendeu"}`
           : a.type === "venda_realizada"
             ? `Negócio ganho: VGV ${precoCheio(a.payload.vgv_cents as number)}, comissão ${precoCheio(a.payload.comissao_cents as number)}`
             : a.type.replace(/_/g, " "),
@@ -403,6 +418,7 @@ export default async function LeadPage({
                   <WhatsappLogo weight="fill" className="size-5" /> Abrir conversa
                 </a>
               ) : null}
+              <RegistrarLigacao leadId={lead.id} tentativas={lead.tentativasLigacao} />
               <AgendarMensagem leadId={lead.id} sugestao={mensagem.texto} />
               <RegistrarVisita
                 leadId={lead.id}
@@ -490,6 +506,16 @@ export default async function LeadPage({
                   <p className="mt-4 flex items-start gap-2.5 rounded-[18px] bg-white/10 px-4 py-3 text-[14px] text-white">
                     <ArrowRight className="mt-0.5 size-4 shrink-0 text-[#8fc4dd]" weight="bold" /> {lead.copiloto.proximoPasso}
                   </p>
+                )}
+                {(lead.copiloto.objecoes?.length ?? 0) > 0 && aberto && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span className="text-[13px] text-white/65">Preocupa o cliente:</span>
+                    {lead.copiloto.objecoes!.map((o) => (
+                      <span key={o} className="rounded-full border border-[#8fc4dd]/50 px-3 py-1 text-[13px] text-white">
+                        {o}
+                      </span>
+                    ))}
+                  </div>
                 )}
 
                 {sugestoes.length > 0 && (

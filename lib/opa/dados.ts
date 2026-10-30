@@ -36,6 +36,10 @@ export interface CopilotoSalvo {
   temperatura?: "quente" | "morno" | "frio";
   motor?: "ia" | "regras";
   analisado_em?: string;
+  /** Rascunho da IA para a última mensagem do lead; vale enquanto respondendo_a for a última entrada. */
+  mensagem?: string;
+  respondendo_a?: string;
+  objecoes?: string[];
 }
 
 export interface OrigemLead {
@@ -79,6 +83,8 @@ export interface LeadOpa {
   origem: OrigemLead;
   campos: CamposOpa;
   copiloto: CopilotoSalvo;
+  /** Ligações seguidas sem atender (zera quando atende ou pede retorno). */
+  tentativasLigacao: number;
   imovelCodigo: string | null;
   imoveisInteresse: string[];
   offMarket: OffMarket;
@@ -283,6 +289,7 @@ export async function carregarLeadsSemCache(
       lembretesDesligados: cf.lembretes_desligados === true,
       proprio: tags.includes("proprio"),
       copiloto: (cf.copiloto as CopilotoSalvo) ?? {},
+      tentativasLigacao: Number(cf.tentativas_ligacao) || 0,
       imovelCodigo: (cf.imovel_codigo as string) ?? null,
       imoveisInteresse: [...interesse],
       offMarket: tags.includes("off-market-proprietario")

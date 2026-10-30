@@ -145,7 +145,7 @@ const LEADS: LeadDemo[] = [
       ["L", "Vou conversar com minha esposa e te falo. A gente decide junto.", 4300],
     ],
     confirmados: ["finalidade", "regiao"],
-    jaPreenchido: { finalidade: "Moradia", regiao: "Sul (Feiticeira, Veloso)", momento: "Em 3 a 6 meses", inegociavel: "Vista para o mar" },
+    jaPreenchido: { finalidade: "Moradia", regiao: "Sul (Feiticeira, Veloso)", momento: "Em até 1 ano", inegociavel: "Vista para o mar" },
   },
   {
     nome: "Paula Siqueira", tel: "+5511993321188", corretor: "rodrigo", etapa: "visita-agendada", origem: "meta", campanha: CAMP_LANC,
@@ -155,7 +155,7 @@ const LEADS: LeadDemo[] = [
       ["L", "Combinado! Vou com meu marido.", 590],
     ],
     confirmados: ["finalidade", "regiao", "momento", "inegociavel"],
-    jaPreenchido: { finalidade: "Temporada", regiao: "Centro e Vila (Saco da Capela)", momento: "Agora (até 3 meses)", inegociavel: "Andar até a Vila" },
+    jaPreenchido: { finalidade: "Temporada", regiao: "Centro e Vila (Saco da Capela)", momento: "Comprar em até 3 meses", inegociavel: "Andar até a Vila" },
   },
   {
     nome: "Otávio Brandão", tel: "+5511992214433", corretor: "marco", etapa: "proposta", origem: "indicacao", offMarket: true,
@@ -165,7 +165,7 @@ const LEADS: LeadDemo[] = [
       ["L", "Tranquilo. Se ele topar, quero assinar logo.", 10_100],
     ],
     confirmados: ["finalidade", "regiao", "momento", "inegociavel", "faixa"],
-    jaPreenchido: { finalidade: "Investimento", regiao: "Sul (Veloso)", momento: "Agora (até 3 meses)", inegociavel: "Terreno grande com costeira" },
+    jaPreenchido: { finalidade: "Investimento", regiao: "Sul (Veloso)", momento: "Comprar em até 3 meses", inegociavel: "Terreno grande com costeira" },
   },
   {
     nome: "Camila Ventura", tel: "+5511991133877", corretor: "cristian", etapa: "primeiro-contato", origem: "whatsapp",
@@ -193,7 +193,7 @@ const LEADS: LeadDemo[] = [
       ["L", "Amamos a vista e a varanda. A cozinha é pequena para a gente, mas dá para reformar.", 1200],
     ],
     confirmados: ["finalidade", "regiao", "momento", "inegociavel"],
-    jaPreenchido: { finalidade: "Moradia", regiao: "Norte (Siriúba)", momento: "Em 3 a 6 meses", inegociavel: "Varanda com vista", suites: "3 ou mais" },
+    jaPreenchido: { finalidade: "Moradia", regiao: "Norte (Siriúba)", momento: "Em até 1 ano", inegociavel: "Varanda com vista", suites: "3 ou mais" },
   },
   {
     nome: "Henrique Dutra", tel: "+5511988871345", corretor: "rodrigo", etapa: "sem-momento", origem: "meta", campanha: CAMP_COMPRA,
@@ -211,7 +211,7 @@ const LEADS: LeadDemo[] = [
       ["C", "Vou levar a ele hoje e te retorno amanhã cedo.", 2950],
     ],
     confirmados: ["finalidade", "regiao", "momento", "inegociavel"],
-    jaPreenchido: { finalidade: "Moradia", regiao: "Sul (Feiticeira)", momento: "Agora (até 3 meses)", inegociavel: "Pôr do sol", faixa: "Até R$ 6 mi" },
+    jaPreenchido: { finalidade: "Moradia", regiao: "Sul (Feiticeira)", momento: "Comprar em até 3 meses", inegociavel: "Pôr do sol", faixa: "R$ 4 a 7 mi" },
   },
   {
     nome: "Thiago Rezende", tel: "+5511986653356", corretor: "cristian", etapa: "lead-recebido", origem: "meta", campanha: CAMP_COMPRA,
@@ -570,7 +570,7 @@ async function main() {
         closed_at: fechado, value_cents: vgv, currency: "BRL", owner_user_id: usuarios[v.corretor], owner_kind: "user",
         source: "site", tags: ["organico"], created_at: ha((v.dias + 40) * 24 * 60),
         custom_fields: {
-          opa: { finalidade: "Moradia", regiao: v.regiao, momento: "Agora (até 3 meses)", inegociavel: "Vista para o mar" },
+          opa: { finalidade: "Moradia", regiao: v.regiao, momento: "Comprar em até 3 meses", inegociavel: "Vista para o mar" },
           imovel_codigo: im.codigo,
           imoveis_interesse: [im.codigo],
           origem: { canal: "site" },

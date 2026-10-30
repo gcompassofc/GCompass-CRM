@@ -4,7 +4,9 @@ import { generateText } from "ai";
 import { resolveLanguageModel } from "@/lib/ai/gateway";
 import { logger } from "@/lib/logger";
 
-import { analisarComIA, analisarPorRegras, type Leitura, type MensagemLida } from "./copiloto";
+import { analisarComIA, analisarPorRegras, CAMPOS, type CampoCopiloto, type ContextoLeitura, type Leitura, type MensagemLida } from "./copiloto";
+import { ROTULO_ORIGEM } from "./dados";
+import { precoCurto } from "./imoveis";
 
 /** Modelo do copiloto: leitura curta e estruturada, então o Haiku dá conta. */
 export const MODELO_COPILOTO = "anthropic/claude-haiku-5-5";
@@ -20,7 +22,7 @@ export const MODELO_COPILOTO = "anthropic/claude-haiku-5-5";
 export async function analisarLead(supabase: SupabaseClient, orgId: string, leadId: string): Promise<Leitura | null> {
   const { data: lead } = await supabase
     .from("crm_leads")
-    .select("id, contact_id, value_cents, custom_fields, contacts(name)")
+    .select("id, contact_id, value_cents, source, custom_fields, contacts(name), crm_stages(name)")
     .eq("organization_id", orgId)
     .eq("id", leadId)
     .maybeSingle();
@@ -29,8 +31,10 @@ export async function analisarLead(supabase: SupabaseClient, orgId: string, lead
     id: string;
     contact_id: string;
     value_cents: number | null;
+    source: string | null;
     custom_fields: Record<string, unknown> | null;
     contacts: { name: string | null } | null;
+    crm_stages: { name: string } | null;
   };
   const cf = l.custom_fields ?? {};
   const confirmados = (cf.opa as Record<string, string>) ?? {};
@@ -56,22 +60,66 @@ export async function analisarLead(supabase: SupabaseClient, orgId: string, lead
   }
 
   let imovelTitulo: string | undefined;
+  let imovel: ContextoLeitura["imovel"] = null;
   if (cf.imovel_codigo) {
     const { data: im } = await supabase
       .from("imoveis")
-      .select("titulo")
+      .select(
+        "codigo, titulo, bairro, regiao, preco_venda_cents, dormitorios, suites, vagas, area_m2, area_terreno_m2, caracteristicas, descricao, off_market",
+      )
       .eq("organization_id", orgId)
       .eq("codigo", cf.imovel_codigo as string)
       .maybeSingle();
-    imovelTitulo = (im as { titulo: string } | null)?.titulo;
+    if (im) {
+      const i = im as {
+        codigo: string;
+        titulo: string;
+        bairro: string | null;
+        regiao: string | null;
+        preco_venda_cents: number | null;
+        dormitorios: number | null;
+        suites: number | null;
+        vagas: number | null;
+        area_m2: number | null;
+        area_terreno_m2: number | null;
+        caracteristicas: string[] | null;
+        descricao: string | null;
+        off_market: boolean;
+      };
+      imovelTitulo = i.titulo;
+      const { preco_venda_cents: precoCents, caracteristicas, ...resto } = i;
+      imovel = { ...resto, preco: precoCents ? precoCurto(precoCents) : null, caracteristicas: caracteristicas ?? [] };
+    }
   }
+
+  // Contexto do CRM para a IA (fonte da verdade sobre o imóvel e o que já foi confirmado).
+  const origem = (cf.origem as { canal?: string; campanha?: string | null } | undefined) ?? { canal: l.source ?? undefined };
+  const confirmadosValidos = Object.fromEntries(
+    Object.entries(confirmados).filter(([k, v]) => Object.hasOwn(CAMPOS, k) && typeof v === "string" && v),
+  ) as Partial<Record<CampoCopiloto, string>>;
+  const contexto: ContextoLeitura = {
+    hoje: new Intl.DateTimeFormat("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      weekday: "long",
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(new Date()),
+    etapa: l.crm_stages?.name,
+    origem: [ROTULO_ORIGEM[origem.canal ?? ""] ?? origem.canal, origem.campanha].filter(Boolean).join(", campanha ") || undefined,
+    confirmados: confirmadosValidos,
+    imovel,
+  };
 
   let leitura: Leitura | null = null;
   const modelo = resolveLanguageModel(MODELO_COPILOTO);
   if (modelo) {
     try {
-      leitura = await analisarComIA(mensagens, modelo, (args) =>
-        generateText({ model: args.model as never, system: args.system, prompt: args.prompt }),
+      leitura = await analisarComIA(
+        mensagens,
+        modelo,
+        (args) => generateText({ model: args.model as never, system: args.system, prompt: args.prompt }),
+        contexto,
       );
     } catch (e) {
       logger.warn("copiloto: IA falhou, seguindo pelas regras", { leadId, erro: String(e) });
@@ -117,6 +165,10 @@ export async function analisarLead(supabase: SupabaseClient, orgId: string, lead
           temperatura: leitura.temperatura,
           motor: leitura.motor,
           analisado_em: new Date().toISOString(),
+          // Rascunho vale só para a última mensagem do lead que ele respondeu.
+          mensagem: leitura.mensagem || undefined,
+          respondendo_a: [...mensagens].reverse().find((m) => m.direction === "inbound")?.sent_at,
+          objecoes: leitura.objecoes?.length ? leitura.objecoes : undefined,
         },
       },
     })
