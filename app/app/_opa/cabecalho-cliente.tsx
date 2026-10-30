@@ -12,13 +12,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { MagnifyingGlass, Plus, UsersFour } from "@/lib/ui/icons";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { CaretDown, Check, MagnifyingGlass, Plus, UsersFour } from "@/lib/ui/icons";
 
 import { criarLeadManual, verificarTelefone, type NumeroExistente } from "./actions";
+import { Avatar, iniciaisDe } from "./ui";
 
 export interface PessoaSimples {
   id: string;
   nome: string;
+  /** Foto do perfil (vem do site da OPA); sem foto, as iniciais. */
+  foto?: string | null;
 }
 
 export interface ImovelSimples {
@@ -26,34 +36,61 @@ export interface ImovelSimples {
   titulo: string;
 }
 
-/** "Equipe toda / corretor": gestor vê a operação de uma pessoa (?corretor=id). */
+/**
+ * "Equipe toda / corretor": gestor vê a operação de uma pessoa (?corretor=id).
+ * Cada corretor aparece com a foto redonda e o nome; "Equipe toda" mostra as
+ * três primeiras fotos sobrepostas.
+ */
 export function FiltroEquipe({ pessoas }: { pessoas: PessoaSimples[] }) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
   const atual = params.get("corretor") ?? "";
+  const escolhida = pessoas.find((p) => p.id === atual);
+
+  function ir(id: string) {
+    const p = new URLSearchParams(params.toString());
+    if (id) p.set("corretor", id);
+    else p.delete("corretor");
+    router.push(`${pathname}${p.size ? `?${p}` : ""}`);
+  }
+
   return (
-    <label className="relative flex h-11 items-center gap-2 rounded-full bg-white pl-4 pr-3 text-[14px] text-[#0a2d40] shadow-[0_1px_2px_rgba(9,44,62,0.04)]">
-      <UsersFour className="size-4 shrink-0 text-[#2a7ca8]" aria-hidden />
-      <select
+    <DropdownMenu>
+      <DropdownMenuTrigger
         aria-label="Ver a operação de"
-        value={atual}
-        onChange={(e) => {
-          const p = new URLSearchParams(params.toString());
-          if (e.target.value) p.set("corretor", e.target.value);
-          else p.delete("corretor");
-          router.push(`${pathname}${p.size ? `?${p}` : ""}`);
-        }}
-        className="h-full bg-transparent pr-1 font-medium outline-none"
+        className="flex h-11 items-center gap-2 rounded-full bg-white pl-1.5 pr-3 text-[14px] font-medium text-[#0a2d40] shadow-[0_1px_2px_rgba(9,44,62,0.04)] outline-none focus-visible:ring-2 focus-visible:ring-[#8fc4dd]"
       >
-        <option value="">Equipe toda</option>
+        {escolhida ? (
+          <Avatar texto={iniciaisDe(escolhida.nome)} foto={escolhida.foto} tom="acao" className="size-8 text-[11px]" />
+        ) : (
+          <span className="flex size-8 items-center justify-center rounded-full bg-[#e7f0f5]">
+            <UsersFour className="size-4 text-[#2a7ca8]" aria-hidden />
+          </span>
+        )}
+        <span className="max-w-[160px] truncate">{escolhida ? escolhida.nome : "Equipe toda"}</span>
+        <CaretDown className="size-3.5 shrink-0 text-[#5b7284]" aria-hidden />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" sideOffset={8} className="w-64 rounded-[22px] border-0 bg-white p-2 shadow-[0_12px_40px_rgba(9,44,62,0.14)]">
+        <DropdownMenuItem onSelect={() => ir("")} className="gap-3 rounded-2xl px-2.5 py-2 text-[14px] text-[#0a2d40] focus:bg-[#f2f6f9]">
+          <span className="flex -space-x-2">
+            {pessoas.slice(0, 3).map((p) => (
+              <Avatar key={p.id} texto={iniciaisDe(p.nome)} foto={p.foto} className="size-7 text-[10px] ring-2 ring-white" />
+            ))}
+          </span>
+          <span className="flex-1 font-medium">Equipe toda</span>
+          {!escolhida && <Check className="size-4 text-[#2a7ca8]" aria-hidden />}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator className="mx-2 my-1 bg-[#e7f0f5]" />
         {pessoas.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.nome}
-          </option>
+          <DropdownMenuItem key={p.id} onSelect={() => ir(p.id)} className="gap-3 rounded-2xl px-2.5 py-2 text-[14px] text-[#0a2d40] focus:bg-[#f2f6f9]">
+            <Avatar texto={iniciaisDe(p.nome)} foto={p.foto} className="size-8 text-[11px]" />
+            <span className="min-w-0 flex-1 truncate">{p.nome}</span>
+            {p.id === atual && <Check className="size-4 text-[#2a7ca8]" aria-hidden />}
+          </DropdownMenuItem>
         ))}
-      </select>
-    </label>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

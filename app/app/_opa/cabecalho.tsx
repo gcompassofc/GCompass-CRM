@@ -50,7 +50,7 @@ export async function CabecalhoOpa({
   const lista = [...pessoas.values()]
     .filter((p) => p.papel !== "viewer")
     .sort((a, b) => a.nome.localeCompare(b.nome))
-    .map((p) => ({ id: p.id, nome: p.nome }));
+    .map((p) => ({ id: p.id, nome: p.nome, foto: p.foto }));
   const ativos = imoveis.filter((i) => i.status !== "vendido");
   const acervo = ativos.map((i) => ({ codigo: i.codigo, titulo: i.titulo }));
   const paraVisita = ativos.map((i) => ({ codigo: i.codigo, titulo: i.titulo, bairro: i.bairro }));

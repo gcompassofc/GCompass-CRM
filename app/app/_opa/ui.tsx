@@ -302,7 +302,33 @@ export function Vazio({ ilustracao, titulo, texto }: { ilustracao?: ReactNode; t
 }
 
 /** Iniciais da pessoa num círculo (padrão aprovado no Meu corretor). */
-export function Avatar({ texto, tom = "claro", className }: { texto: string; tom?: "claro" | "escuro" | "acao"; className?: string }) {
+/**
+ * Círculo da pessoa: a foto (do site da OPA, via perfil do usuário) ou as
+ * iniciais quando não há foto.
+ */
+export function Avatar({
+  texto,
+  foto,
+  tom = "claro",
+  className,
+}: {
+  texto: string;
+  foto?: string | null;
+  tom?: "claro" | "escuro" | "acao";
+  className?: string;
+}) {
+  if (foto) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element -- foto pequena de origem externa já otimizada (webp do site)
+      <img
+        src={foto}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        className={cn("inline-block size-9 shrink-0 rounded-full bg-[#e7f0f5] object-cover", className)}
+      />
+    );
+  }
   return (
     <span
       className={cn(

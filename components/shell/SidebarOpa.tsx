@@ -15,9 +15,9 @@ import { cn } from "@/lib/utils";
  * o ativo vira pílula petróleo. A Fila mostra quantos esperam resposta.
  */
 const PAPEL: Record<string, string> = {
-  admin: "Administrador total",
+  admin: "Administrador",
   manager: "Gerente",
-  agent: "Atendente",
+  agent: "Corretor",
   viewer: "Leitura",
 };
 
@@ -85,9 +85,14 @@ export function SidebarOpa({ filaCount = 0, onNavClick }: { filaCount?: number; 
         </nav>
 
         <div className="m-3 flex items-center gap-3 rounded-[22px] bg-[#f2f6f9] p-2.5">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#0a2d40] text-[13px] font-semibold text-white">
-            {iniciais(nome)}
-          </span>
+          {user.avatar_url ? (
+            // eslint-disable-next-line @next/next/no-img-element -- foto pequena do site da OPA
+            <img src={user.avatar_url} alt="" className="size-10 shrink-0 rounded-full bg-[#e7f0f5] object-cover" />
+          ) : (
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-[#0a2d40] text-[13px] font-semibold text-white">
+              {iniciais(nome)}
+            </span>
+          )}
           <Link href="/app/settings/profile" onClick={onNavClick} className="min-w-0 flex-1">
             <p className="truncate text-[14px] font-semibold text-[#0a2d40]">{nome}</p>
             <p className="truncate text-[12px] text-[#5b7284]">{PAPEL[activeOrg?.role ?? ""] ?? ""}</p>

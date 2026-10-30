@@ -234,7 +234,7 @@ export default async function LeadsPage({
                     </div>
 
                     <span title={dono?.nome ?? "Sem corretor"} className="hidden shrink-0 sm:block">
-                      <Avatar texto={dono?.iniciais ?? "?"} tom="acao" className="size-8 text-[11px]" />
+                      <Avatar texto={dono?.iniciais ?? "?"} foto={dono?.foto} tom="acao" className="size-8 text-[11px]" />
                     </span>
 
                     <span className="hidden w-20 shrink-0 text-right text-[12px] tabular-nums text-[#8aa3b3] xl:block">

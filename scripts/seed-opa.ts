@@ -20,6 +20,7 @@ import { PADRAO } from "../lib/opa/config";
 import { analisarPorRegras, type MensagemLida } from "../lib/opa/copiloto";
 import { registrarEntrada } from "../lib/opa/entrada";
 import { FUNIS, TRAVADAS, linhaDeImovel, type ImovelJson } from "../lib/opa/estrutura";
+import { fotoDaPessoa, fotosDoSite } from "../lib/opa/fotos-equipe";
 
 const envFile = fs.readFileSync(path.join(process.cwd(), ".env.local"), "utf8");
 const env: Record<string, string> = {};
@@ -267,7 +268,9 @@ async function main() {
   await q(admin.from("crm_stages").delete().eq("organization_id", orgId), "limpar etapas padrão");
   await q(admin.from("crm_pipelines").delete().eq("organization_id", orgId), "limpar funil padrão");
 
-  // Equipe
+  // Equipe, com a foto do site da OPA (dados/corretores.json) quando houver.
+  const corretoresJson = path.join(path.dirname(IMOVEIS_JSON), "corretores.json");
+  const fotos = fs.existsSync(corretoresJson) ? fotosDoSite(JSON.parse(fs.readFileSync(corretoresJson, "utf8"))) : [];
   const { data: lista } = await admin.auth.admin.listUsers({ perPage: 1000 });
   const usuarios: Record<string, string> = {};
   for (const p of EQUIPE) {
@@ -277,12 +280,15 @@ async function main() {
         email: p.email,
         password: SENHA,
         email_confirm: true,
-        user_metadata: { full_name: p.nome },
+        user_metadata: { full_name: p.nome, avatar_url: fotoDaPessoa(fotos, { nome: p.nome }) },
       });
       if (r.error) throw r.error;
       u = r.data.user!;
     } else {
-      await admin.auth.admin.updateUserById(u.id, { password: SENHA, user_metadata: { full_name: p.nome } });
+      await admin.auth.admin.updateUserById(u.id, {
+        password: SENHA,
+        user_metadata: { full_name: p.nome, avatar_url: fotoDaPessoa(fotos, { nome: p.nome }) },
+      });
     }
     usuarios[p.chave] = u.id;
     await q(

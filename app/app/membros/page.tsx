@@ -11,9 +11,9 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Membros" };
 
 const PAPEL: Record<string, string> = {
-  admin: "Administrador total",
+  admin: "Administrador",
   manager: "Gerente",
-  agent: "Atendente",
+  agent: "Corretor",
   viewer: "Leitura",
 };
 
@@ -21,7 +21,7 @@ const ORDEM: Record<string, number> = { admin: 0, manager: 1, agent: 2, viewer: 
 
 /** Matriz do protótipo do CRM da OPA (29/10/2026): o que cada papel pode fazer. */
 const MATRIZ: Array<[string, string, string, string]> = [
-  ["Ver o panorama completo: todos os corretores, receita, comissão e Meta", "sim", "nao", "nao"],
+  ["Ver o panorama completo: todos os corretores, receita, comissão e Meta", "sim", "sim", "nao"],
   ["Ver a fila e o pipeline da equipe", "sim", "sim", "só os seus"],
   ["Criar lead", "sim", "sim", "sim"],
   ["Mover card e preencher campos", "sim", "sim", "só os seus"],
@@ -32,11 +32,11 @@ const MATRIZ: Array<[string, string, string, string]> = [
   ["Criar pipeline, etapas e campos obrigatórios", "sim", "sim", "nao"],
   ["Editar regras de lembrete e cadência", "sim", "sim", "nao"],
   ["Conectar WhatsApp", "sim", "nao", "só o seu"],
-  ["Convidar membros", "sim", "só atendentes", "nao"],
+  ["Convidar membros", "sim", "só corretores", "nao"],
   ["Excluir lead (o pedido vem do corretor)", "sim", "nao", "nao"],
   ["Repassar oportunidade de captação", "sim", "sim", "devolve as suas"],
   ["Exportar leads", "sim", "nao", "nao"],
-  ["Integrações, Meta, tokens de API, webhooks e MCP", "sim", "nao", "nao"],
+  ["Integrações, Meta, tokens de API, webhooks e MCP", "sim", "sim", "nao"],
 ];
 
 function Celula({ v }: { v: string }) {
@@ -64,6 +64,7 @@ interface Membro {
   papel: string;
   acesso: string;
   whatsapp: "conectado" | "desconectado" | "sem";
+  foto: string | null;
 }
 
 async function carregarMembros(orgId: string): Promise<Membro[]> {
@@ -90,6 +91,7 @@ async function carregarMembros(orgId: string): Promise<Membro[]> {
         papel: m.role,
         acesso: ultimoAcesso(u?.last_sign_in_at),
         whatsapp: sessao ? (sessao.status === "WORKING" ? "conectado" : "desconectado") : "sem",
+        foto: (u?.user_metadata?.avatar_url as string | undefined) || null,
       } as Membro;
     })
     .sort((a, b) => (ORDEM[a.papel] ?? 9) - (ORDEM[b.papel] ?? 9) || a.nome.localeCompare(b.nome));
@@ -124,7 +126,7 @@ export default async function MembrosPage() {
           <ul className="mt-5 flex flex-col gap-2">
             {membros.map((m) => (
               <li key={m.id} className="flex flex-wrap items-center gap-3 rounded-[22px] bg-[#f2f6f9] px-4 py-3">
-                <Avatar texto={iniciaisDe(m.nome)} tom={m.papel === "admin" ? "escuro" : m.papel === "manager" ? "acao" : "claro"} />
+                <Avatar texto={iniciaisDe(m.nome)} foto={m.foto} tom={m.papel === "admin" ? "escuro" : m.papel === "manager" ? "acao" : "claro"} />
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-[15px] font-semibold text-[#0a2d40]">{m.nome}</p>
                   <p className="truncate text-[13px] text-[#5b7284]">{m.email}</p>

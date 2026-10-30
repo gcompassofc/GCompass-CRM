@@ -196,7 +196,7 @@ function OrdemCorretores({
         return (
           <li key={id} className={cn(linhaLista, pausado && "opacity-60")}>
             <span className="w-4 text-center text-[13px] font-semibold tabular-nums text-[#5b7284]">{i + 1}</span>
-            <Avatar texto={iniciaisDe(p?.nome ?? "?")} tom={id === proximo && qual === "leads" ? "escuro" : "claro"} />
+            <Avatar texto={iniciaisDe(p?.nome ?? "?")} foto={p?.foto} tom={id === proximo && qual === "leads" ? "escuro" : "claro"} />
             <div className="min-w-0 flex-1">
               <p className="truncate text-[15px] font-semibold text-[#0a2d40]">{p?.nome ?? "Pessoa removida"}</p>
               {qual === "leads" && (

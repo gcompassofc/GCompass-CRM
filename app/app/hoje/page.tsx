@@ -398,7 +398,7 @@ async function VisaoGestor({
           <ul className="mt-5 flex flex-col gap-4">
             {porCorretor.map((c) => (
               <li key={c.pessoa.id} className="flex items-center gap-3">
-                <Avatar texto={c.pessoa.iniciais} tom={c.atrasados ? "escuro" : "claro"} />
+                <Avatar texto={c.pessoa.iniciais} foto={c.pessoa.foto} tom={c.atrasados ? "escuro" : "claro"} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
                     <p className="truncate text-[15px] font-semibold text-[#0a2d40]">{c.pessoa.nome}</p>

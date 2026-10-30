@@ -12,9 +12,11 @@
  *     --env .env.producao \
  *     --confirmar <ref-do-projeto>.supabase.co \
  *     [--imoveis "D:/1. OPA/1. SITE/dados/imoveis.json"] \
+ *     [--fotos "D:/1. OPA/1. SITE/dados/corretores.json"] \
  *     [--admin allyson@...]
  *
  * --confirmar repete o host do Supabase do arquivo: trava contra rodar no banco errado.
+ * --fotos põe a foto do site em quem da equipe ainda não tem (casa por e-mail ou nome).
  * --admin imprime o link de convite (24 h) para essa pessoa criar a senha.
  */
 import { createClient } from "@supabase/supabase-js";
@@ -32,6 +34,7 @@ import {
   type ImovelJson,
 } from "../../lib/opa/estrutura";
 import { PADRAO } from "../../lib/opa/config";
+import { fotoDaPessoa, fotosDoSite } from "../../lib/opa/fotos-equipe";
 
 function arg(nome: string): string | undefined {
   const i = process.argv.indexOf(`--${nome}`);
@@ -215,6 +218,32 @@ async function main() {
       await q(admin.from("imoveis").upsert(linhas.slice(i, i + 200), { onConflict: "organization_id,codigo" }), "imóveis");
     }
     console.info(`Imóveis: ${linhas.length} gravados ou atualizados.`);
+  }
+
+  // Fotos da equipe, do site da OPA (só para quem ainda não tem foto).
+  const arquivoFotos = arg("fotos");
+  if (arquivoFotos) {
+    const siteJson = path.join(path.dirname(arquivoFotos), "site.json");
+    const urlBase = fs.existsSync(siteJson)
+      ? ((JSON.parse(fs.readFileSync(siteJson, "utf8")) as { urlBase?: string }).urlBase ?? "https://opailhabela.com.br")
+      : "https://opailhabela.com.br";
+    const fotos = fotosDoSite(JSON.parse(fs.readFileSync(arquivoFotos, "utf8")), urlBase);
+    const membros = (await q(
+      admin.from("user_organizations").select("user_id").eq("organization_id", orgId).is("revoked_at", null),
+      "membros",
+    )) as Array<{ user_id: string }>;
+    const { data: lista } = await admin.auth.admin.listUsers({ perPage: 1000 });
+    let postas = 0;
+    for (const m of membros) {
+      const u = lista?.users.find((x) => x.id === m.user_id);
+      if (!u || u.user_metadata?.avatar_url) continue;
+      const foto = fotoDaPessoa(fotos, { email: u.email, nome: u.user_metadata?.full_name as string | undefined });
+      if (!foto) continue;
+      const { error } = await admin.auth.admin.updateUserById(u.id, { user_metadata: { ...u.user_metadata, avatar_url: foto } });
+      if (error) throw new Error(`foto de ${u.email}: ${error.message}`);
+      postas++;
+    }
+    console.info(`Fotos da equipe: ${postas} colocadas (${fotos.length} no site).`);
   }
 
   // Convite do primeiro administrador

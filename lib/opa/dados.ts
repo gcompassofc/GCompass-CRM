@@ -305,6 +305,8 @@ export interface Pessoa {
   nome: string;
   papel: string;
   iniciais: string;
+  /** Foto do perfil (user_metadata.avatar_url), preenchida a partir do site da OPA. */
+  foto: string | null;
 }
 
 /** Nomes da equipe. Lê auth.users pelo cliente admin (uma chamada só), filtrado pelos membros da org. */
@@ -321,7 +323,8 @@ export const carregarEquipe = cache(async (orgId: string): Promise<Map<string, P
     const nome = (u?.user_metadata?.full_name as string | undefined) ?? u?.email?.split("@")[0] ?? "Pessoa";
     const partes = nome.split(" ").filter(Boolean);
     const iniciais = ((partes[0]?.[0] ?? "") + (partes.length > 1 ? partes.at(-1)![0] : "")).toUpperCase();
-    mapa.set(m.user_id, { id: m.user_id, nome, papel: m.role, iniciais });
+    const foto = (u?.user_metadata?.avatar_url as string | undefined) || null;
+    mapa.set(m.user_id, { id: m.user_id, nome, papel: m.role, iniciais, foto });
   }
   return mapa;
 });
