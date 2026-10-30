@@ -16,6 +16,8 @@ import {
 } from "@/components/app/ImpersonateBanner";
 
 import { env } from "@/lib/env";
+import { perfilAtivo } from "@/lib/navigation/registry";
+import { carregarLeads } from "@/lib/opa/dados";
 import { IS_DEMO_MODE } from "@/lib/demo-mode";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -72,7 +74,18 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   const enrolled = await isMfaEnrolled();
   const needsMfaGate = requiresMfa(activeOrg?.role, user.is_platform_admin);
-  const shell = <AppShell sidebarCollapsed={collapsed}>{children}</AppShell>;
+  // Perfil imobiliária: quantos leads deste usuário esperam resposta (o RLS
+  // já recorta: corretor vê os dele, gerente a equipe).
+  let filaCount = 0;
+  if (perfilAtivo() === "imobiliaria" && activeOrg && !IS_DEMO_MODE) {
+    const leads = await carregarLeads(activeOrg.orgId).catch(() => []);
+    filaCount = leads.filter((l) => l.conversa?.esperandoMin != null).length;
+  }
+  const shell = (
+    <AppShell sidebarCollapsed={collapsed} filaCount={filaCount}>
+      {children}
+    </AppShell>
+  );
 
   return (
     <AuthProvider user={user} activeOrg={activeOrg}>

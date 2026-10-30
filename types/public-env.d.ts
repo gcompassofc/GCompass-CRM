@@ -13,6 +13,8 @@ interface PublicEnv {
   /** Marca da instalação (white-label). Ver `lib/branding.ts`. */
   APP_NAME?: string;
   APP_LOGO_URL?: string;
+  /** Perfil da instalação ("imobiliaria"). Ver `lib/navigation/registry.ts`. */
+  APP_PROFILE?: string;
 }
 
 interface Window {

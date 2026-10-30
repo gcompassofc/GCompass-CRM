@@ -29,6 +29,8 @@ const config: VercelConfig = {
     { path: "/api/v1/cron/routing-worker", schedule: "*/1 * * * *" },
     // Webhooks/automação: drain genérico do event_log (spec 2026-07-17).
     { path: "/api/v1/cron/event-log-drain", schedule: "*/1 * * * *" },
+    // CRM da OPA: copiloto relê as conversas com mensagem nova (lib/opa/analisar.ts).
+    { path: "/api/v1/cron/opa-copiloto", schedule: "*/1 * * * *" },
   ],
   functions: {
     // EPIC-13 S-13.08: ToolLoopAgent runtime can issue multiple tool calls per

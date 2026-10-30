@@ -1,17 +1,25 @@
 import type { Metadata, Viewport } from "next";
-import { Atkinson_Hyperlegible, IBM_Plex_Mono } from "next/font/google";
+import { Atkinson_Hyperlegible, IBM_Plex_Mono, Inter } from "next/font/google";
 import { Toaster } from "sonner";
 import { branding } from "@/lib/branding";
 import { ThemeProvider } from "@/lib/theme";
 import { Providers } from "./providers";
 import { PublicEnvScript } from "./public-env-script";
 import "./globals.css";
+import "./marca-opa.css";
 
 const atkinson = Atkinson_Hyperlegible({
   subsets: ["latin", "latin-ext"],
   weight: ["400", "700"],
   display: "swap",
   variable: "--font-atkinson",
+});
+
+const inter = Inter({
+  subsets: ["latin", "latin-ext"],
+  weight: ["300", "400", "500", "600"],
+  display: "swap",
+  variable: "--font-inter",
 });
 
 const plexMono = IBM_Plex_Mono({
@@ -73,22 +81,30 @@ export const viewport: Viewport = {
 // portanto seguro. Lê localStorage + prefers-color-scheme antes do primeiro paint.
 // Inline FOUC-prevention. Conteúdo é string literal estática (zero input do usuário),
 // portanto seguro. Lê localStorage + prefers-color-scheme antes do primeiro paint.
-const THEME_INIT_SCRIPT = `(function(){try{var s=localStorage.getItem('deskcomm-theme');var r=(s==='dark'||s==='light')?s:'dark';document.documentElement.setAttribute('data-theme',r);}catch(e){document.documentElement.setAttribute('data-theme','dark');}})();`;
+// O tema padrão (sem escolha salva) vem de APP_THEME_DEFAULT, lido em runtime
+// como a marca: a instalação da OPA nasce clara, a padrão nasce escura.
+function themeInitScript(padrao: "light" | "dark"): string {
+  return `(function(){try{var s=localStorage.getItem('deskcomm-theme');var r=(s==='dark'||s==='light')?s:'${padrao}';document.documentElement.setAttribute('data-theme',r);}catch(e){document.documentElement.setAttribute('data-theme','${padrao}');}})();`;
+}
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const temaPadrao = process.env.APP_THEME_DEFAULT === "light" ? "light" : "dark";
+  const marca = process.env.APP_PALETTE?.trim() || undefined;
   return (
     <html
       lang="pt-BR"
-      data-theme="dark"
+      data-theme={temaPadrao}
+      data-tema-padrao={temaPadrao}
+      data-marca={marca}
       suppressHydrationWarning
-      className={`${atkinson.variable} ${plexMono.variable}`}
+      className={`${atkinson.variable} ${plexMono.variable} ${inter.variable}`}
     >
       <head>
         {/* Config pública do Supabase em runtime (imagem genérica self-host). */}
         <PublicEnvScript />
-        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript(temaPadrao) }} />
       </head>
       <body className="min-h-screen bg-bg font-sans text-text antialiased">
         <Providers>

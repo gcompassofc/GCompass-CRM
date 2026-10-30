@@ -172,6 +172,12 @@ const schema = z.object({
   // O <PublicEnvScript/> injeta os valores em runtime.
   APP_NAME: z.string().optional().default(""),
   APP_LOGO_URL: z.string().optional().default(""),
+  // Perfil da instalação: "imobiliaria" liga as telas do CRM da OPA (Hoje,
+  // Imóveis, ficha do lead com copiloto) e tira do menu o que não é do ramo.
+  APP_PROFILE: z.string().optional().default(""),
+  // Paleta da marca ("opa") e tema de quem ainda não escolheu (light | dark).
+  APP_PALETTE: z.string().optional().default(""),
+  APP_THEME_DEFAULT: z.string().optional().default(""),
 });
 
 let parsed = schema.safeParse(process.env);

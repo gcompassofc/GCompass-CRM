@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { DragDropContext, type DropResult } from "@hello-pangea/dnd";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -9,6 +10,7 @@ import { useAssignableMembers } from "@/hooks/inbox/useAssignableMembers";
 import { useAtRiskLeads } from "@/hooks/leads/useAtRiskLeads";
 import { useReactivations } from "@/hooks/leads/useReactivations";
 import { midpoint } from "@/lib/kanban/fractional-indexing";
+import { perfilAtivo } from "@/lib/navigation/registry";
 import type { Lead } from "@/lib/types/leads";
 import type { Pipeline, Stage } from "@/lib/kanban/types";
 import { StageColumn } from "./StageColumn";
@@ -114,6 +116,15 @@ export function KanbanBoard({
   // O dossiê é do BOARD e não da página: ele precisa do lead inteiro e do nome
   // do estágio, que só existem aqui depois do agrupamento.
   const [dossieId, setDossieId] = useState<string | null>(null);
+  const router = useRouter();
+  // Na imobiliária o card abre a ficha do lead com o copiloto; no padrão, o dossiê lateral.
+  const abrirLead = useCallback(
+    (id: string) => {
+      if (perfilAtivo() === "imobiliaria") router.push(`/app/leads/${id}`);
+      else setDossieId(id);
+    },
+    [router],
+  );
   const [internalSelected, setInternalSelected] = useState<Set<string>>(new Set());
   const selectedLeadIds = useMemo(
     () => (selectedIds ? new Set(selectedIds) : internalSelected),
@@ -246,7 +257,7 @@ export function KanbanBoard({
             canonicalTags={canonicalTags}
             selectedLeadIds={selectedLeadIds}
             onSelect={handleSelect}
-            onOpen={setDossieId}
+            onOpen={abrirLead}
           />
         ))}
       </div>

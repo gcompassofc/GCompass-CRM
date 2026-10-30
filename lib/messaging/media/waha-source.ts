@@ -25,8 +25,14 @@ export async function fetchWahaMedia(
   let url: URL;
   try {
     const advertised = new URL(mediaUrl);
-    // Host/porta descartados: só path+query sobrevivem, resolvidos na base.
-    url = new URL(advertised.pathname + advertised.search, base ?? "");
+    const origem = new URL(base ?? "");
+    // Host/porta descartados: só path+query sobrevivem, colados na origem da
+    // base. Não usar new URL(path, base): um path "//atacante/x" é relativo ao
+    // protocolo e troca o host (a chave da WAHA ia junto; auditoria 30/10/2026).
+    url = new URL(`${origem.origin}/${advertised.pathname.replace(/^\/+/, "")}${advertised.search}`);
+    if (url.origin !== origem.origin || !url.pathname.startsWith("/api/files/")) {
+      throw new Error("fora da WAHA");
+    }
   } catch {
     throw new Error("waha_media_untrusted_host");
   }

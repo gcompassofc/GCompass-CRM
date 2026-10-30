@@ -1,6 +1,8 @@
 "use client";
 import { useState, type ReactNode } from "react";
 import { Sidebar } from "@/components/shell/Sidebar";
+import { SidebarOpa } from "@/components/shell/SidebarOpa";
+import { perfilAtivo } from "@/lib/navigation/registry";
 import { TopBar } from "@/components/shell/TopBar";
 import { MobileNav } from "@/components/shell/MobileNav";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -9,19 +11,27 @@ import { cn } from "@/lib/utils";
 
 interface AppShellProps {
   sidebarCollapsed: boolean;
+  /** Perfil imobiliária: leads esperando resposta, o número ao lado de "Fila de atendimento". */
+  filaCount?: number;
   children: ReactNode;
 }
 
-export function AppShell({ sidebarCollapsed, children }: AppShellProps) {
+export function AppShell({ sidebarCollapsed, filaCount, children }: AppShellProps) {
   return (
     <ImmersiveViewProvider>
-      <AppShellInterno sidebarCollapsed={sidebarCollapsed}>{children}</AppShellInterno>
+      <AppShellInterno sidebarCollapsed={sidebarCollapsed} filaCount={filaCount}>
+        {children}
+      </AppShellInterno>
     </ImmersiveViewProvider>
   );
 }
 
-function AppShellInterno({ sidebarCollapsed, children }: AppShellProps) {
+function AppShellInterno({ sidebarCollapsed, filaCount, children }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  // Imobiliária: menu escuro do protótipo da OPA, sempre aberto, e cada tela
+  // traz o próprio cabeçalho (sem a barra de cima no computador).
+  const imobiliaria = perfilAtivo() === "imobiliaria";
+  const recolhido = imobiliaria ? false : sidebarCollapsed;
 
   /**
    * Na conversa aberta, o rodapé é do composer.
@@ -37,14 +47,18 @@ function AppShellInterno({ sidebarCollapsed, children }: AppShellProps) {
     <div className="mobile-shell flex min-h-screen w-full bg-background md:bg-background">
       {/* Desktop Sidebar */}
       <div className="hidden md:block">
-        <Sidebar collapsed={sidebarCollapsed} />
+        {imobiliaria ? <SidebarOpa filaCount={filaCount} /> : <Sidebar collapsed={sidebarCollapsed} />}
       </div>
 
       {/* Mobile Drawer */}
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
         <SheetContent side="left" className="w-[260px] p-0 border-r">
           <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
-          <Sidebar collapsed={false} onNavClick={() => setMobileNavOpen(false)} />
+          {imobiliaria ? (
+            <SidebarOpa filaCount={filaCount} onNavClick={() => setMobileNavOpen(false)} />
+          ) : (
+            <Sidebar collapsed={false} onNavClick={() => setMobileNavOpen(false)} />
+          )}
         </SheetContent>
       </Sheet>
 
@@ -64,17 +78,20 @@ function AppShellInterno({ sidebarCollapsed, children }: AppShellProps) {
       <div
         className={cn(
           "flex min-h-screen min-w-0 flex-1 flex-col overflow-x-hidden transition-[margin] duration-200 ml-0",
-          sidebarCollapsed ? "md:ml-16" : "md:ml-60",
+          imobiliaria ? "md:ml-[272px]" : recolhido ? "md:ml-16" : "md:ml-60",
         )}
       >
-        <TopBar onOpenMobileNav={() => setMobileNavOpen(true)} />
+        <div className={cn(imobiliaria && "md:hidden")}>
+          <TopBar onOpenMobileNav={() => setMobileNavOpen(true)} />
+        </div>
         {/* A folga no rodapé é do tamanho da barra flutuante, e vale para TODA
             tela — a última linha de qualquer lista nascia por baixo do vidro.
             Some junto com a barra na conversa aberta, onde quem ocupa o rodapé
             é o composer e a folga viraria um vão morto acima do teclado. */}
         <main
           className={cn(
-            "flex-1 overflow-auto p-0 md:p-6",
+            "flex-1 overflow-auto p-0",
+            !imobiliaria && "md:p-6",
             !emConversa && "max-md:pb-[var(--m-nav-clearance)]",
           )}
         >

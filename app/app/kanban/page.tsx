@@ -6,6 +6,7 @@ import { ROLE_RANK } from "@/lib/auth/types";
 import { createClient } from "@/lib/supabase/server";
 import { IS_DEMO_MODE } from "@/lib/demo-mode";
 import { MOCK_DEV_PIPELINES } from "@/lib/mock-dev-data";
+import { perfilAtivo } from "@/lib/navigation/registry";
 import { FunisClient, type FunilDaLista } from "./_client";
 
 export const dynamic = "force-dynamic";
@@ -29,7 +30,11 @@ export const dynamic = "force-dynamic";
  * atalho de platform admin, que as rotas não concedem por padrão): mostrar um
  * botão que o servidor recusaria seria prometer o que não se cumpre.
  */
-export default async function KanbanPickerPage() {
+export default async function KanbanPickerPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ lista?: string }>;
+}) {
   const user = await requireAuth();
   const activeOrg = await resolveActiveOrg(user);
   if (!activeOrg) redirect("/app");
@@ -52,6 +57,12 @@ export default async function KanbanPickerPage() {
     funis = (data ?? []) as FunilDaLista[];
   }
   const podeGerenciar = ROLE_RANK[activeOrg.role] >= ROLE_RANK.manager;
+
+  // Na imobiliária o corretor quer o quadro, não a lista: abre direto no funil
+  // padrão (Compradores). A lista continua em /app/kanban?lista=1.
+  const { lista } = await searchParams;
+  const padrao = funis.find((f) => f.is_default) ?? funis[0];
+  if (perfilAtivo() === "imobiliaria" && !lista && padrao) redirect("/app/pipeline");
 
   return (
     <div className="flex h-full flex-col gap-4 p-6">

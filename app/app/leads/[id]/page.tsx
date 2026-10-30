@@ -1,0 +1,1136 @@
+import Link from "next/link";
+import { notFound, redirect } from "next/navigation";
+
+import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
+import { analisarLead } from "@/lib/opa/analisar";
+import { carregarConfig } from "@/lib/opa/config";
+import { CAMPOS, ORDEM_CAMPOS } from "@/lib/opa/copiloto";
+import {
+  CAMPOS_DIAGNOSTICO,
+  carregarEquipe,
+  carregarImoveis,
+  carregarLeads,
+  carregarLeadsSemCache,
+  diagnosticoCompleto,
+  primeiroNome,
+  ROTULO_ORIGEM,
+  tempoCurto,
+  voltaRecente,
+} from "@/lib/opa/dados";
+import { contarEtiquetas, etiquetasDoLead } from "@/lib/opa/etiquetas";
+import { afinidade, precoCheio, precoPrincipal } from "@/lib/opa/imoveis";
+import { proximaMensagem } from "@/lib/opa/mensagens";
+import { createClient } from "@/lib/supabase/server";
+import {
+  ArrowRight,
+  ArrowsClockwise,
+  Bed,
+  Bell,
+  BellSlash,
+  Buildings,
+  CalendarBlank,
+  ChatText,
+  Check,
+  Clock,
+  ClockCounterClockwise,
+  Coins,
+  Fire,
+  House,
+  HouseLine,
+  IdentificationCard,
+  Infinito,
+  Lightbulb,
+  Lock,
+  MapPin,
+  Notepad,
+  PaperPlaneTilt,
+  Prohibit,
+  SealCheck,
+  Smiley,
+  Snowflake,
+  Sparkle,
+  Tag,
+  Target,
+  Thermometer,
+  Timer,
+  Trophy,
+  UserCircle,
+  UserPlus,
+  UsersThree,
+  Warning,
+  WhatsappLogo,
+  X,
+} from "@/lib/ui/icons";
+import { cn } from "@/lib/utils";
+
+import { CabecalhoOpa, CorpoOpa } from "../../_opa/cabecalho";
+import { FotoImovel } from "../../_opa/componentes";
+import { IlustraAgenda, IlustraCasa, IlustraConversa } from "../../_opa/ilustracoes";
+import { AbasPilula, Cartao, Chip, IconeRedondo, TituloBloco, Vazio, type Icone } from "../../_opa/ui";
+import {
+  alternarEtiqueta,
+  alternarLembretes,
+  confirmarSugestao,
+  descartarSugestao,
+  editarCampo,
+  reanalisar,
+  salvarCamposCorretor,
+} from "../actions";
+import {
+  AgendarMensagem,
+  EtapasClicaveis,
+  GanharNegocio,
+  MensagemPronta,
+  PerderNegocio,
+  RegistrarVisita,
+} from "./_componentes";
+
+export const dynamic = "force-dynamic";
+
+interface Sugestao {
+  id: string;
+  campo: keyof typeof CAMPOS;
+  valor: string;
+  evidencia: string | null;
+  origem: string;
+}
+
+interface Msg {
+  id: string;
+  direction: "inbound" | "outbound";
+  body: string | null;
+  sent_at: string;
+  sent_via: string | null;
+}
+
+interface Visita {
+  id: string;
+  imovel_codigo: string | null;
+  status: string;
+  quando: string;
+  quem: string | null;
+  chegada: string | null;
+  interesse: number | null;
+  gostou: string | null;
+  nao_gostou: string | null;
+  objecao: string | null;
+  proximo_passo: string | null;
+  observacoes: string | null;
+}
+
+function hora(iso: string): string {
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/Sao_Paulo",
+  }).format(new Date(iso));
+}
+
+const ABAS: Array<[string, string, Icone]> = [
+  ["resumo", "Resumo", Sparkle],
+  ["etiquetas", "Etiquetas", Tag],
+  ["campos", "Campos", Notepad],
+  ["visitas", "Visitas", CalendarBlank],
+  ["imoveis", "Imóveis", HouseLine],
+  ["historico", "Histórico", ClockCounterClockwise],
+];
+
+/** Ícone de cada campo do diagnóstico e do perfil. */
+const ICONE_CAMPO: Record<keyof typeof CAMPOS, Icone> = {
+  finalidade: House,
+  regiao: MapPin,
+  momento: Clock,
+  inegociavel: SealCheck,
+  faixa: Coins,
+  suites: Bed,
+  estilo_vida: Smiley,
+  quem_decide: UsersThree,
+};
+
+/** Ícone de cada grupo de etiqueta (Configurações > Etiquetas). */
+const ICONE_GRUPO: Record<string, Icone> = {
+  offmarket: Lock,
+  finalidade: House,
+  regiao: MapPin,
+  bairro: MapPin,
+  faixa: Coins,
+  int: Smiley,
+  tipo: Buildings,
+  momento: Clock,
+};
+
+/** Ícone e tom de cada tipo de item do histórico. */
+const ICONE_HISTORICO: Record<string, [Icone, "claro" | "acao" | "escuro" | "ok" | "aviso"]> = {
+  entrada: [UserPlus, "claro"],
+  atividade: [ArrowsClockwise, "claro"],
+  venda: [Trophy, "ok"],
+  meta: [Infinito, "acao"],
+  visita: [CalendarBlank, "claro"],
+  agenda: [Bell, "aviso"],
+  copiloto: [Sparkle, "escuro"],
+};
+
+function ChipTemperatura({ valor }: { valor?: "quente" | "morno" | "frio" }) {
+  if (!valor) return null;
+  if (valor === "quente") return <Chip icone={Fire} tom="alerta">Quente</Chip>;
+  if (valor === "morno") return <Chip icone={Thermometer} tom="aviso">Morno</Chip>;
+  return <Chip icone={Snowflake} tom="claro">Frio</Chip>;
+}
+
+export default async function LeadPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ aba?: string }>;
+}) {
+  const user = await requireAuth();
+  const org = await resolveActiveOrg(user);
+  if (!org) redirect("/app");
+  const { id } = await params;
+  const { aba = "resumo" } = await searchParams;
+  const supabase = await createClient();
+
+  let [lead] = await carregarLeads(org.orgId, { leadId: id });
+  if (!lead) notFound();
+
+  // A IA relê sozinha quando chegou mensagem depois da última leitura.
+  const ultimaMsg = lead.conversa?.ultimaEm ? Date.parse(lead.conversa.ultimaEm) : 0;
+  const lidoEm = lead.copiloto.analisado_em ? Date.parse(lead.copiloto.analisado_em) : 0;
+  if (lead.conversa?.id && ultimaMsg > lidoEm) {
+    await analisarLead(supabase, org.orgId, id);
+    [lead] = await carregarLeadsSemCache(org.orgId, { leadId: id });
+    if (!lead) notFound();
+  }
+
+  const [
+    imoveis,
+    equipe,
+    config,
+    { data: funilRaw },
+    { data: etapasRaw },
+    { data: sugRaw },
+    { data: msgRaw },
+    { data: visitasRaw },
+    { data: atividadesRaw },
+    { data: eventosRaw },
+    { data: agendadosRaw },
+    { data: aceitasRaw },
+  ] = await Promise.all([
+    carregarImoveis(org.orgId),
+    carregarEquipe(org.orgId),
+    carregarConfig(supabase, org.orgId),
+    supabase.from("crm_pipelines").select("name, slug").eq("id", lead.pipelineId).maybeSingle(),
+    supabase
+      .from("crm_stages")
+      .select("id, name, position, is_won, is_lost")
+      .eq("organization_id", org.orgId)
+      .eq("pipeline_id", lead.pipelineId)
+      .order("position"),
+    supabase.from("copiloto_sugestoes").select("id, campo, valor, evidencia, origem").eq("lead_id", id).eq("status", "pendente"),
+    lead.conversa?.id
+      ? supabase
+          .from("messages")
+          .select("id, direction, body, sent_at, sent_via")
+          .eq("conversation_id", lead.conversa.id)
+          .order("sent_at", { ascending: true })
+          .limit(80)
+      : Promise.resolve({ data: [] }),
+    supabase.from("visitas").select("*").eq("lead_id", id).order("quando", { ascending: false }),
+    supabase.from("crm_lead_activities").select("type, payload, performed_at, reason").eq("lead_id", id).order("performed_at", { ascending: false }).limit(30),
+    supabase.from("eventos_meta").select("evento, valor_cents, status, created_at").eq("lead_id", id),
+    supabase.from("lembretes_agendados").select("quando, mensagem, status, created_at").eq("lead_id", id),
+    supabase.from("copiloto_sugestoes").select("campo, valor, decidido_em").eq("lead_id", id).eq("status", "aceita"),
+  ]);
+
+  const funil = (funilRaw as { name: string; slug: string } | null) ?? { name: "Compradores", slug: "compradores" };
+  const compradores = funil.slug === "compradores";
+  // Ganho e perdido não são etapa clicável: viram resultado pelos botões.
+  const etapas = ((etapasRaw ?? []) as Array<{ id: string; name: string; is_won: boolean; is_lost: boolean }>)
+    .filter((e) => !e.is_won && !e.is_lost)
+    .map((e) => ({ id: e.id, nome: e.name }));
+  const sugestoes = ((sugRaw ?? []) as Sugestao[]).sort((a, b) => ORDEM_CAMPOS.indexOf(a.campo) - ORDEM_CAMPOS.indexOf(b.campo));
+  const mensagens = (msgRaw ?? []) as Msg[];
+  const visitas = (visitasRaw ?? []) as Visita[];
+
+  const porCodigo = new Map(imoveis.map((i) => [i.codigo, i]));
+  const entrada = porCodigo.get(lead.imovelCodigo ?? "") ?? null;
+  const interesse = lead.imoveisInteresse.map((c) => porCodigo.get(c)).filter((i): i is NonNullable<typeof i> => Boolean(i));
+  const vendido = lead.venda ? (porCodigo.get(lead.venda.imovel_codigo) ?? null) : null;
+  const voltouRecente = voltaRecente(lead);
+  const imovelDaVolta = voltouRecente?.imovel_codigo ? (porCodigo.get(voltouRecente.imovel_codigo) ?? null) : null;
+  const disponiveis = imoveis.filter((i) => i.status !== "vendido");
+  const opcoesGanho = [
+    ...interesse.map((i) => ({ codigo: i.codigo, titulo: i.titulo, precoCents: i.preco_venda_cents, doNegocio: i.codigo === lead.imovelCodigo })),
+    ...disponiveis
+      .filter((i) => !lead.imoveisInteresse.includes(i.codigo))
+      .map((i) => ({ codigo: i.codigo, titulo: i.titulo, precoCents: i.preco_venda_cents, doNegocio: false })),
+  ];
+  const perfil = { ...lead.campos, imovelEntrada: entrada };
+  const combinam = disponiveis
+    .filter((i) => !lead.imoveisInteresse.includes(i.codigo))
+    .map((i) => ({ i, a: afinidade(i, perfil) }))
+    .filter((x) => x.a.pontos >= config.cruzamento.minimo)
+    .sort((x, y) => y.a.pontos - x.a.pontos);
+
+  const dono = equipe.get(lead.donoId ?? "");
+  const feitos = diagnosticoCompleto(lead.campos);
+  const mensagem = proximaMensagem({
+    nome: lead.nome,
+    corretor: primeiroNome(dono?.nome) || "o corretor",
+    etapa: lead.etapa.slug,
+    campos: lead.campos,
+    imovelEntrada: entrada,
+    combinam: combinam.slice(0, 3).map((c) => c.i),
+    leadEsperando: lead.conversa?.esperandoMin != null,
+    offMarket: lead.offMarket,
+    voltouCom: imovelDaVolta,
+  });
+  const etiquetas = etiquetasDoLead(lead, entrada);
+  const nEtiquetas = contarEtiquetas(etiquetas);
+  const aberto = lead.status === "open";
+  const wa = lead.telefone ? `https://wa.me/${lead.telefone.replace(/\D/g, "")}` : null;
+  const linkAba = (a: string) => `/app/leads/${lead.id}${a === "resumo" ? "" : `?aba=${a}`}`;
+  const contagem: Record<string, number | null> = {
+    etiquetas: nEtiquetas,
+    visitas: visitas.length,
+    imoveis: interesse.length + Math.min(combinam.length, 6),
+  };
+
+  // Histórico: tudo o que aconteceu com o negócio, do mais novo ao mais velho.
+  const historico = [
+    { em: lead.criadoEm, texto: `Entrou por ${ROTULO_ORIGEM[lead.origem.canal ?? ""] ?? "nova entrada"}${entrada ? `, imóvel ${entrada.codigo}` : ""}`, tipo: "entrada" },
+    ...((atividadesRaw ?? []) as Array<{ type: string; payload: Record<string, unknown>; performed_at: string }>).map((a) => ({
+      em: a.performed_at,
+      texto:
+        a.type === "lead_voltou"
+          ? `Voltou por outro formulário (${a.payload.vez}º), sem roleta`
+          : a.type === "venda_realizada"
+            ? `Negócio ganho: VGV ${precoCheio(a.payload.vgv_cents as number)}, comissão ${precoCheio(a.payload.comissao_cents as number)}`
+            : a.type.replace(/_/g, " "),
+      tipo: a.type === "venda_realizada" ? "venda" : "atividade",
+    })),
+    ...((eventosRaw ?? []) as Array<{ evento: string; valor_cents: number | null; status: string; created_at: string }>).map((e) => ({
+      em: e.created_at,
+      texto: `Evento “${e.evento}” para o Meta${e.valor_cents ? `, valor ${precoCheio(e.valor_cents)}` : ""} (${e.status === "na_fila" ? "na fila" : e.status})`,
+      tipo: "meta",
+    })),
+    ...visitas.map((v) => ({
+      em: v.quando,
+      texto:
+        v.status === "agendada"
+          ? `Visita agendada${v.imovel_codigo ? ` no ${v.imovel_codigo}` : ""}`
+          : `Visita feita${v.imovel_codigo ? ` no ${v.imovel_codigo}` : ""}, interesse ${v.interesse} de 5`,
+      tipo: "visita",
+    })),
+    ...((agendadosRaw ?? []) as Array<{ quando: string; mensagem: string; status: string; created_at: string }>).map((m) => ({
+      em: m.created_at,
+      texto: `Mensagem agendada para ${hora(m.quando)} (${m.status}): “${m.mensagem.slice(0, 60)}${m.mensagem.length > 60 ? "…" : ""}”`,
+      tipo: "agenda",
+    })),
+    ...((aceitasRaw ?? []) as Array<{ campo: string; valor: string; decidido_em: string | null }>)
+      .filter((s) => s.decidido_em)
+      .map((s) => ({ em: s.decidido_em!, texto: `${CAMPOS[s.campo as keyof typeof CAMPOS]?.rotulo ?? s.campo} confirmado: ${s.valor}`, tipo: "copiloto" })),
+  ].sort((a, b) => Date.parse(b.em) - Date.parse(a.em));
+
+  const outrosCampos = ORDEM_CAMPOS.filter((c) => !CAMPOS[c].obrigatorioDiagnostico && lead.campos[c]);
+
+  return (
+    <>
+      <CabecalhoOpa
+        secao={funil.name}
+        titulo={lead.nome}
+        subtitulo={`${lead.telefone ?? ""}${dono ? ` · ${dono.nome}` : ""}`}
+        icone={IdentificationCard}
+        equipe={false}
+        ferramentas={false}
+      />
+      <CorpoOpa>
+        {/* Selos: o que diferencia este lead, num olhar. */}
+        <div className="flex flex-wrap items-center gap-2">
+          <Chip icone={Infinito} tom="claro">
+            {lead.pago ? "Pago" : "Orgânico"} · {ROTULO_ORIGEM[lead.origem.canal ?? ""] ?? lead.origem.canal}
+          </Chip>
+          <ChipTemperatura valor={lead.copiloto.temperatura} />
+          {lead.offMarket && (
+            <Chip icone={Lock} tom="escuro">
+              Off market{lead.offMarket === "proprietario" ? " · proprietário" : ""}
+            </Chip>
+          )}
+          {voltouRecente && (
+            <Chip icone={ArrowsClockwise} tom="claro">
+              Voltou · {voltouRecente.vez}º formulário
+            </Chip>
+          )}
+          {lead.proprio && (
+            <Chip icone={UserCircle} tom="escuro">
+              Lead próprio
+            </Chip>
+          )}
+          {aberto && lead.conversa?.esperandoMin != null && (
+            <Chip icone={Timer} tom="alerta">
+              esperando há {tempoCurto(lead.conversa.esperandoMin)}
+            </Chip>
+          )}
+        </div>
+
+        {aberto && (
+          <>
+            <Cartao className="flex flex-col gap-3 p-5">
+              <p className="flex items-center gap-2 px-1 text-[13px] font-medium text-[#5b7284]">
+                <Target className="size-4" /> Etapa do negócio · toque para mover
+              </p>
+              <EtapasClicaveis leadId={lead.id} atual={lead.etapa.id} etapas={etapas} />
+            </Cartao>
+            <div className="flex flex-wrap items-center gap-2">
+              {lead.conversa?.id ? (
+                <Link
+                  href={`/app/inbox/${lead.conversa.id}`}
+                  className="inline-flex h-11 items-center gap-2 rounded-full bg-[#2a7ca8] px-5 text-[14px] font-semibold text-white hover:bg-[#1f6a93]"
+                >
+                  <WhatsappLogo weight="fill" className="size-5" /> Abrir conversa
+                </Link>
+              ) : wa ? (
+                <a
+                  href={wa}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex h-11 items-center gap-2 rounded-full bg-[#2a7ca8] px-5 text-[14px] font-semibold text-white hover:bg-[#1f6a93]"
+                >
+                  <WhatsappLogo weight="fill" className="size-5" /> Abrir conversa
+                </a>
+              ) : null}
+              <AgendarMensagem leadId={lead.id} sugestao={mensagem.texto} />
+              <RegistrarVisita
+                leadId={lead.id}
+                imoveis={disponiveis.map((i) => ({ codigo: i.codigo, titulo: i.titulo }))}
+                padrao={lead.imovelCodigo}
+                campos={config.ficha_visita}
+              />
+              <Link
+                href={`/app/kit?lead=${lead.id}`}
+                className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-5 text-[14px] font-semibold text-[#0a2d40] shadow-[0_1px_2px_rgba(9,44,62,0.06)] hover:bg-[#e7f0f5]"
+              >
+                <PaperPlaneTilt className="size-4" /> Abrir no kit
+              </Link>
+              <span className="mx-1 hidden h-6 w-px bg-[#d5e2ea] sm:block" aria-hidden />
+              <GanharNegocio leadId={lead.id} nome={lead.nome} opcoes={opcoesGanho} />
+              <PerderNegocio leadId={lead.id} motivos={config.motivos_perda.map((m) => m.motivo)} />
+            </div>
+          </>
+        )}
+
+        {lead.status === "won" && lead.venda && (
+          <section className="flex flex-col gap-5 rounded-[28px] bg-[#0b7a4b] p-7 text-white md:flex-row md:items-center">
+            <span className="flex size-14 shrink-0 items-center justify-center rounded-full bg-white/15">
+              <Trophy weight="fill" className="size-7" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-[13px] font-medium text-white/70">
+                Negócio ganho em {new Date(`${lead.venda.data}T12:00:00`).toLocaleDateString("pt-BR")}
+              </p>
+              <p className="mt-1 text-[22px] font-semibold tracking-[-0.02em]">{vendido?.titulo ?? lead.venda.imovel_codigo}</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <span className="rounded-full bg-white/15 px-3 py-1 text-[13px]">
+                  VGV {precoCheio(lead.venda.vgv_cents)}
+                  {lead.venda.outro_valor && lead.venda.valor_pedido_cents ? ` (pedido ${precoCheio(lead.venda.valor_pedido_cents)})` : ""}
+                </span>
+                <span className="rounded-full bg-white/15 px-3 py-1 text-[13px]">Comissão OPA {precoCheio(lead.venda.comissao_cents)}</span>
+                <span className="inline-flex items-center gap-1 rounded-full bg-white/15 px-3 py-1 text-[13px]">
+                  <Infinito className="size-3.5" /> Venda realizada na fila do Meta
+                </span>
+              </div>
+            </div>
+          </section>
+        )}
+        {lead.status === "lost" && (
+          <Cartao className="flex items-center gap-4">
+            <IconeRedondo icone={Prohibit} tom="alerta" />
+            <p className="text-[15px] text-[#0a2d40]">Negócio perdido. O card saiu do quadro.</p>
+          </Cartao>
+        )}
+
+        <AbasPilula
+          itens={ABAS.filter(([k]) => compradores || k !== "imoveis").map(([k, r, icone]) => ({
+            href: linkAba(k),
+            rotulo: r,
+            icone,
+            contagem: contagem[k] || null,
+            ativo: aba === k,
+          }))}
+        />
+
+        {aba === "resumo" && (
+          <div className="grid gap-5 lg:grid-cols-12">
+            <div className="flex min-w-0 flex-col gap-5 lg:col-span-7">
+              {/* O único cartão escuro da tela: o que a IA leu e o que falta confirmar. */}
+              <Cartao escuro bloco>
+                <TituloBloco
+                  claro
+                  icone={Sparkle}
+                  titulo="Copiloto"
+                  sub={`${lead.copiloto.motor === "ia" ? "Lido pelo Claude" : "Modo demonstração, sem chave de IA"}${lead.copiloto.analisado_em ? ` · ${hora(lead.copiloto.analisado_em)}` : ""}`}
+                  acao={
+                    <form action={reanalisar}>
+                      <input type="hidden" name="leadId" value={lead.id} />
+                      <button
+                        type="submit"
+                        className="inline-flex h-9 items-center gap-1.5 rounded-full bg-white/10 px-3.5 text-[13px] font-medium text-white hover:bg-white/15"
+                      >
+                        <ArrowsClockwise className="size-4" /> Ler de novo
+                      </button>
+                    </form>
+                  }
+                />
+                <p className="mt-5 text-[17px] leading-relaxed text-white/90">{lead.copiloto.resumo ?? "Ainda não li esta conversa."}</p>
+                {lead.copiloto.proximoPasso && aberto && (
+                  <p className="mt-4 flex items-start gap-2.5 rounded-[18px] bg-white/10 px-4 py-3 text-[14px] text-white">
+                    <ArrowRight className="mt-0.5 size-4 shrink-0 text-[#8fc4dd]" weight="bold" /> {lead.copiloto.proximoPasso}
+                  </p>
+                )}
+
+                {sugestoes.length > 0 && (
+                  <div className="mt-6">
+                    <p className="flex items-center gap-2 text-[13px] text-white/65">
+                      <Lightbulb className="size-4" /> A IA anotou da conversa. Nada entra no lead sem você.
+                    </p>
+                    <ul className="mt-3 flex flex-col gap-2.5">
+                      {sugestoes.map((s) => {
+                        const I = ICONE_CAMPO[s.campo] ?? Tag;
+                        return (
+                          <li key={s.id} className="rounded-[20px] bg-white/[0.07] p-4">
+                            <form action={confirmarSugestao} className="flex flex-col gap-2.5">
+                              <input type="hidden" name="id" value={s.id} />
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="flex items-center gap-1.5 text-[12px] font-medium text-white/60">
+                                  <I className="size-3.5" /> {CAMPOS[s.campo]?.rotulo ?? s.campo}
+                                </span>
+                                {lead.campos[s.campo] && <span className="text-[11px] text-white/45">antes: {lead.campos[s.campo]}</span>}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  name="valor"
+                                  defaultValue={s.valor}
+                                  aria-label={CAMPOS[s.campo]?.rotulo ?? s.campo}
+                                  className="h-11 min-w-0 flex-1 rounded-[14px] border border-transparent bg-white/10 px-3.5 text-[15px] font-medium text-white outline-none focus:border-[#8fc4dd]"
+                                />
+                                <button
+                                  type="submit"
+                                  title="Confirmar"
+                                  aria-label="Confirmar anotação"
+                                  className="flex size-11 shrink-0 items-center justify-center rounded-full bg-[#2a7ca8] text-white hover:bg-[#3a8cb8]"
+                                >
+                                  <Check className="size-5" weight="bold" />
+                                </button>
+                                <button
+                                  type="submit"
+                                  formAction={descartarSugestao}
+                                  title="Descartar"
+                                  aria-label="Descartar anotação"
+                                  className="flex size-11 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/15"
+                                >
+                                  <X className="size-5" />
+                                </button>
+                              </div>
+                              {s.evidencia && (
+                                <p className="flex items-start gap-1.5 text-[12px] italic text-white/55">
+                                  <ChatText className="mt-0.5 size-3.5 shrink-0 not-italic" /> “{s.evidencia}”
+                                </p>
+                              )}
+                            </form>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
+              </Cartao>
+
+              <Cartao bloco>
+                <TituloBloco
+                  icone={WhatsappLogo}
+                  titulo={`WhatsApp de ${primeiroNome(dono?.nome) || "corretor"}`}
+                  sub="O corretor conversa pelo celular. O CRM lê e a IA anota."
+                />
+                <div className="mt-5 flex max-h-[520px] flex-col gap-2 overflow-y-auto rounded-[22px] bg-[#efe9e1] p-4">
+                  {mensagens.map((m) => (
+                    <div
+                      key={m.id}
+                      className={cn(
+                        "max-w-[82%] rounded-[18px] px-3.5 py-2 text-[14px] shadow-[0_1px_1px_rgba(0,0,0,0.06)]",
+                        m.direction === "inbound" ? "self-start rounded-tl-md bg-white text-[#0a2d40]" : "self-end rounded-tr-md bg-[#dcf8c6] text-[#0a2d40]",
+                      )}
+                    >
+                      <p className="whitespace-pre-line">{m.body}</p>
+                      <p className="mt-1 text-right text-[10px] text-[#5b7284]">
+                        {hora(m.sent_at)}
+                        {m.direction === "outbound" && (m.sent_via === "external_device" ? " · pelo celular" : " · pelo CRM")}
+                      </p>
+                    </div>
+                  ))}
+                  {mensagens.length === 0 && (
+                    <Vazio ilustracao={<IlustraConversa />} titulo="Nenhuma mensagem ainda" texto="Quando o lead escrever no WhatsApp do corretor, a conversa aparece aqui." />
+                  )}
+                </div>
+              </Cartao>
+            </div>
+
+            <div className="flex min-w-0 flex-col gap-5 lg:col-span-5">
+              {voltouRecente && (
+                <Cartao>
+                  <TituloBloco icone={ArrowsClockwise} titulo="Voltou por outro formulário" sub="Sem roleta: veio direto para quem já cuidava" />
+                  <p className="mt-4 text-[14px] leading-relaxed text-[#34566b]">
+                    {hora(voltouRecente.em)}, {ROTULO_ORIGEM[voltouRecente.origem?.canal ?? ""] ?? "nova entrada"}
+                    {imovelDaVolta ? `: ${imovelDaVolta.codigo} · ${imovelDaVolta.titulo}` : ""}. O imóvel novo entrou na lista de interesse e o lead
+                    subiu na fila.
+                  </p>
+                </Cartao>
+              )}
+
+              {lead.offMarket && (
+                <Cartao>
+                  <TituloBloco
+                    icone={Lock}
+                    tom="escuro"
+                    titulo={`Off market · ${lead.offMarket === "proprietario" ? "proprietário" : "comprador"}`}
+                    sub="Atenção no tratamento"
+                  />
+                  <ul className="mt-4 flex flex-col gap-2.5 text-[14px] text-[#34566b]">
+                    {(lead.offMarket === "proprietario"
+                      ? [
+                          "Captação com sigilo: sem placa, sem foto pública, sem portal e sem post.",
+                          "Visita de avaliação discreta, no horário que o proprietário escolher.",
+                          "Mandato com data de validade e parecer só para ele.",
+                          "Divulgação apenas por link reservado, para compradores qualificados.",
+                        ]
+                      : [
+                          "Mandar imóvel só por link reservado, nunca foto solta nem link de portal.",
+                          "Nada de post ou story com o imóvel que ele viu.",
+                          "Visita discreta, combinada antes com o proprietário.",
+                          "Mensagens no perfil off market do kit.",
+                        ]
+                    ).map((t) => (
+                      <li key={t} className="flex items-start gap-2.5">
+                        <Check className="mt-0.5 size-4 shrink-0 text-[#2a7ca8]" weight="bold" /> {t}
+                      </li>
+                    ))}
+                  </ul>
+                </Cartao>
+              )}
+
+              <Diagnostico leadId={lead.id} campos={lead.campos} feitos={feitos} pendentes={sugestoes.map((s) => s.campo)} outros={outrosCampos} />
+
+              {aberto && (
+                <Cartao>
+                  <TituloBloco icone={PaperPlaneTilt} titulo="Próxima mensagem" sub={mensagem.motivo} />
+                  <div className="mt-4">
+                    <MensagemPronta texto={mensagem.texto} telefone={lead.telefone} />
+                  </div>
+                </Cartao>
+              )}
+
+              {entrada && (
+                <Cartao>
+                  <TituloBloco icone={HouseLine} titulo="Negócio" sub="Criado sozinho quando o lead entrou" />
+                  <Link href={`/app/imoveis/${entrada.codigo}`} className="mt-4 flex items-center gap-4 rounded-[20px] bg-[#f2f6f9] p-3 hover:bg-[#e7f0f5]">
+                    <FotoImovel imovel={entrada} className="h-[72px] w-24 shrink-0 rounded-2xl" />
+                    <div className="min-w-0">
+                      <p className="line-clamp-2 text-[14px] font-semibold text-[#0a2d40]">{entrada.titulo}</p>
+                      <p className="mt-0.5 text-[13px] text-[#5b7284]">
+                        {entrada.codigo} · {precoCheio(entrada.preco_venda_cents)}
+                      </p>
+                    </div>
+                  </Link>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    <Chip icone={Target} tom="neutro">
+                      {lead.etapa.nome}
+                    </Chip>
+                    <Chip icone={UserCircle} tom="neutro">
+                      Captador: {primeiroNome(equipe.get(entrada.captador_user_id ?? "")?.nome) || "não informado"}
+                    </Chip>
+                  </div>
+                </Cartao>
+              )}
+
+              <Cartao>
+                <TituloBloco icone={Infinito} titulo="Origem e avisos" sub={`Entrou em ${hora(lead.criadoEm)}`} />
+                <div className="mt-4 flex flex-wrap gap-1.5">
+                  <Chip tom="neutro">{ROTULO_ORIGEM[lead.origem.canal ?? ""] ?? lead.origem.canal ?? "Não informado"}</Chip>
+                  <Chip icone={Timer} tom="neutro">
+                    {lead.pago ? `Pago, ${tempoCurto(config.prazos.pago_min)}` : `Orgânico, ${tempoCurto(config.prazos.organico_min)}`}
+                  </Chip>
+                </div>
+                {lead.origem.campanha && (
+                  <dl className="mt-4 grid grid-cols-1 gap-2 text-[13px]">
+                    {(
+                      [
+                        ["Campanha", lead.origem.campanha],
+                        ["Conjunto", lead.origem.conjunto],
+                        ["Anúncio", lead.origem.anuncio],
+                      ] as const
+                    ).map(([k, v]) =>
+                      v ? (
+                        <div key={k} className="flex gap-3 rounded-[14px] bg-[#f2f6f9] px-3.5 py-2.5">
+                          <dt className="w-20 shrink-0 text-[#5b7284]">{k}</dt>
+                          <dd className="min-w-0 text-[#0a2d40]">{v}</dd>
+                        </div>
+                      ) : null,
+                    )}
+                  </dl>
+                )}
+                <div className="mt-4 flex items-center justify-between gap-3 border-t border-[#e7eef2] pt-4">
+                  <p className="flex items-center gap-2.5 text-[14px] text-[#34566b]">
+                    {lead.lembretesDesligados ? <BellSlash className="size-5 text-[#5b7284]" /> : <Bell className="size-5 text-[#2a7ca8]" />}
+                    {lead.lembretesDesligados ? "Avisos desligados" : "OPA Lembretes avisa nos prazos"}
+                  </p>
+                  <form action={alternarLembretes}>
+                    <input type="hidden" name="leadId" value={lead.id} />
+                    <button type="submit" className="h-9 rounded-full bg-[#eef3f6] px-4 text-[13px] font-semibold text-[#0a2d40] hover:bg-[#e7f0f5]">
+                      {lead.lembretesDesligados ? "Ligar" : "Desligar"}
+                    </button>
+                  </form>
+                </div>
+              </Cartao>
+            </div>
+          </div>
+        )}
+
+        {aba === "etiquetas" && (
+          <>
+            <p className="flex items-center gap-2 text-[14px] text-[#5b7284]">
+              <Sparkle className="size-4 text-[#2a7ca8]" weight="fill" /> As marcadas com a estrela vieram sozinhas do imóvel ou da conversa. Toque para marcar
+              ou desmarcar as outras.
+            </p>
+            <div className="grid gap-5 md:grid-cols-2">
+              {config.etiquetas.map((g) => {
+                const marcadas = etiquetas[g.chave] ?? [];
+                const blocos = g.subgrupos ? Object.entries(g.subgrupos) : [["", g.opcoes] as [string, string[]]];
+                return (
+                  <Cartao key={g.chave} className={cn(g.subgrupos && "md:col-span-2")}>
+                    <TituloBloco
+                      icone={ICONE_GRUPO[g.chave] ?? Tag}
+                      tom={g.destaque ? "escuro" : "claro"}
+                      titulo={g.nome}
+                      sub={marcadas.length ? `${marcadas.length} ${marcadas.length === 1 ? "marcada" : "marcadas"}` : "Nenhuma marcada"}
+                    />
+                    {g.nota && <p className="mt-3 text-[13px] text-[#5b7284]">{g.nota}</p>}
+                    {blocos.map(([sub, opcoes]) => (
+                      <div key={sub} className="mt-4">
+                        {sub && <p className="mb-2 text-[12px] font-semibold text-[#12455f]">{sub}</p>}
+                        <div className="flex flex-wrap gap-2">
+                          {opcoes.map((o) => {
+                            const m = marcadas.find((x) => x.valor === o);
+                            return (
+                              <form key={o} action={alternarEtiqueta}>
+                                <input type="hidden" name="leadId" value={lead.id} />
+                                <input type="hidden" name="grupo" value={g.chave} />
+                                <input type="hidden" name="valor" value={o} />
+                                <button
+                                  type="submit"
+                                  disabled={m?.auto}
+                                  aria-pressed={Boolean(m)}
+                                  title={m?.auto ? "Veio do imóvel ou da conversa" : m ? "Desmarcar" : "Marcar"}
+                                  className={cn(
+                                    "inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[13px] font-medium transition-colors",
+                                    m ? "bg-[#0a2d40] text-white" : "bg-[#f2f6f9] text-[#34566b] hover:bg-[#e7f0f5]",
+                                    m?.auto && "cursor-default",
+                                  )}
+                                >
+                                  {m?.auto && <Sparkle className="size-3.5 text-[#8fc4dd]" weight="fill" />}
+                                  {m && !m.auto && <Check className="size-3.5" weight="bold" />}
+                                  {o}
+                                </button>
+                              </form>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
+                  </Cartao>
+                );
+              })}
+            </div>
+          </>
+        )}
+
+        {aba === "campos" && (
+          <div className="grid gap-5 lg:grid-cols-2 [&>*]:min-w-0">
+            <Diagnostico leadId={lead.id} campos={lead.campos} feitos={feitos} pendentes={[]} outros={[]} editavel />
+            <Cartao bloco>
+              <TituloBloco
+                icone={Notepad}
+                titulo={compradores ? "Campos do corretor" : "Proprietário"}
+                sub="O que não é imóvel e vale lembrar"
+              />
+              <form action={salvarCamposCorretor} className="mt-5 flex flex-col gap-4">
+                <input type="hidden" name="leadId" value={lead.id} />
+                {(compradores ? config.campos_lead : config.campos_proprietario).map((c) => {
+                  const cls =
+                    "w-full rounded-[14px] border border-transparent bg-[#f2f6f9] px-4 text-[14px] font-normal text-[#0a2d40] outline-none focus:border-[#8fc4dd] focus:bg-white";
+                  return (
+                    <label key={c.chave} className="flex flex-col gap-1.5 text-[13px] font-medium text-[#34566b]">
+                      {c.rotulo}
+                      {c.tipo === "lista" ? (
+                        <select name={`campo:${c.chave}`} defaultValue={lead.camposCorretor[c.chave] ?? ""} className={cn(cls, "h-11")}>
+                          <option value="" />
+                          {c.opcoes?.map((o) => (
+                            <option key={o}>{o}</option>
+                          ))}
+                        </select>
+                      ) : c.tipo === "area" ? (
+                        <textarea
+                          name={`campo:${c.chave}`}
+                          rows={3}
+                          placeholder={c.dica}
+                          defaultValue={lead.camposCorretor[c.chave] ?? ""}
+                          className={cn(cls, "py-3")}
+                        />
+                      ) : (
+                        <input name={`campo:${c.chave}`} placeholder={c.dica} defaultValue={lead.camposCorretor[c.chave] ?? ""} className={cn(cls, "h-11")} />
+                      )}
+                    </label>
+                  );
+                })}
+                <button
+                  type="submit"
+                  className="mt-1 inline-flex h-11 items-center gap-2 self-start rounded-full bg-[#0a2d40] px-5 text-[14px] font-semibold text-white hover:bg-[#12455f]"
+                >
+                  <Check className="size-4" weight="bold" /> Salvar campos
+                </button>
+              </form>
+            </Cartao>
+          </div>
+        )}
+
+        {aba === "visitas" && (
+          <div className="flex flex-col gap-5">
+            {aberto && (
+              <div className="flex flex-wrap gap-2">
+                <RegistrarVisita
+                  leadId={lead.id}
+                  imoveis={disponiveis.map((i) => ({ codigo: i.codigo, titulo: i.titulo }))}
+                  padrao={lead.imovelCodigo}
+                  campos={config.ficha_visita}
+                  variante="primario"
+                />
+                <RegistrarVisita
+                  leadId={lead.id}
+                  imoveis={disponiveis.map((i) => ({ codigo: i.codigo, titulo: i.titulo }))}
+                  padrao={lead.imovelCodigo}
+                  campos={config.ficha_visita}
+                  modo="agendada"
+                />
+              </div>
+            )}
+            {visitas.map((v) => {
+              const im = porCodigo.get(v.imovel_codigo ?? "");
+              const d = new Date(v.quando);
+              const agendada = v.status === "agendada";
+              return (
+                <Cartao key={v.id} className="flex flex-col gap-5 sm:flex-row">
+                  <div
+                    className={cn(
+                      "flex w-full shrink-0 flex-row items-center justify-center gap-3 rounded-[22px] px-4 py-4 sm:w-[104px] sm:flex-col sm:gap-0",
+                      agendada ? "bg-[#e7f0f5] text-[#12455f]" : "bg-[#f2f6f9] text-[#0a2d40]",
+                    )}
+                  >
+                    <span className="text-[34px] font-light leading-none tracking-[-0.04em]">
+                      {d.toLocaleDateString("pt-BR", { day: "2-digit", timeZone: "America/Sao_Paulo" })}
+                    </span>
+                    <span className="text-[12px] font-semibold uppercase tracking-[0.12em] sm:mt-1">
+                      {d.toLocaleDateString("pt-BR", { month: "short", timeZone: "America/Sao_Paulo" }).replace(".", "")}
+                    </span>
+                    <span className="text-[13px] text-[#5b7284] sm:mt-2">
+                      {d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" })}
+                    </span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <p className="flex min-w-0 items-center gap-2 text-[16px] font-semibold text-[#0a2d40]">
+                        <House className="size-5 shrink-0 text-[#2a7ca8]" />
+                        <span className="truncate">{im ? `${im.codigo} · ${im.titulo}` : "Imóvel não informado"}</span>
+                      </p>
+                      {agendada ? (
+                        <Chip icone={CalendarBlank} tom="claro">
+                          Agendada
+                        </Chip>
+                      ) : (
+                        <Chip icone={(v.interesse ?? 0) >= 4 ? Fire : Thermometer} tom={(v.interesse ?? 0) >= 4 ? "escuro" : "aviso"}>
+                          Interesse {v.interesse} de 5
+                        </Chip>
+                      )}
+                    </div>
+                    {(v.quem || v.chegada) && (
+                      <p className="mt-1 text-[13px] text-[#5b7284]">{[v.quem, v.chegada].filter(Boolean).join(" · ")}</p>
+                    )}
+                    {!agendada && (
+                      <dl className="mt-4 grid gap-2.5 sm:grid-cols-2">
+                        {(
+                          [
+                            [Check, "Gostou", v.gostou, "text-[#1e7a46]"],
+                            [X, "Não gostou", v.nao_gostou, "text-[#b42318]"],
+                            [Warning, "Objeção", v.objecao, "text-[#9a5b00]"],
+                            [ArrowRight, "Próximo passo", v.proximo_passo, "text-[#2a7ca8]"],
+                          ] as const
+                        ).map(([I, k, val, cor]) =>
+                          val ? (
+                            <div key={k} className="flex gap-2.5 rounded-[16px] bg-[#f2f6f9] px-3.5 py-3">
+                              <I className={cn("mt-0.5 size-4 shrink-0", cor)} weight="bold" />
+                              <div className="min-w-0">
+                                <dt className="text-[12px] text-[#5b7284]">{k}</dt>
+                                <dd className="text-[14px] text-[#0a2d40]">{val}</dd>
+                              </div>
+                            </div>
+                          ) : null,
+                        )}
+                      </dl>
+                    )}
+                    {agendada && (
+                      <p className="mt-3 flex items-center gap-2 text-[13px] text-[#5b7284]">
+                        <Bell className="size-4" /> Na véspera às 18h o OPA Lembretes avisa o corretor. Depois da visita, ele pede a ficha.
+                      </p>
+                    )}
+                    {v.observacoes && <p className="mt-3 text-[14px] text-[#34566b]">{v.observacoes}</p>}
+                  </div>
+                </Cartao>
+              );
+            })}
+            {visitas.length === 0 && (
+              <Cartao bloco>
+                <Vazio ilustracao={<IlustraAgenda />} titulo="Nenhuma visita ainda" texto="Agende a visita aqui. Depois dela, a ficha registra o que gostou e o que não gostou." />
+              </Cartao>
+            )}
+          </div>
+        )}
+
+        {aba === "imoveis" && compradores && (
+          <div className="grid gap-5 lg:grid-cols-12 [&>*]:min-w-0">
+            <Cartao bloco className="lg:col-span-5">
+              <TituloBloco icone={HouseLine} titulo="Imóveis de interesse" sub="O de entrada e os que ele pediu depois" />
+              <ul className="mt-5 flex flex-col gap-3">
+                {interesse.map((im) => (
+                  <li key={im.codigo}>
+                    <Link href={`/app/imoveis/${im.codigo}`} className="flex items-center gap-3 rounded-[20px] bg-[#f2f6f9] p-3 hover:bg-[#e7f0f5]">
+                      <FotoImovel imovel={im} className="h-[64px] w-[88px] shrink-0 rounded-2xl" />
+                      <div className="min-w-0">
+                        <p className="flex items-center gap-1.5 text-[12px] font-medium text-[#5b7284]">
+                          {im.codigo === lead.imovelCodigo ? "Imóvel de entrada" : "Também pediu"} · {im.codigo}
+                          {im.off_market && <Lock className="size-3.5" weight="fill" />}
+                        </p>
+                        <p className="line-clamp-1 text-[14px] font-semibold text-[#0a2d40]">{im.titulo}</p>
+                        <p className="text-[13px] text-[#5b7284]">{precoPrincipal(im)}</p>
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              {interesse.length === 0 && <Vazio ilustracao={<IlustraCasa />} titulo="Sem imóvel de entrada" texto="Escolha um para o CRM cruzar com o acervo." />}
+            </Cartao>
+            <Cartao bloco className="lg:col-span-7">
+              <TituloBloco
+                icone={Sparkle}
+                titulo="Do acervo, combina com ele"
+                sub={`Afinidade de 0 a 100, aparece a partir de ${config.cruzamento.minimo}`}
+              />
+              <ul className="mt-5 flex flex-col gap-2">
+                {combinam.slice(0, 6).map(({ i, a }) => {
+                  const texto = lead.offMarket
+                    ? `${primeiroNome(lead.nome)}, separei uma casa que combina com o que você me contou. Ela não está anunciada: te mando por um link reservado, só para você. Posso mandar?`
+                    : `${primeiroNome(lead.nome)}, essa casa combina com o que você me contou: ${i.titulo}, ${precoPrincipal(i)}\n${i.url_site ?? ""}`;
+                  return (
+                    <li key={i.codigo} className="flex items-center gap-3 rounded-[20px] p-2 hover:bg-[#f2f6f9]">
+                      <FotoImovel imovel={i} className="size-16 shrink-0 rounded-2xl" />
+                      <Link href={`/app/imoveis/${i.codigo}`} className="min-w-0 flex-1">
+                        <p className="truncate text-[14px] font-semibold text-[#0a2d40]">{i.titulo}</p>
+                        <p className="truncate text-[13px] text-[#5b7284]">
+                          {precoPrincipal(i)} · {a.motivos.slice(0, 2).join(", ")}
+                        </p>
+                      </Link>
+                      <div className="shrink-0 text-right">
+                        <p className="text-[26px] font-light leading-none tracking-[-0.04em] text-[#12455f]">{a.pontos}</p>
+                        <p className="text-[11px] text-[#5b7284]">afinidade</p>
+                      </div>
+                      {wa && (
+                        <a
+                          href={`${wa}?text=${encodeURIComponent(texto)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="Enviar ao lead"
+                          aria-label={`Enviar ${i.codigo} ao lead`}
+                          className="flex size-11 shrink-0 items-center justify-center rounded-full bg-[#25d366] text-white hover:brightness-105"
+                        >
+                          <WhatsappLogo weight="fill" className="size-5" />
+                        </a>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+              {combinam.length === 0 && <Vazio ilustracao={<IlustraCasa />} titulo={`Nada no acervo acima de ${config.cruzamento.minimo}`} />}
+            </Cartao>
+          </div>
+        )}
+
+        {aba === "historico" && (
+          <Cartao bloco>
+            <TituloBloco icone={ClockCounterClockwise} titulo="Histórico" sub="Tudo o que aconteceu com este negócio, do mais novo ao mais antigo" />
+            <ol className="mt-6 flex flex-col">
+              {historico.map((h, i) => {
+                const [I, tom] = ICONE_HISTORICO[h.tipo] ?? ICONE_HISTORICO.atividade!;
+                return (
+                  <li key={i} className="relative flex gap-4 pb-5 last:pb-0">
+                    {i < historico.length - 1 && <span className="absolute left-5 top-11 h-[calc(100%-2.75rem)] w-px bg-[#e1eaf0]" aria-hidden />}
+                    <IconeRedondo icone={I} tom={tom} />
+                    <div className="min-w-0 pt-1">
+                      <p className="text-[14px] text-[#0a2d40]">{h.texto}</p>
+                      <p className="mt-0.5 text-[12px] text-[#5b7284]">{hora(h.em)}</p>
+                    </div>
+                  </li>
+                );
+              })}
+            </ol>
+          </Cartao>
+        )}
+      </CorpoOpa>
+    </>
+  );
+}
+
+/**
+ * Diagnóstico: os 4 campos que travam a etapa "Diagnóstico feito", cada um com
+ * ícone. O que falta abre um campo para preencher à mão (se a IA ainda não
+ * anotou). Na aba Campos, todos os campos do perfil ficam editáveis.
+ */
+function Diagnostico({
+  leadId,
+  campos,
+  feitos,
+  pendentes,
+  outros,
+  editavel = false,
+}: {
+  leadId: string;
+  campos: Partial<Record<keyof typeof CAMPOS, string>>;
+  feitos: number;
+  pendentes: string[];
+  outros: Array<keyof typeof CAMPOS>;
+  editavel?: boolean;
+}) {
+  return (
+    <Cartao bloco={editavel}>
+      <TituloBloco
+        icone={Target}
+        tom={feitos === 4 ? "ok" : "claro"}
+        titulo="Diagnóstico"
+        sub={feitos === 4 ? "Completo: libera a seleção de imóveis" : `${feitos} de 4 · sem os 4, a etapa não avança`}
+      />
+      {editavel ? (
+        <div className="mt-5 flex flex-col gap-3">
+          {(Object.keys(CAMPOS) as Array<keyof typeof CAMPOS>).map((k) => {
+            const I = ICONE_CAMPO[k] ?? Tag;
+            return (
+              <form key={k} action={editarCampo} className="flex items-center gap-2.5">
+                <input type="hidden" name="leadId" value={leadId} />
+                <input type="hidden" name="campo" value={k} />
+                <span
+                  className={cn(
+                    "flex size-10 shrink-0 items-center justify-center rounded-full",
+                    campos[k] ? "bg-[#e7f0f5] text-[#12455f]" : "bg-[#f2f6f9] text-[#8aa3b3]",
+                  )}
+                  title={CAMPOS[k].rotulo}
+                >
+                  <I className="size-5" />
+                </span>
+                <label className="min-w-0 flex-1" htmlFor={`d-${k}`}>
+                  <span className="text-[12px] text-[#5b7284]">
+                    {CAMPOS[k].rotulo}
+                    {CAMPOS[k].obrigatorioDiagnostico && <span className="text-[#b42318]"> *</span>}
+                  </span>
+                  <input
+                    id={`d-${k}`}
+                    name="valor"
+                    defaultValue={campos[k] ?? ""}
+                    placeholder="Falta saber"
+                    className="mt-0.5 h-10 w-full rounded-[12px] border border-transparent bg-[#f2f6f9] px-3 text-[14px] text-[#0a2d40] outline-none focus:border-[#8fc4dd] focus:bg-white"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  title="Salvar"
+                  aria-label={`Salvar ${CAMPOS[k].rotulo}`}
+                  className="mt-4 flex size-10 shrink-0 items-center justify-center rounded-full bg-[#eef3f6] text-[#0a2d40] hover:bg-[#0a2d40] hover:text-white"
+                >
+                  <Check className="size-4" weight="bold" />
+                </button>
+              </form>
+            );
+          })}
+        </div>
+      ) : (
+        <>
+          <div className="mt-5 grid grid-cols-2 gap-2.5">
+            {CAMPOS_DIAGNOSTICO.map((k) => {
+              const I = ICONE_CAMPO[k] ?? Tag;
+              const valor = campos[k];
+              const anotado = pendentes.includes(k);
+              return (
+                <div
+                  key={k}
+                  className={cn(
+                    "flex min-w-0 flex-col gap-2 rounded-[20px] p-3.5",
+                    valor ? "bg-[#e7f0f5]" : "border border-dashed border-[#c8d8e2] bg-white",
+                  )}
+                >
+                  <p className="flex items-center gap-1.5 text-[12px] font-medium text-[#5b7284]">
+                    <I className={cn("size-4", valor ? "text-[#12455f]" : "text-[#8aa3b3]")} />
+                    {CAMPOS[k].rotulo}
+                    {valor && <SealCheck weight="fill" className="ml-auto size-4 shrink-0 text-[#2a7ca8]" />}
+                  </p>
+                  {valor ? (
+                    <p className="text-[14px] font-semibold leading-snug text-[#0a2d40]">{valor}</p>
+                  ) : anotado ? (
+                    <p className="flex items-center gap-1 text-[12px] text-[#2a7ca8]">
+                      <Sparkle className="size-3.5" weight="fill" /> A IA anotou: confirme no copiloto
+                    </p>
+                  ) : (
+                    <form action={editarCampo} className="flex items-center gap-1.5">
+                      <input type="hidden" name="leadId" value={leadId} />
+                      <input type="hidden" name="campo" value={k} />
+                      <input
+                        name="valor"
+                        required
+                        placeholder="Falta saber"
+                        aria-label={CAMPOS[k].rotulo}
+                        className="h-9 min-w-0 flex-1 rounded-[10px] bg-[#f2f6f9] px-2.5 text-[13px] outline-none focus:bg-white focus:ring-1 focus:ring-[#8fc4dd]"
+                      />
+                      <button
+                        type="submit"
+                        title="Salvar"
+                        aria-label={`Salvar ${CAMPOS[k].rotulo}`}
+                        className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#0a2d40] text-white"
+                      >
+                        <Check className="size-4" weight="bold" />
+                      </button>
+                    </form>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          {outros.length > 0 && (
+            <div className="mt-4 flex flex-wrap gap-1.5">
+              {outros.map((k) => (
+                <Chip key={k} icone={ICONE_CAMPO[k]} tom="neutro">
+                  {campos[k]}
+                </Chip>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </Cartao>
+  );
+}

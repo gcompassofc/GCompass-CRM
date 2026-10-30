@@ -84,6 +84,11 @@
   --space-10: 40px;
   --space-12: 48px;
   --space-16: 64px;
+  /* tailwind.config.ts mapeia 20, 24 e 32 para estas variáveis; sem elas,
+     size-20, h-24, w-32 e afins viravam declaração inválida e sumiam. */
+  --space-20: 80px;
+  --space-24: 96px;
+  --space-32: 128px;
 
   /* Radius (Apple Continuous Curvature Squircles) */
   --radius-none: 0px;

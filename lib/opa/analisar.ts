@@ -1,0 +1,127 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { generateText } from "ai";
+
+import { resolveLanguageModel } from "@/lib/ai/gateway";
+import { logger } from "@/lib/logger";
+
+import { analisarComIA, analisarPorRegras, type Leitura, type MensagemLida } from "./copiloto";
+
+/** Modelo do copiloto: leitura curta e estruturada, então o Haiku dá conta. */
+export const MODELO_COPILOTO = "anthropic/claude-haiku-5-5";
+
+/**
+ * Lê a conversa do lead e grava o que a IA anotou como sugestão pendente.
+ * Na ficha roda com o cliente da sessão (só analisa lead que a pessoa vê);
+ * na rotina de fundo, com o cliente admin, sempre filtrado pela org.
+ *
+ * O que o corretor já confirmou com o mesmo valor não volta como sugestão; o
+ * que mudou na conversa volta, para ele decidir se troca.
+ */
+export async function analisarLead(supabase: SupabaseClient, orgId: string, leadId: string): Promise<Leitura | null> {
+  const { data: lead } = await supabase
+    .from("crm_leads")
+    .select("id, contact_id, value_cents, custom_fields, contacts(name)")
+    .eq("organization_id", orgId)
+    .eq("id", leadId)
+    .maybeSingle();
+  if (!lead) return null;
+  const l = lead as unknown as {
+    id: string;
+    contact_id: string;
+    value_cents: number | null;
+    custom_fields: Record<string, unknown> | null;
+    contacts: { name: string | null } | null;
+  };
+  const cf = l.custom_fields ?? {};
+  const confirmados = (cf.opa as Record<string, string>) ?? {};
+
+  const { data: conversa } = await supabase
+    .from("conversations")
+    .select("id")
+    .eq("organization_id", orgId)
+    .eq("contact_id", l.contact_id)
+    .order("last_message_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  let mensagens: MensagemLida[] = [];
+  if (conversa) {
+    const { data } = await supabase
+      .from("messages")
+      .select("direction, body, sent_at")
+      .eq("conversation_id", (conversa as { id: string }).id)
+      .order("sent_at", { ascending: true })
+      .limit(200);
+    mensagens = (data ?? []) as MensagemLida[];
+  }
+
+  let imovelTitulo: string | undefined;
+  if (cf.imovel_codigo) {
+    const { data: im } = await supabase
+      .from("imoveis")
+      .select("titulo")
+      .eq("organization_id", orgId)
+      .eq("codigo", cf.imovel_codigo as string)
+      .maybeSingle();
+    imovelTitulo = (im as { titulo: string } | null)?.titulo;
+  }
+
+  let leitura: Leitura | null = null;
+  const modelo = resolveLanguageModel(MODELO_COPILOTO);
+  if (modelo) {
+    try {
+      leitura = await analisarComIA(mensagens, modelo, (args) =>
+        generateText({ model: args.model as never, system: args.system, prompt: args.prompt }),
+      );
+    } catch (e) {
+      logger.warn("copiloto: IA falhou, seguindo pelas regras", { leadId, erro: String(e) });
+    }
+  }
+  leitura ??= analisarPorRegras(mensagens, {
+    nomeLead: l.contacts?.name ?? undefined,
+    imovelTitulo,
+    imovelValor: l.value_cents ? l.value_cents / 100 : null,
+  });
+
+  const novas = leitura.sugestoes.filter((s) => confirmados[s.campo] !== s.valor);
+
+  await supabase
+    .from("copiloto_sugestoes")
+    .delete()
+    .eq("organization_id", orgId)
+    .eq("lead_id", leadId)
+    .eq("status", "pendente");
+  if (novas.length > 0) {
+    const { error } = await supabase.from("copiloto_sugestoes").insert(
+      novas.map((s) => ({
+        organization_id: orgId,
+        lead_id: leadId,
+        campo: s.campo,
+        valor: s.valor,
+        evidencia: s.evidencia,
+        confianca: s.confianca,
+        origem: leitura!.motor,
+      })),
+    );
+    if (error) logger.warn("copiloto: falha ao gravar sugestões", { leadId, erro: error.message });
+  }
+
+  await supabase
+    .from("crm_leads")
+    .update({
+      custom_fields: {
+        ...cf,
+        copiloto: {
+          resumo: leitura.resumo,
+          proximoPasso: leitura.proximoPasso,
+          temperatura: leitura.temperatura,
+          motor: leitura.motor,
+          analisado_em: new Date().toISOString(),
+        },
+      },
+    })
+    .eq("organization_id", orgId)
+    .eq("id", leadId);
+
+  return leitura;
+}

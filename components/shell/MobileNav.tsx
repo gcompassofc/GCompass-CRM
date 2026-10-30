@@ -29,7 +29,19 @@ import { canSee, NAV_DESTINATIONS } from "@/lib/navigation/registry";
  * está morrendo sem resposta; Kanban é o funil; Contatos é a busca de quem
  * ligou. Configurar o sistema é trabalho de mesa e fica no menu.
  */
-const PRIORIDADE_MOBILE = ["/app/inbox", "/app/radar", "/app/kanban", "/app/contacts"];
+const PRIORIDADE_MOBILE = [
+  "/app/hoje",
+  "/app/fila",
+  "/app/pipeline",
+  "/app/leads",
+  "/app/inbox",
+  "/app/radar",
+  "/app/kanban",
+  "/app/contacts",
+];
+// Cabem quatro na barra. Início, Fila, Pipelines e Leads só existem no perfil
+// imobiliária; cada instalação fica com os quatro primeiros que vê.
+const MAX_NA_BARRA = 4;
 
 interface Props {
   onOpenMenu: () => void;
@@ -46,7 +58,7 @@ export function MobileNav({ onOpenMenu, hidden = false }: Props) {
   ).filter(
     (d): d is NonNullable<typeof d> =>
       !!d && canSee(d, user.is_platform_admin, activeOrg?.role ?? null),
-  );
+  ).slice(0, MAX_NA_BARRA);
 
   return (
     <nav

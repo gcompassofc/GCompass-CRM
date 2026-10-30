@@ -26,6 +26,7 @@ export async function PublicEnvScript() {
     // leem daqui. Não são segredo — já aparecem na tela. Ver lib/branding.ts.
     APP_NAME: env.APP_NAME,
     APP_LOGO_URL: env.APP_LOGO_URL,
+    APP_PROFILE: env.APP_PROFILE,
   })
     // Evita quebrar o </script> se algum valor contiver a sequência.
     .replace(/</g, "\\u003c");

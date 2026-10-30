@@ -45,7 +45,7 @@ export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
   // Filtro explícito de organization_id por doutrina (defense-in-depth).
   const { data: msg, error } = await supabase
     .from("messages")
-    .select("id, media_url, media_mime, media_storage_path")
+    .select("id, direction, media_url, media_mime, media_storage_path")
     .eq("id", messageId)
     .eq("organization_id", activeOrg.orgId)
     .maybeSingle();
@@ -73,13 +73,22 @@ export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
 
   // Fallback: worker ainda não persistiu — proxy server-side do WAHA
   // (o browser não alcança o WAHA nem tem a api key).
-  if (msg.media_url) {
+  // Só mídia RECEBIDA vem da WAHA; a enviada tem URL externa e não passa aqui.
+  if (msg.media_url && msg.direction === "inbound") {
     try {
       const media = await fetchWahaMedia(msg.media_url, msg.media_mime);
+      // Tipo de lista fechada: o que vier como text/html, svg ou js não roda na
+      // origem do CRM. O resto vira download.
+      const tipo = /^(image\/(png|jpeg|gif|webp)|audio\/[\w.+-]+|video\/[\w.+-]+|application\/pdf)(;|$)/i.test(media.mime)
+        ? media.mime
+        : "application/octet-stream";
       return new Response(new Uint8Array(media.buffer), {
         status: 200,
         headers: {
-          "Content-Type": media.mime,
+          "Content-Type": tipo,
+          "Content-Disposition": tipo === "application/octet-stream" ? "attachment" : "inline",
+          "X-Content-Type-Options": "nosniff",
+          "Content-Security-Policy": "default-src 'none'; sandbox",
           "Cache-Control": "private, max-age=60",
           "X-Request-Id": requestId,
         },

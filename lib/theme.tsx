@@ -19,14 +19,17 @@ type ThemeContextValue = {
 const ThemeContext = React.createContext<ThemeContextValue | null>(null);
 
 function readStoredTheme(): Theme {
-  if (typeof window === "undefined") return "dark";
+  // No SSR vale o padrão da instalação, o mesmo que o layout grava no <html>,
+  // senão o botão de tema nasce com rótulo diferente do navegador.
+  if (typeof window === "undefined") return process.env.APP_THEME_DEFAULT === "light" ? "light" : "dark";
   try {
     const v = window.localStorage.getItem(STORAGE_KEY);
     if (v === "light" || v === "dark" || v === "system") return v;
   } catch {
     // localStorage indisponível (modo privado, sandbox) — segue com default.
   }
-  return "dark";
+  // Padrão da instalação, gravado no <html> pelo layout (APP_THEME_DEFAULT).
+  return document.documentElement.dataset.temaPadrao === "light" ? "light" : "dark";
 }
 
 function getSystemTheme(): ResolvedTheme {

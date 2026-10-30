@@ -16,6 +16,14 @@ import {
   FlowArrow,
   Funnel,
   Gauge,
+  HouseLine,
+  Sun,
+  ListNumbers,
+  UserPlus,
+  PaperPlaneTilt,
+  Plug,
+  SlidersHorizontal,
+  ChatCircle,
   Inbox,
   Kanban,
   Key,
@@ -78,7 +86,40 @@ export interface NavDestination {
   /** Ausente = só no hub. `true` = uso diário, sobe para o sidebar. */
   sidebar?: boolean;
   healthDot?: boolean;
+  /** Só existe neste perfil de instalação (APP_PROFILE). Ausente = todos. */
+  perfil?: Perfil;
 }
+
+/**
+ * Perfil da instalação, lido de APP_PROFILE em runtime (servidor) ou do
+ * `window.__PUBLIC_ENV__` (navegador). "imobiliaria" é o CRM da OPA.
+ */
+export type Perfil = "imobiliaria";
+
+export function perfilAtivo(): Perfil | null {
+  const valor =
+    typeof window !== "undefined" ? window.__PUBLIC_ENV__?.APP_PROFILE : process.env.APP_PROFILE;
+  return valor?.trim() === "imobiliaria" ? "imobiliaria" : null;
+}
+
+/**
+ * O que sai do menu no perfil imobiliária: agentes que respondem sozinhos
+ * (na OPA quem responde é o corretor, pelo WhatsApp dele), e-commerce e o
+ * radar genérico, que a tela Hoje substitui. As rotas continuam existindo.
+ */
+const FORA_DO_PERFIL_IMOBILIARIA = new Set([
+  "/app/radar",
+  "/app/kanban",
+  "/app/contacts",
+  "/app/templates",
+  "/app/settings/tenant/pipelines",
+  "/app/webhooks",
+  "/app/ai/agents",
+  "/app/ai/followups",
+  "/app/ai/routers",
+  "/app/ai/evolution",
+  "/app/integrations/nuvemshop",
+]);
 
 /**
  * Grupos por OBJETIVO, na ordem de uso: o que se abre toda hora primeiro, o que
@@ -133,6 +174,96 @@ export const GRUPO_NO_RODAPE: NavGroupId = "organizacao";
 export const NAV_DESTINATIONS: NavDestination[] = [
   // ---- Atendimento — onde o operador passa o dia ----
   {
+    href: "/app/hoje",
+    label: "Início",
+    description: "Quem espera resposta, o que a IA anotou nas conversas e a equipe no prazo.",
+    icon: Sun,
+    group: "atendimento",
+    sidebar: true,
+    perfil: "imobiliaria",
+  },
+  {
+    href: "/app/fila",
+    label: "Fila de atendimento",
+    description: "Quem espera há mais tempo sem resposta fica no topo, com o prazo de cada lead.",
+    icon: ListNumbers,
+    group: "atendimento",
+    sidebar: true,
+    perfil: "imobiliaria",
+  },
+  {
+    href: "/app/pipeline",
+    label: "Pipelines",
+    description: "Compradores, captação e relacionamento com proprietário, etapa por etapa.",
+    icon: Kanban,
+    group: "crm",
+    sidebar: true,
+    perfil: "imobiliaria",
+  },
+  {
+    href: "/app/leads",
+    label: "Leads",
+    description: "Toda a base, com origem, imóvel de interesse e corretor.",
+    icon: UserPlus,
+    group: "crm",
+    sidebar: true,
+    perfil: "imobiliaria",
+  },
+  {
+    href: "/app/lembretes",
+    label: "Lembretes e cadência",
+    description: "O que o CRM lembra ao corretor pelo WhatsApp, e quando.",
+    icon: Bell,
+    group: "atendimento",
+    sidebar: true,
+    perfil: "imobiliaria",
+  },
+  {
+    href: "/app/kit",
+    label: "Kit de mensagens",
+    description: "O Kit de Atendimento OPA, personalizado com o lead e o imóvel.",
+    icon: PaperPlaneTilt,
+    group: "atendimento",
+    sidebar: true,
+    perfil: "imobiliaria",
+  },
+  {
+    href: "/app/conexoes",
+    label: "Conexões",
+    description: "Os números de WhatsApp da equipe e por onde os leads entram.",
+    icon: ChatCircle,
+    group: "organizacao",
+    minRole: "manager",
+    perfil: "imobiliaria",
+  },
+  {
+    href: "/app/membros",
+    label: "Membros",
+    description: "Quem está na equipe, o papel de cada um e o que cada papel pode fazer.",
+    icon: Users,
+    group: "organizacao",
+    minRole: "manager",
+    perfil: "imobiliaria",
+  },
+  {
+    href: "/app/integracoes",
+    label: "Integrações e API",
+    description: "Meta, sistemas da imobiliária, cruzamento de imóveis, API, webhooks e MCP.",
+    icon: Plug,
+    group: "organizacao",
+    minRole: "manager",
+    perfil: "imobiliaria",
+  },
+  {
+    href: "/app/configuracoes",
+    label: "Configurações",
+    description: "Roleta, mensagens padrão, etiquetas, campos, ficha de visita, motivos de perda e horário.",
+    icon: SlidersHorizontal,
+    group: "organizacao",
+    minRole: "manager",
+    perfil: "imobiliaria",
+  },
+  {
     href: "/app/inbox",
     label: "Inbox",
     description: "As conversas de WhatsApp, com você e a IA atendendo lado a lado.",
@@ -168,6 +299,15 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     icon: Kanban,
     group: "crm",
     sidebar: true,
+  },
+  {
+    href: "/app/imoveis",
+    label: "Carteira de imóveis",
+    description: "O acervo da imobiliária, com os leads de cada imóvel e quem combina com ele.",
+    icon: HouseLine,
+    group: "crm",
+    sidebar: true,
+    perfil: "imobiliaria",
   },
   {
     href: "/app/contacts",
@@ -451,6 +591,9 @@ export const NAV_DESTINATIONS: NavDestination[] = [
  * Como função pura, um `.filter()` resolve todas.
  */
 export function canSee(d: NavDestination, isPlatformAdmin: boolean, role: Role | null): boolean {
+  const perfil = perfilAtivo();
+  if (d.perfil && d.perfil !== perfil) return false;
+  if (perfil === "imobiliaria" && FORA_DO_PERFIL_IMOBILIARIA.has(d.href)) return false;
   if (isPlatformAdmin) return true;
   if (!role) return false;
   return ROLE_RANK[role] >= ROLE_RANK[d.minRole ?? "viewer"];
@@ -495,4 +638,25 @@ export function hubSections(
 /** Projeção do ⌘K: todo destino visível, do sidebar ou não. */
 export function searchable(isPlatformAdmin: boolean, role: Role | null): NavDestination[] {
   return NAV_DESTINATIONS.filter((d) => canSee(d, isPlatformAdmin, role));
+}
+
+/**
+ * Menu do perfil imobiliária, na ordem do protótipo do CRM da OPA (29/10/2026).
+ * O sidebar escuro (SidebarOpa) desenha estas duas listas; rótulo, ícone e
+ * papel mínimo continuam vindo de NAV_DESTINATIONS.
+ */
+export const MENU_IMOBILIARIA = {
+  principal: ["/app/hoje", "/app/fila", "/app/pipeline", "/app/leads", "/app/imoveis", "/app/lembretes", "/app/kit"],
+  configuracao: ["/app/conexoes", "/app/membros", "/app/integracoes", "/app/configuracoes"],
+};
+
+export function menuImobiliaria(
+  isPlatformAdmin: boolean,
+  role: Role | null,
+): { principal: NavDestination[]; configuracao: NavDestination[] } {
+  const achar = (hrefs: string[]) =>
+    hrefs
+      .map((h) => NAV_DESTINATIONS.find((d) => d.href === h))
+      .filter((d): d is NavDestination => !!d && canSee(d, isPlatformAdmin, role));
+  return { principal: achar(MENU_IMOBILIARIA.principal), configuracao: achar(MENU_IMOBILIARIA.configuracao) };
 }
