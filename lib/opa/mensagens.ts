@@ -121,3 +121,34 @@ export function proximaMensagem(args: {
     texto: `${primeiro}, fiquei de te retornar. Tem alguma dúvida que eu possa resolver agora?`,
   };
 }
+
+export interface ItemSelecao {
+  codigo: string;
+  titulo: string;
+  bairro: string | null;
+  preco: string;
+  url: string | null;
+  offMarket: boolean;
+}
+
+const QUANTAS = ["", "uma opção", "duas opções", "três opções"];
+
+/**
+ * Seleção de imóveis numa mensagem só (até 3), no tom do Kit: sem exclamação,
+ * uma pergunta no fim. Off market não leva link nem valor por escrito
+ * (regra do kit: valor por voz, link reservado no nome do cliente).
+ */
+export function mensagemSelecao(args: { nome: string; inegociavel?: string | null; itens: ItemSelecao[] }): string {
+  const itens = args.itens.slice(0, 3);
+  if (itens.length === 0) return "";
+  const primeiro = args.nome.split(" ")[0] ?? args.nome;
+  const linhas = itens.map((i) =>
+    i.offMarket
+      ? `${i.bairro ? `No ${i.bairro}` : "Uma casa"} fora dos portais: te mando por um link reservado, só para você, e o valor te passo por ligação.`
+      : `${i.titulo}, ${i.preco}\n${i.url ?? ""}`.trim(),
+  );
+  const motivo = args.inegociavel ? ` (${args.inegociavel.toLowerCase()})` : "";
+  return `${primeiro}, separei ${QUANTAS[itens.length]} que combinam com o que você me contou${motivo}.\n\n${linhas.join("\n\n")}\n\n${
+    itens.length === 1 ? "Quer ver de perto?" : "Qual delas você quer ver de perto?"
+  }`;
+}

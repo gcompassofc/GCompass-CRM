@@ -19,6 +19,7 @@ import {
 } from "@/lib/opa/dados";
 import { contarEtiquetas, etiquetasDoLead } from "@/lib/opa/etiquetas";
 import { afinidade, precoCheio, precoPrincipal } from "@/lib/opa/imoveis";
+import { MontarSelecao } from "./_selecao";
 import { RegistrarLigacao } from "./_ligacao";
 import { proximaMensagem } from "@/lib/opa/mensagens";
 import { createClient } from "@/lib/supabase/server";
@@ -996,6 +997,21 @@ export default async function LeadPage({
                 })}
               </ul>
               {combinam.length === 0 && <Vazio ilustracao={<IlustraCasa />} titulo={`Nada no acervo acima de ${config.cruzamento.minimo}`} />}
+              {aberto && (
+                <MontarSelecao
+                  nome={lead.nome}
+                  telefone={lead.telefone}
+                  inegociavel={lead.campos.inegociavel ?? null}
+                  itens={combinam.slice(0, 6).map(({ i }) => ({
+                    codigo: i.codigo,
+                    titulo: i.titulo,
+                    bairro: i.bairro,
+                    preco: precoPrincipal(i),
+                    url: i.url_site,
+                    offMarket: i.off_market || lead.offMarket === "comprador",
+                  }))}
+                />
+              )}
             </Cartao>
           </div>
         )}
