@@ -1,6 +1,6 @@
 ---
 tags: [cliente/opa, tipo/roteiro]
-atualizado: 2026-10-30
+atualizado: 2026-10-31
 status: vigente
 ---
 
@@ -10,11 +10,33 @@ Roteiro único para tirar o CRM da OPA do computador e colocar em produção.
 Cada passo diz **quem faz**: 🙋 é do Allyson (conta, cartão, celular, decisão), 🤖 a IA executa.
 Nada aqui foi publicado ainda: banco, servidor e domínio de produção não existem.
 
+## Onde paramos (31/10/2026)
+
+**Estado:** build de produção passa (3 min 30 s), 64 testes da OPA passam, banco zerado com 0110 a 0117 passa
+(462 testes de invariantes). Tudo commitado no ramo `opa/crm-local`, **sem push**.
+
+**Feito até aqui:** auditoria de segurança, cifra dos dados (fases 1 e 2), velocidade com 1.500 leads,
+copiloto com o contexto da OPA, ligação em um toque, montar seleção, fotos da equipe e a mescla do protótipo
+de telas por permissão (Início do corretor, do gerente e do administrador, menu por papel, barra do celular).
+
+**Para retomar, nesta ordem:**
+
+1. 🙋 Responder as decisões pendentes: D1 (servidor), D3 (conta do Supabase), D6 (chave da IA) e as 3 de permissão:
+   o gerente convida corretores? Excluir lead só com o administrador? O corretor liga o próprio WhatsApp?
+2. 🤖 Bloco "antes da equipe usar" da [revisão de 31/10](REVISAO-COMPLETA-2026-10-31.md): F1 (lembretes, avisos e
+   repasse rodando), F2 (configurações valendo), F3 (números do Início), E1 (gravação sem sobrescrever),
+   U1 (busca no celular), U3 (retorno nas ações), V1 (ficha sem esperar a IA), I1 e I2 (saída estruturada e cache da IA).
+3. 🙋🤖 Seções 2 a 7 deste roteiro: contas, Supabase, imagem, instalação, conferência, WhatsApp e equipe.
+4. 🤖 Testar a IA com 30 conversas reais da OPA, anonimizadas (I3 da revisão).
+
+Para abrir o CRM no computador: Docker Desktop ligado, depois `./node_modules/.bin/next dev -p 3000` nesta pasta.
+Logins de demonstração: `marco@opa.local` (gerente) e `luana@opa.local` (corretora), senha no `scripts/seed-opa.ts`.
+
 ## 0. O que já está pronto (30/10/2026)
 
 - Código no ramo local `opa/crm-local` do `gcompassofc/GCompass-CRM`, commitado, **sem push**.
 - Auditoria de segurança feita e corrigida: [AUDITORIA-SEGURANCA-2026-10-30.md](AUDITORIA-SEGURANCA-2026-10-30.md).
-- Banco: migrations 0110 a 0116 da OPA, também copiadas como apêndice no `supabase/baseline.sql`
+- Banco: migrations 0110 a 0117 da OPA, também copiadas como apêndice no `supabase/baseline.sql`
   (é o arquivo que o instalador aplica). Ensaio num Postgres zerado: instalação e reaplicação passam.
 - Scripts de produção em `scripts/producao/`:
 
