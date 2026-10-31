@@ -64,7 +64,7 @@ function Respondi({ leadId, escuro }: { leadId: string; escuro?: boolean }) {
         title="Respondi"
         className={cn(
           "inline-flex h-11 items-center gap-2 rounded-full px-4 text-[14px] font-semibold transition-colors",
-          escuro ? "bg-white text-[#0a2d40] hover:bg-[#e7f0f5]" : "bg-[#e3f4ea] text-[#1e7a46] hover:bg-[#cdebd9]",
+          escuro ? "bg-white text-[#0a2d40] hover:bg-[#e7f0f5]" : "bg-[#e5f3ea] text-[#1d6b43] hover:bg-[#cdebd9]",
         )}
       >
         <Check className="size-4" weight="bold" /> Respondi
@@ -182,7 +182,7 @@ function CartaoFila({ l, i, im, dono, prazos }: { l: LeadOpa; i: number; im?: Im
             <p className="mt-1.5 truncate text-[12px] text-[#5b7284]">{prox.texto}</p>
           </>
         ) : (
-          <p className="flex items-center gap-1.5 text-[13px] text-[#1e7a46]">
+          <p className="flex items-center gap-1.5 text-[13px] text-[#1d6b43]">
             <CheckCircle weight="fill" className="size-4" /> Respondido
           </p>
         )}
@@ -196,7 +196,7 @@ function CartaoFila({ l, i, im, dono, prazos }: { l: LeadOpa; i: number; im?: Im
           className="relative inline-flex size-11 items-center justify-center rounded-full bg-[#eef3f6] text-[#0a2d40] hover:bg-[#e7f0f5]"
         >
           <ChatCircle className="size-5" />
-          {espera != null && <span className="absolute right-0.5 top-0.5 size-2.5 rounded-full bg-[#d64545] ring-2 ring-white" />}
+          {espera != null && <span className="absolute right-0.5 top-0.5 size-2.5 rounded-full bg-[#e07b2e] ring-2 ring-white" />}
         </Link>
         {espera != null && <Respondi leadId={l.id} />}
       </div>

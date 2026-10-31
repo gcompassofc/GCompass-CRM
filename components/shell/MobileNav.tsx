@@ -1,10 +1,10 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { List } from "@/lib/ui/icons";
+import { usePathname, useRouter } from "next/navigation";
+import { Buildings, House, List, ListNumbers, Plus } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/auth/AuthProvider";
-import { canSee, NAV_DESTINATIONS } from "@/lib/navigation/registry";
+import { canSee, NAV_DESTINATIONS, perfilAtivo } from "@/lib/navigation/registry";
 
 /**
  * Barra flutuante de navegação do celular.
@@ -49,7 +49,90 @@ interface Props {
   hidden?: boolean;
 }
 
+/**
+ * Barra do celular da OPA (protótipo de 31/10/2026): rótulo embaixo de cada
+ * ícone e o "Novo" no meio, que abre o formulário de novo lead da tela.
+ */
+function BarraOpa({ onOpenMenu, hidden }: Props) {
+  const pathname = usePathname();
+  const router = useRouter();
+  // A tela com o formulário de novo lead aberto escuta o evento; nas outras
+  // (ficha do lead, configurações), vai para o Início e abre lá.
+  const novo = () => {
+    if ((window as { __opaNovoLead?: boolean }).__opaNovoLead) window.dispatchEvent(new Event("opa:novo-lead"));
+    else router.push("/app/hoje?novo=1");
+  };
+  const itens = [
+    { href: "/app/hoje", rotulo: "Início", Icon: House },
+    { href: "/app/fila", rotulo: "Fila", Icon: ListNumbers },
+    null,
+    { href: "/app/imoveis", rotulo: "Imóveis", Icon: Buildings },
+  ];
+  return (
+    <nav
+      aria-label="Navegação principal"
+      aria-hidden={hidden}
+      className={cn(
+        "fixed inset-x-0 bottom-0 z-30 grid grid-cols-5 items-end border-t border-[#e2edf3] bg-white px-2 pb-[max(14px,env(safe-area-inset-bottom))] pt-2 md:hidden",
+        "transition-[opacity,transform] duration-200",
+        hidden && "pointer-events-none translate-y-4 opacity-0",
+      )}
+    >
+      {itens.map((it) => {
+        if (!it) {
+          return (
+            <button
+              key="novo"
+              type="button"
+              onClick={novo}
+              aria-label="Novo lead"
+              tabIndex={hidden ? -1 : undefined}
+              className="flex flex-col items-center gap-1 text-[11px] font-semibold text-[#12455f]"
+            >
+              <span className="-mt-6 flex size-[52px] items-center justify-center rounded-full bg-[#12455f] text-white shadow-[0_12px_34px_rgba(9,44,62,0.18)]">
+                <Plus size={24} weight="bold" aria-hidden />
+              </span>
+              Novo
+            </button>
+          );
+        }
+        const ativo = pathname === it.href || pathname.startsWith(`${it.href}/`);
+        return (
+          <Link
+            key={it.href}
+            href={it.href}
+            aria-current={ativo ? "page" : undefined}
+            tabIndex={hidden ? -1 : undefined}
+            className={cn("flex flex-col items-center gap-1 text-[11px]", ativo ? "font-semibold text-[#12455f]" : "font-medium text-[#5b7284]")}
+          >
+            <span className={cn("flex h-[30px] w-14 items-center justify-center rounded-full", ativo && "bg-[#e3eff6]")}>
+              <it.Icon size={20} weight={ativo ? "fill" : "regular"} aria-hidden />
+            </span>
+            {it.rotulo}
+          </Link>
+        );
+      })}
+      <button
+        type="button"
+        onClick={onOpenMenu}
+        tabIndex={hidden ? -1 : undefined}
+        className="flex flex-col items-center gap-1 text-[11px] font-medium text-[#5b7284]"
+      >
+        <span className="flex h-[30px] w-14 items-center justify-center">
+          <List size={20} aria-hidden />
+        </span>
+        Mais
+      </button>
+    </nav>
+  );
+}
+
 export function MobileNav({ onOpenMenu, hidden = false }: Props) {
+  if (perfilAtivo() === "imobiliaria") return <BarraOpa onOpenMenu={onOpenMenu} hidden={hidden} />;
+  return <MobileNavBase onOpenMenu={onOpenMenu} hidden={hidden} />;
+}
+
+function MobileNavBase({ onOpenMenu, hidden = false }: Props) {
   const pathname = usePathname();
   const { user, activeOrg } = useAuth();
 

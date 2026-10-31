@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import {
@@ -129,6 +129,23 @@ export function NovoLead({
 }) {
   const router = useRouter();
   const [aberto, setAberto] = useState(false);
+  // O botão "Novo" da barra do celular chega com ?novo=1 e abre este formulário.
+  // Também atende o evento "opa:novo-lead" do botão, quando a tela já está aberta.
+  useEffect(() => {
+    const abrir = () => setAberto(true);
+    window.addEventListener("opa:novo-lead", abrir);
+    (window as { __opaNovoLead?: boolean }).__opaNovoLead = true;
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("novo") === "1") {
+      p.delete("novo");
+      window.history.replaceState(null, "", `${window.location.pathname}${p.size ? `?${p}` : ""}`);
+      abrir();
+    }
+    return () => {
+      window.removeEventListener("opa:novo-lead", abrir);
+      (window as { __opaNovoLead?: boolean }).__opaNovoLead = false;
+    };
+  }, []);
   const [telefone, setTelefone] = useState("");
   const [existente, setExistente] = useState<NumeroExistente | null>(null);
   const [pendente, iniciar] = useTransition();

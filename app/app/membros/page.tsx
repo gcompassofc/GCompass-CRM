@@ -40,7 +40,7 @@ const MATRIZ: Array<[string, string, string, string]> = [
 ];
 
 function Celula({ v }: { v: string }) {
-  if (v === "sim") return <CheckCircle weight="fill" className="mx-auto size-5 text-[#1e7a46]" aria-label="sim" />;
+  if (v === "sim") return <CheckCircle weight="fill" className="mx-auto size-5 text-[#1d6b43]" aria-label="sim" />;
   if (v === "nao") return <XCircle className="mx-auto size-5 text-[#c6d3db]" aria-label="não" />;
   return <span className="inline-block rounded-full bg-[#e7f0f5] px-2.5 py-1 text-[12px] font-medium text-[#12455f]">{v}</span>;
 }

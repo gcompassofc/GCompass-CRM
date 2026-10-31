@@ -898,8 +898,8 @@ export default async function LeadPage({
                       <dl className="mt-4 grid gap-2.5 sm:grid-cols-2">
                         {(
                           [
-                            [Check, "Gostou", v.gostou, "text-[#1e7a46]"],
-                            [X, "Não gostou", v.nao_gostou, "text-[#b42318]"],
+                            [Check, "Gostou", v.gostou, "text-[#1d6b43]"],
+                            [X, "Não gostou", v.nao_gostou, "text-[#a4410e]"],
                             [Warning, "Objeção", v.objecao, "text-[#9a5b00]"],
                             [ArrowRight, "Próximo passo", v.proximo_passo, "text-[#2a7ca8]"],
                           ] as const
@@ -1090,7 +1090,7 @@ function Diagnostico({
                 <label className="min-w-0 flex-1" htmlFor={`d-${k}`}>
                   <span className="text-[12px] text-[#5b7284]">
                     {CAMPOS[k].rotulo}
-                    {CAMPOS[k].obrigatorioDiagnostico && <span className="text-[#b42318]"> *</span>}
+                    {CAMPOS[k].obrigatorioDiagnostico && <span className="text-[#a4410e]"> *</span>}
                   </span>
                   <input
                     id={`d-${k}`}

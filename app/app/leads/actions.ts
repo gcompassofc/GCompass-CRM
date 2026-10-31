@@ -76,6 +76,7 @@ export async function confirmarSugestao(formData: FormData) {
     .update({ status: "aceita", valor, decidido_por: user.id, decidido_em: new Date().toISOString() })
     .eq("id", s.id);
   revalidatePath(`/app/leads/${s.lead_id}`);
+  revalidatePath("/app/hoje");
 }
 
 export async function descartarSugestao(formData: FormData) {
@@ -89,6 +90,7 @@ export async function descartarSugestao(formData: FormData) {
     .select("lead_id")
     .maybeSingle();
   if (data) revalidatePath(`/app/leads/${(data as { lead_id: string }).lead_id}`);
+  revalidatePath("/app/hoje");
 }
 
 /** Campo preenchido à mão pelo corretor, sem passar pela IA. */

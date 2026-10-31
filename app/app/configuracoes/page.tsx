@@ -412,7 +412,7 @@ function ChipEtiqueta({ grupo, valor, n }: { grupo: string; valor: string; n: nu
       <form action={removerEtiqueta} className="hidden group-hover:block">
         <input type="hidden" name="grupo" value={grupo} />
         <input type="hidden" name="valor" value={valor} />
-        <button type="submit" className="flex rounded-full p-0.5 text-[#5b7284] hover:text-[#b42318]" aria-label={`Remover ${valor}`}>
+        <button type="submit" className="flex rounded-full p-0.5 text-[#5b7284] hover:text-[#a4410e]" aria-label={`Remover ${valor}`}>
           <X className="size-3" />
         </button>
       </form>
@@ -541,7 +541,7 @@ function ListaCampos({
             <form action={removerCampo}>
               <input type="hidden" name="lista" value={lista} />
               <input type="hidden" name="chave" value={c.chave} />
-              <button type="submit" className={cn(botaoIcone, "hover:text-[#b42318]")} aria-label={`Remover ${c.rotulo}`}>
+              <button type="submit" className={cn(botaoIcone, "hover:text-[#a4410e]")} aria-label={`Remover ${c.rotulo}`}>
                 <Trash className="size-4" />
               </button>
             </form>
@@ -607,7 +607,7 @@ function AbaVisita({ config }: { config: ConfigOpa }) {
                   </form>
                   <form action={removerCampoVisita}>
                     <input type="hidden" name="chave" value={c.chave} />
-                    <button type="submit" className={cn(botaoIcone, "hover:text-[#b42318]")} aria-label={`Remover ${c.rotulo}`}>
+                    <button type="submit" className={cn(botaoIcone, "hover:text-[#a4410e]")} aria-label={`Remover ${c.rotulo}`}>
                       <Trash className="size-4" />
                     </button>
                   </form>
@@ -635,7 +635,7 @@ function AbaVisita({ config }: { config: ConfigOpa }) {
             <div key={c.chave}>
               <p className="text-[12px] font-medium text-[#5b7284]">
                 {c.rotulo}
-                {c.obrigatorio ? <span className="text-[#b42318]"> *</span> : ""}
+                {c.obrigatorio ? <span className="text-[#a4410e]"> *</span> : ""}
               </p>
               <div className="mt-1 h-9 rounded-[12px] bg-[#f2f6f9] px-3 text-[12px] leading-9 text-[#8aa3b3]">
                 {c.chave === "interesse" ? "1 · 2 · 3 · 4 · 5" : c.opcoes ? c.opcoes[0] : ""}
@@ -671,7 +671,7 @@ function AbaPerda({ config }: { config: ConfigOpa }) {
             </form>
             <form action={removerMotivo}>
               <input type="hidden" name="motivo" value={m.motivo} />
-              <button type="submit" className={cn(botaoIcone, "hover:text-[#b42318]")} aria-label={`Remover ${m.motivo}`}>
+              <button type="submit" className={cn(botaoIcone, "hover:text-[#a4410e]")} aria-label={`Remover ${m.motivo}`}>
                 <Trash className="size-4" />
               </button>
             </form>

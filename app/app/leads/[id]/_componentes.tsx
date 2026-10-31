@@ -75,7 +75,7 @@ export function MensagemPronta({ texto, telefone }: { texto: string; telefone: s
           }}
           className={cn(
             "flex size-11 items-center justify-center rounded-full transition-colors",
-            copiado ? "bg-[#e3f4ea] text-[#1e7a46]" : "bg-[#eef3f6] text-[#0a2d40] hover:bg-[#e7f0f5]",
+            copiado ? "bg-[#e5f3ea] text-[#1d6b43]" : "bg-[#eef3f6] text-[#0a2d40] hover:bg-[#e7f0f5]",
           )}
         >
           {copiado ? <Check className="size-5" weight="bold" /> : <Copy className="size-5" />}
@@ -175,8 +175,8 @@ export function GanharNegocio({ leadId, nome, opcoes }: { leadId: string; nome: 
                   <p className="mt-1 text-[22px] font-light tracking-[-0.03em] text-[#0a2d40]">{vgvCents ? reais(vgvCents) : "Escolha"}</p>
                 )}
               </div>
-              <div className="rounded-[20px] bg-[#e3f4ea] p-4">
-                <p className="text-[12px] font-medium text-[#1e7a46]">Comissão OPA · 3%</p>
+              <div className="rounded-[20px] bg-[#e5f3ea] p-4">
+                <p className="text-[12px] font-medium text-[#1d6b43]">Comissão OPA · 3%</p>
                 <p className="mt-1 text-[22px] font-light tracking-[-0.03em] text-[#0b5c37]">
                   {vgvCents ? reais(Math.round(vgvCents * 0.03)) : "sem valor"}
                 </p>
@@ -499,7 +499,7 @@ export function RegistrarVisita({
                   <label key={k} className={rotuloCls}>
                     <span>
                       {rot(k === "nao_gostou" ? "naogostou" : k, r)}
-                      {obr(k === "nao_gostou" ? "naogostou" : k) && <span className="ml-1 text-[#b42318]">*</span>}
+                      {obr(k === "nao_gostou" ? "naogostou" : k) && <span className="ml-1 text-[#a4410e]">*</span>}
                     </span>
                     <input name={k} className={campoCls} />
                   </label>
@@ -542,7 +542,7 @@ export function PerderNegocio({ leadId, motivos }: { leadId: string; motivos: st
   const [pendente, iniciar] = useTransition();
   return (
     <>
-      <button type="button" onClick={() => setAberto(true)} className={cn(pilulaBranca, "text-[#b42318] hover:bg-[#fde8e6]")}>
+      <button type="button" onClick={() => setAberto(true)} className={cn(pilulaBranca, "text-[#a4410e] hover:bg-[#fdeee3]")}>
         <Prohibit className="size-4" /> Perder
       </button>
       <Dialog open={aberto} onOpenChange={setAberto}>
@@ -575,7 +575,7 @@ export function PerderNegocio({ leadId, motivos }: { leadId: string; motivos: st
               <button type="button" onClick={() => setAberto(false)} className={cancelarCls}>
                 Cancelar
               </button>
-              <button type="submit" disabled={pendente} className={cn(pilula, "bg-[#b42318] text-white hover:brightness-110")}>
+              <button type="submit" disabled={pendente} className={cn(pilula, "bg-[#a4410e] text-white hover:brightness-110")}>
                 <Prohibit className="size-4" weight="bold" /> Confirmar perda
               </button>
             </DialogFooter>

@@ -650,13 +650,34 @@ export const MENU_IMOBILIARIA = {
   configuracao: ["/app/conexoes", "/app/membros", "/app/integracoes", "/app/configuracoes"],
 };
 
+/**
+ * Menu por papel (protótipo "Telas por permissão", 31/10/2026): o corretor vê só
+ * o dia dele, sem Funis (move a etapa pela ficha); o gestor vê a equipe toda.
+ */
+const MENU_CORRETOR = ["/app/hoje", "/app/fila", "/app/lembretes", "/app/leads", "/app/imoveis", "/app/kit"];
+const ROTULO_CORRETOR: Record<string, string> = { "/app/lembretes": "Agenda", "/app/leads": "Meus leads", "/app/fila": "Fila" };
+const ROTULO_GESTOR: Record<string, string> = {
+  "/app/fila": "Fila da equipe",
+  "/app/pipeline": "Funis",
+  "/app/imoveis": "Imóveis",
+  "/app/lembretes": "Lembretes",
+  "/app/configuracoes": "Roleta e funis",
+  "/app/membros": "Equipe",
+};
+
 export function menuImobiliaria(
   isPlatformAdmin: boolean,
   role: Role | null,
 ): { principal: NavDestination[]; configuracao: NavDestination[] } {
+  const gestor = isPlatformAdmin || role === "manager" || role === "admin";
+  const rotulos = gestor ? ROTULO_GESTOR : { ...ROTULO_CORRETOR, "/app/imoveis": "Imóveis" };
   const achar = (hrefs: string[]) =>
     hrefs
       .map((h) => NAV_DESTINATIONS.find((d) => d.href === h))
-      .filter((d): d is NavDestination => !!d && canSee(d, isPlatformAdmin, role));
-  return { principal: achar(MENU_IMOBILIARIA.principal), configuracao: achar(MENU_IMOBILIARIA.configuracao) };
+      .filter((d): d is NavDestination => !!d && canSee(d, isPlatformAdmin, role))
+      .map((d) => (rotulos[d.href] ? { ...d, label: rotulos[d.href]! } : d));
+  return {
+    principal: achar(gestor ? MENU_IMOBILIARIA.principal : MENU_CORRETOR),
+    configuracao: achar(MENU_IMOBILIARIA.configuracao),
+  };
 }

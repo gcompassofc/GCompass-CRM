@@ -73,7 +73,7 @@ function tempo(min: number): string {
 
 /** Temperatura só por ícone (com title): quente, morno, frio. */
 const TEMP = {
-  quente: { Icone: Fire, cls: "bg-[#fde8e6] text-[#b42318]", rotulo: "Quente" },
+  quente: { Icone: Fire, cls: "bg-[#fdeee3] text-[#a4410e]", rotulo: "Quente" },
   morno: { Icone: Thermometer, cls: "bg-[#fdf1dc] text-[#9a5b00]", rotulo: "Morno" },
   frio: { Icone: Snowflake, cls: "bg-[#e7f0f5] text-[#2a7ca8]", rotulo: "Frio" },
 } as const;
@@ -253,7 +253,7 @@ export function QuadroOpa({ colunas: inicial }: { colunas: ColunaQuadro[] }) {
                                 >
                                   <ChatCircle className="size-4" />
                                   {c.esperandoMin != null && (
-                                    <span className="absolute right-0 top-0 size-2.5 rounded-full bg-[#d64545] ring-2 ring-white" />
+                                    <span className="absolute right-0 top-0 size-2.5 rounded-full bg-[#e07b2e] ring-2 ring-white" />
                                   )}
                                 </Link>
                                 {c.esperandoMin != null && (
@@ -263,7 +263,7 @@ export function QuadroOpa({ colunas: inicial }: { colunas: ColunaQuadro[] }) {
                                       type="submit"
                                       title="Respondi"
                                       aria-label="Respondi"
-                                      className="inline-flex size-9 items-center justify-center rounded-full bg-[#e3f4ea] text-[#1e7a46] hover:bg-[#cdebd9]"
+                                      className="inline-flex size-9 items-center justify-center rounded-full bg-[#e5f3ea] text-[#1d6b43] hover:bg-[#cdebd9]"
                                     >
                                       <Check className="size-4" weight="bold" />
                                     </button>

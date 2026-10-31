@@ -208,7 +208,7 @@ export default async function ImovelPage({ params }: { params: Promise<{ codigo:
                               {l.etapa.nome} · {equipe.get(l.donoId ?? "")?.nome.split(" ")[0] ?? "sem corretor"}
                             </p>
                           </div>
-                          {t && <t.icone className={`size-4 shrink-0 ${t.tom === "alerta" ? "text-[#b42318]" : t.tom === "aviso" ? "text-[#9a5b00]" : "text-[#2a7ca8]"}`} aria-label={t.rotulo} />}
+                          {t && <t.icone className={`size-4 shrink-0 ${t.tom === "alerta" ? "text-[#a4410e]" : t.tom === "aviso" ? "text-[#9a5b00]" : "text-[#2a7ca8]"}`} aria-label={t.rotulo} />}
                         </Link>
                       </li>
                     );

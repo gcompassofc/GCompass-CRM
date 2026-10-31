@@ -214,7 +214,7 @@ export default async function ConexoesPage() {
                         <Phone className="size-3.5" /> {mascarar(s.phone_number)}
                       </p>
                     </div>
-                    <span title={ok ? "Conectado" : "Desconectado"} className={cn("size-2.5 shrink-0 rounded-full", ok ? "bg-[#2ba160]" : "bg-[#d64545]")} />
+                    <span title={ok ? "Conectado" : "Desconectado"} className={cn("size-2.5 shrink-0 rounded-full", ok ? "bg-[#2ba160]" : "bg-[#e07b2e]")} />
                   </div>
                   <div className="flex items-end justify-between gap-3">
                     <div>

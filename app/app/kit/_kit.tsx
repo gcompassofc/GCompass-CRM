@@ -328,7 +328,7 @@ export function KitCliente({
             {val}
           </span>
         ) : (
-          <span key={n} className="rounded-[5px] bg-[#b42318]/10 px-0.5 font-semibold text-[#b42318]">
+          <span key={n} className="rounded-[5px] bg-[#a4410e]/10 px-0.5 font-semibold text-[#a4410e]">
             {v[1]}
           </span>
         );
@@ -341,7 +341,7 @@ export function KitCliente({
             {val}
           </span>
         ) : (
-          <span key={n} className="rounded-[5px] bg-[#b42318]/10 px-0.5 font-semibold text-[#b42318]">
+          <span key={n} className="rounded-[5px] bg-[#a4410e]/10 px-0.5 font-semibold text-[#a4410e]">
             [{t[1]}]
           </span>
         );
@@ -550,7 +550,7 @@ export function KitCliente({
             <span className="size-2.5 rounded-full bg-[#2a7ca8]" /> preenchido
           </span>
           <span className="inline-flex items-center gap-1.5">
-            <span className="size-2.5 rounded-full bg-[#b42318]" /> falta completar
+            <span className="size-2.5 rounded-full bg-[#a4410e]" /> falta completar
           </span>
           <span>Adapte antes de mandar: nenhuma mensagem sai igual para dois leads.</span>
         </p>

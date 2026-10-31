@@ -22,8 +22,8 @@ const TOM_ICONE: Record<Tom, string> = {
   claro: "bg-[#e7f0f5] text-[#12455f]",
   acao: "bg-[#2a7ca8] text-white",
   escuro: "bg-[#0a2d40] text-white",
-  alerta: "bg-[#fde8e6] text-[#b42318]",
-  ok: "bg-[#e3f4ea] text-[#1e7a46]",
+  alerta: "bg-[#fdeee3] text-[#a4410e]",
+  ok: "bg-[#e5f3ea] text-[#1d6b43]",
   aviso: "bg-[#fdf1dc] text-[#9a5b00]",
 };
 
@@ -145,7 +145,7 @@ export function CartaoNumero({
           className={cn(
             longo ? "whitespace-nowrap text-[34px]" : "text-[46px]",
             "font-light leading-none tracking-[-0.045em] tabular-nums",
-            alerta ? "text-[#b42318]" : escuro ? "text-white" : "text-[#0a2d40]",
+            alerta ? "text-[#a4410e]" : escuro ? "text-white" : "text-[#0a2d40]",
           )}
         >
           {valor}
@@ -153,7 +153,7 @@ export function CartaoNumero({
         {(contexto || variacao) && (
           <p className={cn("mt-2.5 flex flex-wrap items-center gap-2 text-[13px]", escuro ? "text-white/70" : "text-[#5b7284]")}>
             {variacao && (
-              <span className={cn("font-semibold", variacao.bom ? "text-[#1e7a46]" : "text-[#b42318]", escuro && "text-[#8fe0b0]")}>
+              <span className={cn("font-semibold", variacao.bom ? "text-[#1d6b43]" : "text-[#a4410e]", escuro && "text-[#8fe0b0]")}>
                 {variacao.texto}
               </span>
             )}
@@ -171,8 +171,8 @@ const TOM_CHIP: Record<Tom | "neutro", string> = {
   claro: "bg-[#e7f0f5] text-[#12455f]",
   acao: "bg-[#2a7ca8] text-white",
   escuro: "bg-[#0a2d40] text-white",
-  alerta: "bg-[#fde8e6] text-[#b42318]",
-  ok: "bg-[#e3f4ea] text-[#1e7a46]",
+  alerta: "bg-[#fdeee3] text-[#a4410e]",
+  ok: "bg-[#e5f3ea] text-[#1d6b43]",
   aviso: "bg-[#fdf1dc] text-[#9a5b00]",
 };
 
@@ -282,7 +282,7 @@ export function BarraHachurada({ pct, tom = "acao", className }: { pct: number; 
       <div
         className={cn(
           "h-full rounded-full",
-          tom === "alerta" ? "bg-[#d64545]" : tom === "escuro" ? "bg-[#0a2d40]" : "bg-gradient-to-r from-[#12455f] to-[#2a7ca8]",
+          tom === "alerta" ? "bg-[#e07b2e]" : tom === "escuro" ? "bg-[#0a2d40]" : "bg-gradient-to-r from-[#12455f] to-[#2a7ca8]",
         )}
         style={{ width: `${Math.max(3, Math.min(100, pct))}%` }}
       />

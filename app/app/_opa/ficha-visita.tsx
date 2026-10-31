@@ -368,7 +368,7 @@ export function FichaVisitaRapida({
               <div className={rotuloCls}>
                 <span>
                   {rot("interesse", "Interesse depois da visita (1 a 5)")}
-                  {obr("interesse") && <span className="ml-1 text-[#b42318]">*</span>}
+                  {obr("interesse") && <span className="ml-1 text-[#a4410e]">*</span>}
                 </span>
                 <div className="flex gap-2">
                   {[1, 2, 3, 4, 5].map((n) => (
@@ -396,7 +396,7 @@ export function FichaVisitaRapida({
                 <label key={nome} className={rotuloCls}>
                   <span>
                     {rot(chave, padrao)}
-                    {obr(chave) && <span className="ml-1 text-[#b42318]">*</span>}
+                    {obr(chave) && <span className="ml-1 text-[#a4410e]">*</span>}
                   </span>
                   <input name={nome} required={obr(chave)} maxLength={500} className={campoCls} />
                 </label>

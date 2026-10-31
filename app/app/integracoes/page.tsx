@@ -253,7 +253,7 @@ export default async function IntegracoesPage() {
                     <p className="text-[14px] font-semibold text-[#0a2d40]">{t.name}</p>
                     <p className="mt-0.5 flex flex-wrap items-center gap-2 text-[12px] text-[#5b7284]">
                       <span className="font-mono">{t.prefix ? `${t.prefix}••••` : "••••"}</span>
-                      <span className={cn(!t.expires_at && "font-semibold text-[#b42318]")}>vence {data(t.expires_at)}</span>
+                      <span className={cn(!t.expires_at && "font-semibold text-[#a4410e]")}>vence {data(t.expires_at)}</span>
                     </p>
                   </li>
                 ))}

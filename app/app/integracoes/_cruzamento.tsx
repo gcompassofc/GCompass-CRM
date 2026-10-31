@@ -48,7 +48,7 @@ export function FormCruzamento({ pesos, minimo, editavel }: { pesos: Pesos; mini
       <div className="rounded-[24px] bg-[#f2f6f9] p-5">
         <div className="flex items-center justify-between">
           <p className="text-[14px] font-semibold text-[#0a2d40]">Como a afinidade é calculada</p>
-          <span className={cn("rounded-full px-2.5 py-1 text-[12px] font-semibold tabular-nums", soma === 100 ? "bg-[#e3f4ea] text-[#1e7a46]" : "bg-[#fde8e6] text-[#b42318]")}>
+          <span className={cn("rounded-full px-2.5 py-1 text-[12px] font-semibold tabular-nums", soma === 100 ? "bg-[#e5f3ea] text-[#1d6b43]" : "bg-[#fdeee3] text-[#a4410e]")}>
             total {soma}
           </span>
         </div>

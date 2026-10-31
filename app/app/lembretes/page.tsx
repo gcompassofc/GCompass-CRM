@@ -239,7 +239,7 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
                               <input type="hidden" name="id" value={a.id} />
                               <button
                                 type="submit"
-                                className="inline-flex h-9 items-center gap-1.5 rounded-full bg-white px-3.5 text-[13px] font-semibold text-[#b42318] hover:bg-[#fde8e6]"
+                                className="inline-flex h-9 items-center gap-1.5 rounded-full bg-white px-3.5 text-[13px] font-semibold text-[#a4410e] hover:bg-[#fdeee3]"
                               >
                                 <XCircle className="size-4" /> Cancelar
                               </button>
@@ -386,7 +386,7 @@ function LinhaRegra({ regra: r, gestor }: { regra: RegraLembrete; gestor: boolea
                   <button type="submit" className="h-10 rounded-full bg-[#0a2d40] px-5 text-[14px] font-semibold text-white hover:bg-[#12455f]">
                     Salvar
                   </button>
-                  <button type="submit" formAction={excluirRegra} className="inline-flex items-center gap-1 text-[13px] font-semibold text-[#b42318] hover:underline">
+                  <button type="submit" formAction={excluirRegra} className="inline-flex items-center gap-1 text-[13px] font-semibold text-[#a4410e] hover:underline">
                     <Trash className="size-4" /> Excluir
                   </button>
                 </div>

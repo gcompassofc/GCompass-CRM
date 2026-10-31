@@ -187,7 +187,7 @@ export default async function LeadsPage({
                       {espera && (
                         <span
                           title="Esperando resposta"
-                          className="absolute -right-0.5 -top-0.5 size-3 rounded-full border-2 border-white bg-[#d64545]"
+                          className="absolute -right-0.5 -top-0.5 size-3 rounded-full border-2 border-white bg-[#e07b2e]"
                         />
                       )}
                     </span>
@@ -277,7 +277,7 @@ export default async function LeadsPage({
 
         <p className={cn("flex flex-wrap items-center gap-4 px-2 text-[12px] text-[#5b7284]")}>
           <span className="inline-flex items-center gap-1">
-            <span className="size-2.5 rounded-full bg-[#d64545]" /> esperando resposta
+            <span className="size-2.5 rounded-full bg-[#e07b2e]" /> esperando resposta
           </span>
           <span className="inline-flex items-center gap-1">
             <Lock weight="fill" className="size-3.5" /> off market
