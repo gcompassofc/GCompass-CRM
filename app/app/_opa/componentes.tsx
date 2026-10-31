@@ -69,7 +69,9 @@ export function FotoImovel({
   tamanho?: "card" | "full";
 }) {
   const src = imovel ? fotoUrl(imovel, 0, tamanho) : null;
-  if (!src) return <div className={cn("bg-accent-100", className)} />;
+  // span, não div: a foto aparece dentro de <p> nas listas, e div dentro de p
+  // quebra a hidratação (erro 418 do React em produção).
+  if (!src) return <span aria-hidden className={cn("inline-block bg-accent-100", className)} />;
   // eslint-disable-next-line @next/next/no-img-element -- fotos vêm do R2 da OPA, fora do otimizador do Next
   return <img src={src} alt={imovel?.titulo ?? ""} loading="lazy" className={cn("object-cover", className)} />;
 }

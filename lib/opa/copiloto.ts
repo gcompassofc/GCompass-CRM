@@ -44,6 +44,25 @@ export interface MensagemLida {
   direction: "inbound" | "outbound";
   body: string | null;
   sent_at?: string;
+  /** text, audio, image, video, document... (messages.type) */
+  type?: string | null;
+}
+
+const MIDIA: Record<string, string> = {
+  audio: "[áudio, sem transcrição]",
+  image: "[foto]",
+  video: "[vídeo]",
+  document: "[documento]",
+  sticker: "[figurinha]",
+  location: "[localização]",
+  contact: "[contato]",
+};
+
+/** Texto da mensagem para a IA: mídia sem legenda vira um marcador, em vez de sumir. */
+function textoDaMensagem(m: MensagemLida): string | null {
+  const marca = m.type ? MIDIA[m.type] : undefined;
+  if (marca) return m.body ? `${marca} ${m.body}` : marca;
+  return m.body;
 }
 
 export interface Sugestao {
@@ -428,9 +447,10 @@ function quando(iso?: string): string {
  */
 export function montarEntradaIA(mensagens: MensagemLida[], contexto: ContextoLeitura): string {
   const conversa = mensagens
-    .filter((m) => m.body)
+    .map((m) => ({ m, texto: textoDaMensagem(m) }))
+    .filter((x) => x.texto)
     .slice(-40)
-    .map((m) => `${quando(m.sent_at)}${m.direction === "inbound" ? "LEAD" : "CORRETOR"}: ${m.body!.slice(0, 1500).replace(SEM_MARCAS, "")}`)
+    .map(({ m, texto }) => `${quando(m.sent_at)}${m.direction === "inbound" ? "LEAD" : "CORRETOR"}: ${texto!.slice(0, 1500).replace(SEM_MARCAS, "")}`)
     .join("\n");
   const ctx = JSON.stringify(
     {

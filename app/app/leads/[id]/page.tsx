@@ -238,7 +238,8 @@ export default async function LeadPage({
           .from("messages")
           .select("id, direction, body, sent_at, sent_via")
           .eq("conversation_id", lead.conversa.id)
-          .order("sent_at", { ascending: true })
+          // As 80 mais recentes (a lista é invertida abaixo para ficar em ordem).
+          .order("sent_at", { ascending: false })
           .limit(80)
       : Promise.resolve({ data: [] }),
     supabase.from("visitas").select("*").eq("lead_id", id).order("quando", { ascending: false }),
@@ -255,7 +256,7 @@ export default async function LeadPage({
     .filter((e) => !e.is_won && !e.is_lost)
     .map((e) => ({ id: e.id, nome: e.name }));
   const sugestoes = ((sugRaw ?? []) as Sugestao[]).sort((a, b) => ORDEM_CAMPOS.indexOf(a.campo) - ORDEM_CAMPOS.indexOf(b.campo));
-  const mensagens = (msgRaw ?? []) as Msg[];
+  const mensagens = ((msgRaw ?? []) as Msg[]).reverse();
   const visitas = (visitasRaw ?? []) as Visita[];
 
   const porCodigo = new Map(imoveis.map((i) => [i.codigo, i]));

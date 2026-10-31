@@ -356,6 +356,11 @@ export async function agendarMensagem(formData: FormData): Promise<ResultadoEtap
   const quando = String(formData.get("quando") ?? "");
   const mensagem = String(formData.get("mensagem") ?? "").trim();
   if (!quando || !mensagem) return { ok: false, erro: "Informe quando e a mensagem." };
+  // O campo do navegador vem sem fuso ("2026-10-31T18:00"): é hora de Ilhabela.
+  // Sem isto, com o servidor em UTC, a mensagem saía 3 h deslocada.
+  const quandoMs = Date.parse(/[zZ]|[+-]\d{2}:?\d{2}$/.test(quando) ? quando : `${quando}-03:00`);
+  if (Number.isNaN(quandoMs)) return { ok: false, erro: "Data inválida." };
+  if (quandoMs < Date.now() - 60_000) return { ok: false, erro: "Escolha um horário no futuro." };
   const { user, org, supabase } = await contexto();
   let dono: string | null = user.id;
   if (leadId) {
@@ -367,7 +372,7 @@ export async function agendarMensagem(formData: FormData): Promise<ResultadoEtap
     organization_id: org.orgId,
     lead_id: leadId,
     para_user_id: dono,
-    quando: new Date(quando).toISOString(),
+    quando: new Date(quandoMs).toISOString(),
     mensagem,
     origem: "manual",
     criado_por: user.id,

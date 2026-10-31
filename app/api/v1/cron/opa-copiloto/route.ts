@@ -22,6 +22,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 export const dynamic = "force-dynamic";
 
 const POR_TICK = 20;
+const ESPERA_MS = 2 * 60_000;
 const JANELA_HORAS = 48;
 
 async function handle(req: NextRequest): Promise<Response> {
@@ -68,7 +69,9 @@ async function handle(req: NextRequest): Promise<Response> {
       const ultima = ultimaPorContato.get(l.contact_id);
       if (!ultima || ultima.org !== l.organization_id) return false;
       const lido = Date.parse(l.custom_fields?.copiloto?.analisado_em ?? "") || 0;
-      return ultima.em > lido;
+      // Espera o cliente parar de escrever: cinco mensagens seguidas viram uma
+      // leitura só, não cinco (custo da IA). A ficha relê na hora quando aberta.
+      return ultima.em > lido && Date.now() - ultima.em >= ESPERA_MS;
     })
     .slice(0, POR_TICK);
 

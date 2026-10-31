@@ -52,11 +52,13 @@ export async function analisarLead(supabase: SupabaseClient, orgId: string, lead
   if (conversa) {
     const { data } = await supabase
       .from("messages")
-      .select("direction, body, sent_at")
+      .select("direction, body, sent_at, type")
       .eq("conversation_id", (conversa as { id: string }).id)
-      .order("sent_at", { ascending: true })
+      // As 200 mais RECENTES, em ordem cronológica: em conversa longa a IA lia
+      // só o começo e o rascunho respondia a uma mensagem velha.
+      .order("sent_at", { ascending: false })
       .limit(200);
-    mensagens = (data ?? []) as MensagemLida[];
+    mensagens = ((data ?? []) as MensagemLida[]).reverse();
   }
 
   let imovelTitulo: string | undefined;
