@@ -159,7 +159,9 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    // Run on all paths except static assets / Next internals.
-    "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js)$).*)",
+    // Run on all paths except static assets / Next internals. `avif` entrou com a
+    // foto da tela de acesso da OPA: sem ele, quem ainda não entrou era mandado
+    // para o /login no lugar da imagem.
+    "/((?!_next/static|_next/image|favicon.ico|robots.txt|sitemap.xml|.*\\.(?:svg|png|jpg|jpeg|gif|webp|avif|ico|css|js)$).*)",
   ],
 };

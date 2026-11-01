@@ -58,3 +58,16 @@ export function branding(): Branding {
   }
   return resolveBranding(process.env.APP_NAME, process.env.APP_LOGO_URL);
 }
+
+/**
+ * A instalação usa a identidade da OPA (`APP_PALETTE=opa`)? Decide o visual das
+ * telas de acesso (login, senha, segundo fator, convite). No navegador lê o
+ * `data-marca` que o layout raiz põe no `<html>`.
+ */
+export function marcaOpa(): boolean {
+  const valor =
+    typeof window !== "undefined"
+      ? document.documentElement.dataset.marca
+      : process.env.APP_PALETTE;
+  return (valor ?? "").trim().toLowerCase() === "opa";
+}

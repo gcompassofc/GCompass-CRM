@@ -1,8 +1,10 @@
 import Link from "next/link";
 
+import { CabecalhoAcesso } from "@/components/auth/AcessoOpa";
 import { LoginForm } from "@/components/auth/LoginForm";
-import { branding } from "@/lib/branding";
+import { branding, marcaOpa } from "@/lib/branding";
 import { env } from "@/lib/env";
+import { cn } from "@/lib/utils";
 
 export const metadata = { title: "Entrar" };
 
@@ -12,12 +14,18 @@ export default async function LoginPage({
   searchParams: Promise<{ next?: string; reset?: string; error?: string }>;
 }) {
   const { next, reset, error } = await searchParams;
+  const opa = marcaOpa();
   return (
-    <div className="space-y-6">
-      <div className="space-y-1.5 text-center">
-        <h1 className="text-2xl font-semibold tracking-tight">Entrar</h1>
-        <p className="text-sm text-muted-foreground">{branding().name}</p>
-      </div>
+    <div className={opa ? "space-y-7" : "space-y-6"}>
+      {opa ? (
+        <CabecalhoAcesso
+          opa
+          titulo="Bem-vindo de volta"
+          subtitulo="Entre para ver seus clientes e o que fazer hoje."
+        />
+      ) : (
+        <CabecalhoAcesso opa={false} titulo="Entrar" subtitulo={branding().name} />
+      )}
       {reset === "success" && (
         <div
           className="rounded-md border border-primary/30 bg-primary/10 px-3 py-2 text-sm"
@@ -45,11 +53,15 @@ export default async function LoginPage({
         </div>
       )}
       <LoginForm next={next} />
-      <div className="space-y-2 text-center text-sm">
+      <div className={cn("space-y-2 text-sm", opa ? "text-left" : "text-center")}>
         <p>
           <Link
             href="/login/forgot"
-            className="text-muted-foreground underline underline-offset-4 hover:text-foreground"
+            className={
+              opa
+                ? "inline-flex min-h-11 items-center font-semibold text-[#0a2d40] underline-offset-4 hover:underline"
+                : "text-muted-foreground underline underline-offset-4 hover:text-foreground"
+            }
           >
             Esqueci minha senha
           </Link>
@@ -65,7 +77,9 @@ export default async function LoginPage({
             </Link>
           </p>
         ) : (
-          <p className="text-muted-foreground">O acesso é por convite da sua equipe.</p>
+          <p className={opa ? "border-t border-[#e6dfd5] pt-5 text-[13px] text-[#6f6a62]" : "text-muted-foreground"}>
+            O acesso é por convite da sua equipe.
+          </p>
         )}
       </div>
     </div>

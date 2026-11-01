@@ -35,7 +35,7 @@ export function ForgotPasswordForm() {
       if (res.error === "rate_limited") {
         setServerError("Muitas tentativas. Aguarde alguns minutos.");
       } else if (res.error === "validation_error") {
-        setServerError("Email inválido. Confira o campo.");
+        setServerError("E-mail inválido. Confira o campo.");
       } else {
         setServerError("Não foi possível enviar o e-mail. Tente novamente.");
       }
@@ -60,11 +60,15 @@ export function ForgotPasswordForm() {
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
       <div className="space-y-1.5">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="email">E-mail</Label>
         <Input
           id="email"
           type="email"
-          autoComplete="email"
+          inputMode="email"
+          autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
+          placeholder="seu@email.com"
           autoFocus
           aria-invalid={errors.email ? true : undefined}
           {...register("email")}

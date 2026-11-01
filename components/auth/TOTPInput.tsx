@@ -114,6 +114,7 @@ export function TOTPInput({
           disabled={disabled}
           aria-invalid={hasError ? true : undefined}
           aria-label={`Dígito ${i + 1}`}
+          data-totp=""
           onChange={(e) => handleChange(i, e.target.value)}
           onKeyDown={(e) => handleKeyDown(i, e)}
           onPaste={handlePaste}

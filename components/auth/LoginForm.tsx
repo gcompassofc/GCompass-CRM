@@ -9,6 +9,8 @@ import { loginSchema, type LoginInput } from "@/lib/auth/schemas";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { CampoSenha } from "@/components/auth/CampoSenha";
+import { CircleNotch } from "@/lib/ui/icons";
 import { signInWithPassword } from "@/app/actions/auth/signInWithPassword";
 
 export function LoginForm({ next }: { next?: string }) {
@@ -44,7 +46,7 @@ export function LoginForm({ next }: { next?: string }) {
         return;
       }
       if (res.error === "invalid_credentials") {
-        setServerError("Email ou senha incorretos.");
+        setServerError("E-mail ou senha incorretos. Confira e tente de novo.");
       } else if (res.error === "rate_limited") {
         setServerError("Muitas tentativas. Aguarde alguns minutos.");
       } else if (res.error === "validation_error") {
@@ -58,11 +60,17 @@ export function LoginForm({ next }: { next?: string }) {
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
       <div className="space-y-1.5">
-        <Label htmlFor="email">Email</Label>
+        <Label htmlFor="email">E-mail</Label>
+        {/* `username` (e não `email`) é o que o gerenciador de senhas do navegador
+            associa ao login salvo; com `email` ele chegou a preencher o nome. */}
         <Input
           id="email"
           type="email"
-          autoComplete="email"
+          inputMode="email"
+          autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
+          placeholder="seu@email.com"
           autoFocus
           aria-invalid={errors.email ? true : undefined}
           {...register("email")}
@@ -73,9 +81,8 @@ export function LoginForm({ next }: { next?: string }) {
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="password">Senha</Label>
-        <Input
+        <CampoSenha
           id="password"
-          type="password"
           autoComplete="current-password"
           aria-invalid={errors.password ? true : undefined}
           {...register("password")}
@@ -93,7 +100,14 @@ export function LoginForm({ next }: { next?: string }) {
         </div>
       )}
       <Button type="submit" className="w-full" disabled={isPending}>
-        {isPending ? "Entrando..." : "Entrar"}
+        {isPending ? (
+          <span className="inline-flex items-center gap-2">
+            <CircleNotch size={18} className="animate-spin" aria-hidden />
+            Entrando
+          </span>
+        ) : (
+          "Entrar"
+        )}
       </Button>
     </form>
   );

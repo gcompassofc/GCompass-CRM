@@ -15,6 +15,9 @@ import { verifyInviteToken } from "@/lib/auth/invite-token";
 import { authRateLimited, AUTH_LIMITS } from "@/lib/auth/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 import { acceptInviteAction } from "@/app/actions/team/acceptInvite";
+import { LayoutAcessoOpa } from "@/components/auth/AcessoOpa";
+import { rotuloDoPapel, type Role } from "@/lib/auth/types";
+import { marcaOpa } from "@/lib/branding";
 import { criarContaPeloConvite } from "@/app/actions/team/criarContaPeloConvite";
 
 export const dynamic = "force-dynamic";
@@ -60,7 +63,7 @@ export default async function AcceptInvitePage({ params, searchParams }: PagePro
       <Shell>
         <h1 className="text-xl font-semibold">Convite inválido ou expirado</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Este link não é válido ou já passou da janela de 24h. Peça um novo convite ao admin do tenant.
+          Este link não é válido ou já passou da janela de 24h. Peça um novo convite ao administrador da equipe.
         </p>
       </Shell>
     );
@@ -77,7 +80,7 @@ export default async function AcceptInvitePage({ params, searchParams }: PagePro
       <Shell>
         <h1 className="text-xl font-semibold">Você foi convidado</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Crie sua senha para entrar como <strong>{payload.role}</strong> com o e-mail{" "}
+          Crie sua senha para entrar como <strong>{papel(payload.role)}</strong> com o e-mail{" "}
           <strong>{payload.email}</strong>.
         </p>
         {erro && ERROS[erro] && (
@@ -86,31 +89,40 @@ export default async function AcceptInvitePage({ params, searchParams }: PagePro
           </p>
         )}
         <form action={criarContaPeloConvite.bind(null, token)} className="mt-4 space-y-3">
-          <input
-            name="nome"
-            required
-            autoComplete="name"
-            placeholder="Seu nome"
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-          />
-          <input
-            name="senha"
-            type="password"
-            required
-            minLength={12}
-            autoComplete="new-password"
-            placeholder="Senha (12 caracteres ou mais)"
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-          />
-          <input
-            name="confirma"
-            type="password"
-            required
-            minLength={12}
-            autoComplete="new-password"
-            placeholder="Repita a senha"
-            className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-          />
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium">Seu nome</span>
+            <input
+              name="nome"
+              required
+              autoComplete="name"
+              placeholder="Como a equipe chama você"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium">Senha</span>
+            <input
+              name="senha"
+              type="password"
+              required
+              minLength={12}
+              autoComplete="new-password"
+              placeholder="12 caracteres ou mais"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+            />
+          </label>
+          <label className="block space-y-1.5">
+            <span className="text-sm font-medium">Repita a senha</span>
+            <input
+              name="confirma"
+              type="password"
+              required
+              minLength={12}
+              autoComplete="new-password"
+              placeholder="A mesma senha de novo"
+              className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+            />
+          </label>
           <button
             type="submit"
             className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
@@ -158,7 +170,7 @@ export default async function AcceptInvitePage({ params, searchParams }: PagePro
     <Shell>
       <h1 className="text-xl font-semibold">Aceitar convite</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Você foi convidado para entrar como <strong>{payload.role}</strong>. Confirme abaixo para
+        Você foi convidado para entrar como <strong>{papel(payload.role)}</strong>. Confirme abaixo para
         ativar seu acesso.
       </p>
       <form action={accept} className="mt-4">
@@ -173,7 +185,21 @@ export default async function AcceptInvitePage({ params, searchParams }: PagePro
   );
 }
 
+/** Papel em português ("Corretor", "Gestor"); o token guarda o código (`agent`). */
+function papel(role: string): string {
+  return rotuloDoPapel(role as Role) ?? role;
+}
+
 function Shell({ children }: { children: React.ReactNode }) {
+  if (marcaOpa()) {
+    return (
+      <LayoutAcessoOpa>
+        <div className="[&_h1]:text-[30px] [&_h1]:leading-[1.15] [&_h1]:tracking-[-0.02em] [&_h1]:text-[#0a2d40] [&_p]:text-[15px] [&_p]:leading-relaxed">
+          {children}
+        </div>
+      </LayoutAcessoOpa>
+    );
+  }
   return (
     <div className="flex min-h-screen items-center justify-center p-6">
       <div className="w-full max-w-md rounded-lg border bg-card p-8 shadow-sm">{children}</div>
