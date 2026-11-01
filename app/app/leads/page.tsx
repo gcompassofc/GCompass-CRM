@@ -11,6 +11,7 @@ import {
   ChatCircle,
   DownloadSimple,
   Fire,
+  Funnel,
   Globe,
   Handshake,
   HouseLine,
@@ -65,12 +66,12 @@ const TEMPERATURA: Record<string, { icone: Icone; tom: "alerta" | "aviso" | "cla
 export default async function LeadsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ aba?: string; q?: string; corretor?: string; pagina?: string }>;
+  searchParams: Promise<{ aba?: string; q?: string; corretor?: string; pagina?: string; etapa?: string }>;
 }) {
   const user = await requireAuth();
   const org = await resolveActiveOrg(user);
   if (!org) redirect("/app");
-  const { aba = "todos", q, corretor, pagina: paginaBruta } = await searchParams;
+  const { aba = "todos", q, corretor, pagina: paginaBruta, etapa } = await searchParams;
   const supabase = await createClient();
 
   const [todos, imoveis, equipe, { data: funis }] = await Promise.all([
@@ -87,7 +88,9 @@ export default async function LeadsPage({
   const sem = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
   const busca = sem((q ?? "").trim());
   const digitos = busca.replace(/\D/g, "");
+  // "Mais N nesta etapa", no Funil, chega aqui com ?etapa= (F7).
   const base = filtrarCorretor(todos, corretor)
+    .filter((l) => !etapa || l.etapa.id === etapa)
     .filter((l) => {
       if (!busca) return true;
       const im = porCodigo.get(l.imovelCodigo ?? "");
@@ -113,13 +116,14 @@ export default async function LeadsPage({
     if (a !== "todos") p.set("aba", a);
     if (q) p.set("q", q);
     if (corretor) p.set("corretor", corretor);
+    if (etapa) p.set("etapa", etapa);
     if (pg > 1) p.set("pagina", String(pg));
     return `/app/leads${p.size ? `?${p}` : ""}`;
   };
 
   return (
     <>
-      <CabecalhoOpa titulo="Leads" subtitulo="Toda a base, com origem e imóvel de interesse" icone={UserPlus} />
+      <CabecalhoOpa titulo="Leads" subtitulo="Toque num lead para ver a conversa e o próximo passo" icone={UserPlus} />
       <CorpoOpa>
         {/* A busca do topo some abaixo de 1024 px: esta fica na própria tela, em todo tamanho. */}
         <form action="/app/leads" method="get" role="search" className="flex items-center gap-2">
@@ -135,7 +139,7 @@ export default async function LeadsPage({
               placeholder="Buscar por nome, telefone ou imóvel"
               enterKeyHint="search"
               autoComplete="off"
-              className="h-12 w-full rounded-full border border-[#d5e2ea] bg-white pl-12 pr-4 text-[16px] text-[#0a2d40] placeholder:text-[#8aa3b3] focus:border-[#2a7ca8] focus:outline-none focus:ring-2 focus:ring-[#2a7ca8]/30"
+              className="h-12 w-full rounded-full border border-[#d5e2ea] bg-white pl-12 pr-4 text-[16px] text-[#0a2d40] placeholder:text-[#5b7284] focus:border-[#2a7ca8] focus:outline-none focus:ring-2 focus:ring-[#2a7ca8]/30"
             />
           </label>
           <button type="submit" className="inline-flex h-12 shrink-0 items-center rounded-full bg-[#0a2d40] px-5 text-[15px] font-semibold text-white hover:bg-[#12455f]">
@@ -179,6 +183,18 @@ export default async function LeadsPage({
             </a>
           )}
         </div>
+
+        {etapa && (
+          <div className="flex flex-wrap items-center gap-2 text-[14px] text-[#5b7284]">
+            <Chip icone={Funnel} tom="claro">
+              Etapa: {todos.find((l) => l.etapa.id === etapa)?.etapa.nome ?? "do Funil"}
+            </Chip>
+            {lista.length} {lista.length === 1 ? "lead" : "leads"}
+            <Link href={`/app/leads${corretor ? `?corretor=${corretor}` : ""}`} className="inline-flex items-center gap-1 font-semibold text-[#2a7ca8]">
+              <XCircle className="size-4" /> Ver todas as etapas
+            </Link>
+          </div>
+        )}
 
         {q && (
           <div className="flex flex-wrap items-center gap-2 text-[14px] text-[#5b7284]">
@@ -246,7 +262,7 @@ export default async function LeadsPage({
 
                     <div className="hidden w-44 shrink-0 lg:block">
                       <p className="truncate text-[13px] font-medium text-[#0a2d40]">{l.etapa.nome}</p>
-                      <p className="truncate text-[12px] text-[#8aa3b3]">{nomeFunil.get(l.pipelineId) ?? ""}</p>
+                      <p className="truncate text-[12px] text-[#5b7284]">{nomeFunil.get(l.pipelineId) ?? ""}</p>
                     </div>
 
                     <div className="hidden w-40 shrink-0 md:block">
@@ -267,8 +283,8 @@ export default async function LeadsPage({
                       <Avatar texto={dono?.iniciais ?? "?"} foto={dono?.foto} tom="acao" className="size-8 text-[11px]" />
                     </span>
 
-                    <span className="hidden w-20 shrink-0 text-right text-[12px] tabular-nums text-[#8aa3b3] xl:block">
-                      {new Date(l.criadoEm).toLocaleDateString("pt-BR", { day: "2-digit", month: "short" }).replace(".", "")}
+                    <span className="hidden w-20 shrink-0 text-right text-[12px] tabular-nums text-[#5b7284] xl:block">
+                      {new Date(l.criadoEm).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", timeZone: "America/Sao_Paulo" }).replace(".", "")}
                     </span>
 
                     <CaretRight className="size-4 shrink-0 text-[#b9cfdc] transition-colors group-hover:text-[#2a7ca8]" />
@@ -277,7 +293,12 @@ export default async function LeadsPage({
               );
             })}
           </ul>
-          {lista.length === 0 && <Vazio titulo="Nenhum lead aqui" texto="Troque a aba ou limpe a busca." />}
+          {lista.length === 0 &&
+            (todos.length === 0 ? (
+              <Vazio titulo="Ainda não chegou nenhum lead" texto="Quando um cliente chamar ou preencher um formulário, ele aparece aqui e na Fila." />
+            ) : (
+              <Vazio titulo="Nenhum lead aqui" texto="Troque a aba ou limpe a busca." />
+            ))}
           {paginas > 1 && (
             <nav aria-label="Páginas" className="flex flex-wrap items-center justify-between gap-3 px-2 pb-1 pt-4 text-[14px] text-[#5b7284]">
               <span>

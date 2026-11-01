@@ -63,7 +63,7 @@ function Mes({
       <p className="mb-3 text-center text-[15px] font-semibold text-[#0a2d40]">
         {NOMES_MES[m! - 1]} {a}
       </p>
-      <div className="grid grid-cols-7 text-center text-[11px] font-semibold text-[#8aa3b3]">
+      <div className="grid grid-cols-7 text-center text-[11px] font-semibold text-[#5b7284]">
         {SEMANA.map((s, i) => (
           <span key={i} className="pb-2">
             {s}
@@ -223,7 +223,7 @@ function FiltroPeriodoInterno({
                 type="button"
                 aria-label="Mês anterior"
                 onClick={() => setMesDireita((m) => somarMeses(m, -1))}
-                className="flex size-9 items-center justify-center rounded-full text-[#0a2d40] hover:bg-[#eef3f6]"
+                className="flex size-11 items-center justify-center rounded-full text-[#0a2d40] hover:bg-[#eef3f6]"
               >
                 <CaretLeft className="size-4" weight="bold" />
               </button>
@@ -236,7 +236,7 @@ function FiltroPeriodoInterno({
                 aria-label="Próximo mês"
                 disabled={mesDireita >= mesDe(hoje)}
                 onClick={() => setMesDireita((m) => somarMeses(m, 1))}
-                className="flex size-9 items-center justify-center rounded-full text-[#0a2d40] hover:bg-[#eef3f6] disabled:opacity-30"
+                className="flex size-11 items-center justify-center rounded-full text-[#0a2d40] hover:bg-[#eef3f6] disabled:opacity-30"
               >
                 <CaretRight className="size-4" weight="bold" />
               </button>
@@ -269,7 +269,7 @@ function FiltroPeriodoInterno({
               </button>
             </div>
             {/* Atalho que conta: um dia só também vale (início = fim). */}
-            {de && !ate && <p className="-mt-2 text-[12px] text-[#8aa3b3]">Aplicar agora mostra só {rotuloIntervalo(de, de)}.</p>}
+            {de && !ate && <p className="-mt-2 text-[12px] text-[#5b7284]">Aplicar agora mostra só {rotuloIntervalo(de, de)}.</p>}
           </div>
         </div>
       </PopoverContent>

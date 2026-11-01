@@ -6,7 +6,7 @@ import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { carregarConfig } from "@/lib/opa/config";
 import { carregarLeads } from "@/lib/opa/dados";
 import { normalizarTelefone, registrarEntrada, type Entrada } from "@/lib/opa/entrada";
-import { faltaNaFicha } from "@/lib/opa/visita";
+import { conferirDataETexto, faltaNaFicha } from "@/lib/opa/visita";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 import { registrarVisita, type ResultadoEtapa } from "../leads/actions";
@@ -169,7 +169,9 @@ export async function registrarVisitaRapida(formData: FormData): Promise<Resulta
 
   // Confere a ficha antes de criar lead novo (senão um erro de campo deixava lead órfão).
   if (!String(formData.get("imovel") ?? "")) return { ok: false, erro: "Escolha o imóvel visitado." };
-  if (!String(formData.get("quando") ?? "")) return { ok: false, erro: "Informe a data e a hora." };
+  // Data e texto também antes de criar o lead (F5): data errada não deixa lead sem visita.
+  const dataOk = conferirDataETexto((k) => String(formData.get(k) ?? ""), "feita");
+  if (!dataOk.ok) return { ok: false, erro: dataOk.erro };
   // Os campos obrigatórios de Configurações > Ficha de visita, também antes de criar o lead.
   const faltou = faltaNaFicha((await carregarConfig(createAdminClient(), org.orgId)).ficha_visita, (k) => String(formData.get(k) ?? ""), "feita");
   if (faltou) return { ok: false, erro: faltou };

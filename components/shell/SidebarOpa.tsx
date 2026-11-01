@@ -6,7 +6,7 @@ import { useTransition } from "react";
 import { useAuth } from "@/hooks/auth/AuthProvider";
 import { branding } from "@/lib/branding";
 import { menuImobiliaria, type NavDestination } from "@/lib/navigation/registry";
-import { SignOut } from "@/lib/ui/icons";
+import { Question, SignOut } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
 
 /**
@@ -83,6 +83,20 @@ export function SidebarOpa({ filaCount = 0, onNavClick }: { filaCount?: number; 
             </>
           )}
         </nav>
+
+        {/* Tutoriais sempre à mão, fora das listas: não disputa com as telas de trabalho. */}
+        <Link
+          href="/app/tutoriais"
+          onClick={onNavClick}
+          aria-current={pathname === "/app/tutoriais" ? "page" : undefined}
+          className={cn(
+            "mx-3 mt-2 flex h-10 items-center gap-3 rounded-full px-3.5 text-[13px] transition-colors",
+            pathname === "/app/tutoriais" ? "bg-[#eef3f6] font-semibold text-[#0a2d40]" : "text-[#5b7284] hover:bg-[#eef3f6] hover:text-[#0a2d40]",
+          )}
+        >
+          <Question size={18} aria-hidden />
+          Tutoriais
+        </Link>
 
         <div className="m-3 flex items-center gap-3 rounded-[22px] bg-[#f2f6f9] p-2.5">
           {user.avatar_url ? (

@@ -26,7 +26,14 @@ export default async function KitPage({
   if (!org) redirect("/app");
   const { lead, imovel } = await searchParams;
 
-  const [leads, imoveis] = await Promise.all([carregarLeads(org.orgId), carregarImoveis(org.orgId)]);
+  const [doFunil, imoveis, avulso] = await Promise.all([
+    carregarLeads(org.orgId),
+    carregarImoveis(org.orgId),
+    // F11: "Abrir no kit" de um lead de Captação ou Relacionamento. A lista é do
+    // funil Compradores; o lead pedido entra pelo id (a RLS decide se ele pode ver).
+    lead ? carregarLeads(org.orgId, { leadId: lead }) : Promise.resolve([]),
+  ]);
+  const leads = doFunil.some((l) => l.id === lead) ? doFunil : [...avulso, ...doFunil];
 
   const listaLeads: LeadKit[] = leads
     .map((l) => ({
@@ -61,7 +68,7 @@ export default async function KitPage({
       <CabecalhoOpa
         secao="Seu espaço"
         titulo="Kit de mensagens"
-        subtitulo="Kit de Atendimento OPA: o que mandar em cada momento, já com o nome do lead e o imóvel"
+        subtitulo="Mensagens prontas para cada momento, já com o nome do cliente e o imóvel"
         icone={PaperPlaneTilt}
         equipe={false}
         ferramentas={false}

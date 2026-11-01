@@ -113,7 +113,7 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
 
   return (
     <>
-      <CabecalhoOpa secao="Operação" titulo="Lembretes e cadência" subtitulo="O que o CRM lembra ao corretor, e quando" icone={Bell}>
+      <CabecalhoOpa secao="Operação" titulo="Lembretes e cadência" subtitulo="O que o CRM vai te lembrar, e quando" icone={Bell}>
         <AgendarMensagem leads={leads.map((l) => ({ id: l.id, nome: l.nome })).sort((a, b) => a.nome.localeCompare(b.nome))} />
       </CabecalhoOpa>
       <CorpoOpa>
@@ -255,7 +255,7 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
                               <input type="hidden" name="id" value={a.id} />
                               <button
                                 type="submit"
-                                className="inline-flex h-9 items-center gap-1.5 rounded-full bg-white px-3.5 text-[13px] font-semibold text-[#a4410e] hover:bg-[#fdeee3]"
+                                className="inline-flex h-11 items-center gap-1.5 rounded-full bg-white px-3.5 text-[13px] font-semibold text-[#a4410e] hover:bg-[#fdeee3]"
                               >
                                 <XCircle className="size-4" /> Cancelar
                               </button>
@@ -294,12 +294,12 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
                                 <UserCircle className="size-3.5" /> {dono?.nome ?? "sem corretor"}
                               </span>
                               {(l.tags ?? []).includes("proprio") && <span>· lead próprio</span>}
-                              {quando ? <span>· desde {new Date(quando).toLocaleDateString("pt-BR")}</span> : null}
+                              {quando ? <span>· desde {new Date(quando).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</span> : null}
                             </p>
                           </div>
                           <form action={religarLembretes}>
                             <input type="hidden" name="leadId" value={l.id} />
-                            <button type="submit" className="inline-flex h-9 items-center gap-1.5 rounded-full bg-white px-3.5 text-[13px] font-semibold text-[#0a2d40] hover:bg-[#e7f0f5]">
+                            <button type="submit" className="inline-flex h-11 items-center gap-1.5 rounded-full bg-white px-3.5 text-[13px] font-semibold text-[#0a2d40] hover:bg-[#e7f0f5]">
                               <Bell className="size-4" /> Religar
                             </button>
                           </form>
@@ -342,7 +342,7 @@ function CampoTexto({
         required={obrigatorio}
         placeholder={dica}
         defaultValue={valor}
-        className="h-11 rounded-[16px] bg-[#f2f6f9] px-4 text-[14px] font-normal text-[#0a2d40] outline-none placeholder:text-[#8aa3b3] focus:ring-2 focus:ring-[#8fc4dd]"
+        className="h-11 rounded-[16px] bg-[#f2f6f9] px-4 text-[14px] font-normal text-[#0a2d40] outline-none placeholder:text-[#5b7284] focus:ring-2 focus:ring-[#8fc4dd]"
       />
     </label>
   );
@@ -377,7 +377,7 @@ function LinhaRegra({ regra: r, gestor }: { regra: RegraLembrete; gestor: boolea
         {gestor && (
           <details className="relative">
             <summary
-              className="flex size-9 cursor-pointer list-none items-center justify-center rounded-full bg-white text-[#12455f] hover:bg-[#e7f0f5]"
+              className="flex size-11 cursor-pointer list-none items-center justify-center rounded-full bg-white text-[#12455f] hover:bg-[#e7f0f5]"
               aria-label="Editar regra"
               title="Editar regra"
             >

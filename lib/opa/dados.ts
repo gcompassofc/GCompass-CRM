@@ -156,7 +156,8 @@ export function carregarLeads(orgId: string, opts: { leadId?: string; funil?: st
 
 export async function carregarLeadsSemCache(
   orgId: string,
-  opts: { leadId?: string; funil?: string } = {},
+  /** status "todos" traz também ganhos e perdidos (exportação, F6); o padrão são só os abertos. */
+  opts: { leadId?: string; funil?: string; status?: "abertos" | "todos" } = {},
 ): Promise<LeadOpa[]> {
   const supabase = await createClient();
 
@@ -176,7 +177,7 @@ export async function carregarLeadsSemCache(
       .eq("organization_id", orgId);
     // A ficha abre também negócio ganho ou perdido; as listas só mostram os abertos.
     if (opts.leadId) return c.eq("id", opts.leadId);
-    c = c.eq("status", "open");
+    if (opts.status !== "todos") c = c.eq("status", "open");
     // funil "todos": a base inteira (tela Leads); senão, só o funil pedido.
     if (opts.funil !== "todos" && funil) c = c.eq("pipeline_id", (funil as { id: string }).id);
     return c;
@@ -325,10 +326,13 @@ export interface Pessoa {
 /** Nomes da equipe. Lê auth.users pelo cliente admin (uma chamada só), filtrado pelos membros da org. */
 export const carregarEquipe = cache(async (orgId: string): Promise<Map<string, Pessoa>> => {
   const admin = createAdminClient();
-  const [{ data }, { data: lista }] = await Promise.all([
+  const [{ data, error }, { data: lista, error: erroUsuarios }] = await Promise.all([
     admin.from("user_organizations").select("user_id, role").eq("organization_id", orgId).is("revoked_at", null),
     admin.auth.admin.listUsers({ perPage: 1000 }),
   ]);
+  // E4: equipe vazia por erro sumia com a roleta e os donos dos leads sem aviso.
+  if (error) throw new Error(`carregarEquipe: ${error.message}`);
+  if (erroUsuarios) throw new Error(`carregarEquipe (usuários): ${erroUsuarios.message}`);
   const porId = new Map((lista?.users ?? []).map((u) => [u.id, u]));
   const mapa = new Map<string, Pessoa>();
   for (const m of (data ?? []) as Array<{ user_id: string; role: string }>) {
@@ -377,13 +381,15 @@ export interface Venda {
 
 export async function carregarVendas(orgId: string, desde: string, ate?: string): Promise<Venda[]> {
   const supabase = await createClient();
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("crm_leads")
     .select("id, owner_user_id, closed_at, value_cents, custom_fields, contacts(name)")
     .eq("organization_id", orgId)
     .eq("status", "won")
     .gte("closed_at", desde)
     .lt("closed_at", ate ?? "9999-12-31");
+  // E4: sem isto, uma falha virava "nenhuma venda" na tela Início.
+  if (error) throw new Error(`carregarVendas: ${error.message}`);
   return ((data ?? []) as unknown as Array<{
     id: string;
     owner_user_id: string | null;

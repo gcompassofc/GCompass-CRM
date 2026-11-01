@@ -161,3 +161,18 @@ export function paramsDoPeriodo(p: Pick<Periodo, "chave" | "deDia" | "ateDia">):
   if (p.chave === "personalizado") return { periodo: "personalizado", de: p.deDia, ate: p.ateDia };
   return { periodo: p.chave };
 }
+
+/** "01/11/2026 14:30" no horário de São Paulo (exportação, F6). Vazio quando não há data. */
+export function dataHoraSP(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) return "";
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/Sao_Paulo",
+  }).format(new Date(ms));
+}

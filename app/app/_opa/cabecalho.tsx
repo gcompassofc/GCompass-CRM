@@ -5,6 +5,7 @@ import { carregarConfig } from "@/lib/opa/config";
 import { carregarEquipe, carregarImoveis } from "@/lib/opa/dados";
 import { createClient } from "@/lib/supabase/server";
 
+import { AjudaDaTela } from "./ajuda-tela";
 import { BuscaGlobal, FiltroEquipe, NovoLead } from "./cabecalho-cliente";
 import { FichaVisitaRapida } from "./ficha-visita";
 import { IconeRedondo, type Icone } from "./ui";
@@ -62,7 +63,10 @@ export async function CabecalhoOpa({
           {icone && <IconeRedondo icone={icone} tom="escuro" tamanho="lg" className="hidden size-14 sm:inline-flex [&_svg]:size-7" />}
           <div className="min-w-0">
             <p className="text-[13px] font-medium text-[#5b7284]">{secao}</p>
-            <h1 className="text-[32px] font-semibold leading-tight tracking-[-0.035em] text-[#0a2d40] md:text-[40px]">{titulo}</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-[32px] font-semibold leading-tight tracking-[-0.035em] text-[#0a2d40] md:text-[40px]">{titulo}</h1>
+              <AjudaDaTela />
+            </div>
             {subtitulo && <p className="mt-0.5 text-[15px] text-[#5b7284]">{subtitulo}</p>}
           </div>
         </div>

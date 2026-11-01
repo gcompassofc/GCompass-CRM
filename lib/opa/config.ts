@@ -306,7 +306,10 @@ export function mesclarConfig(salvo: Partial<ConfigOpa> | null | undefined): Con
 
 /** Lê a configuração da org. Aceita o cliente da sessão ou o admin. */
 export async function carregarConfig(supabase: SupabaseClient, orgId: string): Promise<ConfigOpa> {
-  const { data } = await supabase.from("organizations").select("settings").eq("id", orgId).maybeSingle();
+  const { data, error } = await supabase.from("organizations").select("settings").eq("id", orgId).maybeSingle();
+  // E4: com erro de leitura, a configuração padrão entraria no lugar da da empresa
+  // (prazos, roleta, lembretes). Melhor parar e mostrar o erro.
+  if (error) throw new Error(`carregarConfig: ${error.message}`);
   const settings = (data as { settings: { opa?: Partial<ConfigOpa> } | null } | null)?.settings;
   return mesclarConfig(settings?.opa);
 }

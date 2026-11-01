@@ -8,7 +8,8 @@ import { mesclarCampos, type OpcoesMescla } from "@/lib/opa/campos";
 import { carregarConfig } from "@/lib/opa/config";
 import { CAMPOS } from "@/lib/opa/copiloto";
 import { CAMPOS_DIAGNOSTICO } from "@/lib/opa/dados";
-import { faltaNaFicha } from "@/lib/opa/visita";
+import { diaSP } from "@/lib/opa/periodo";
+import { conferirDataETexto, faltaNaFicha } from "@/lib/opa/visita";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -163,7 +164,7 @@ export async function ganharNegocio(formData: FormData): Promise<ResultadoEtapa>
   const codigo = String(formData.get("imovelCodigo") ?? "");
   const outroValor = formData.get("outroValor") === "on";
   const valorDigitado = Number(String(formData.get("valor") ?? "").replace(/\./g, "").replace(",", ".").replace(/[^\d.]/g, ""));
-  const data = String(formData.get("data") ?? "") || new Date().toISOString().slice(0, 10);
+  const data = String(formData.get("data") ?? "") || diaSP(Date.now()); // E8: o dia de São Paulo, não o de UTC
   const { org, supabase } = await contexto();
   if (org.role === "viewer") return { ok: false, erro: "Seu acesso é só de leitura." };
   if (!codigo) return { ok: false, erro: "Escolha o imóvel vendido." };
@@ -293,25 +294,13 @@ export async function alternarLembretes(formData: FormData) {
 export async function registrarVisita(formData: FormData): Promise<ResultadoEtapa> {
   const leadId = String(formData.get("leadId") ?? "");
   const status = formData.get("status") === "agendada" ? "agendada" : "feita";
-  const quando = String(formData.get("quando") ?? "");
   const interesse = Number(formData.get("interesse") ?? 0) || null;
   const gostou = String(formData.get("gostou") ?? "").trim();
   const naoGostou = String(formData.get("nao_gostou") ?? "").trim();
-  if (!quando) return { ok: false, erro: "Informe a data e a hora." };
-  // O campo datetime-local vem sem fuso: é hora de Ilhabela (no servidor em UTC
-  // a visita ficaria 3 horas adiantada).
-  const quandoIso = /([zZ]|[+-]\d\d:\d\d)$/.test(quando) ? quando : `${quando.length === 16 ? `${quando}:00` : quando}-03:00`;
-  const quandoMs = Date.parse(quandoIso);
-  if (Number.isNaN(quandoMs)) return { ok: false, erro: "Data inválida." };
-  if (status === "feita" && quandoMs > Date.now() + 10 * 60_000) {
-    return { ok: false, erro: "Visita feita não fica no futuro. Para depois, use Agendar visita." };
-  }
-  if (quandoMs < Date.now() - 90 * 86_400_000) return { ok: false, erro: "Visita de mais de 90 dias atrás não entra." };
-  // Regra do Painel: telefone não vai no texto da ficha (o contato já está no lead).
-  const comTelefone = ["quem", "gostou", "nao_gostou", "objecao", "obs"].some((k) =>
-    /(?:\+?\d[\s().-]?){10,}/.test(String(formData.get(k) ?? "")),
-  );
-  if (comTelefone) return { ok: false, erro: "Tire o telefone do texto: o contato do cliente já fica no lead." };
+  // Data no fuso de Ilhabela, visita feita não no futuro, nada de telefone no texto (lib/opa/visita.ts).
+  const dataOk = conferirDataETexto((k) => String(formData.get(k) ?? ""), status);
+  if (!dataOk.ok) return dataOk;
+  const { quandoMs } = dataOk;
   const { user, org, supabase } = await contexto();
   // Os campos obrigatórios são os de Configurações > Ficha de visita (antes só o navegador cobrava).
   const faltou = faltaNaFicha((await carregarConfig(supabase, org.orgId)).ficha_visita, (k) => String(formData.get(k) ?? ""), status);
@@ -443,6 +432,66 @@ export async function perderNegocio(formData: FormData): Promise<ResultadoEtapa>
     })
     .eq("id", leadId);
   if (error) return { ok: false, erro: erroParaTela(error) };
+  revalidatePath(`/app/leads/${leadId}`);
+  revalidatePath("/app/pipeline");
+  revalidatePath("/app/hoje");
+  return { ok: true };
+}
+
+/**
+ * Reabrir um negócio perdido (F9 da revisão de 31/10). Só gestor ou
+ * administrador: o corretor pede, a gestão decide. O lead volta para a
+ * primeira etapa do funil e o motivo da perda sai; a reabertura fica no histórico.
+ */
+export async function reabrirNegocio(formData: FormData): Promise<ResultadoEtapa> {
+  const leadId = String(formData.get("leadId") ?? "");
+  const { user, org, supabase } = await contexto();
+  if (org.role !== "manager" && org.role !== "admin") return { ok: false, erro: "Só o gestor ou o administrador reabre um negócio perdido." };
+  const { data: lead } = await supabase
+    .from("crm_leads")
+    .select("pipeline_id, contact_id, status, lost_reason")
+    .eq("organization_id", org.orgId)
+    .eq("id", leadId)
+    .maybeSingle();
+  if (!lead) return { ok: false, erro: "Lead não encontrado." };
+  const atual = lead as { pipeline_id: string; contact_id: string | null; status: string; lost_reason: string | null };
+  if (atual.status !== "lost") return { ok: false, erro: "Este negócio não está perdido." };
+  const { data: etapa } = await supabase
+    .from("crm_stages")
+    .select("id")
+    .eq("organization_id", org.orgId)
+    .eq("pipeline_id", atual.pipeline_id)
+    .eq("is_won", false)
+    .eq("is_lost", false)
+    .order("position", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (!etapa) return { ok: false, erro: "O funil deste lead não tem etapa aberta." };
+  const agora = new Date().toISOString();
+  const { error } = await supabase
+    .from("crm_leads")
+    .update({
+      status: "open",
+      lost_reason: null,
+      closed_at: null,
+      last_activity_at: agora,
+      stage_id: (etapa as { id: string }).id,
+      stage_changed_at: agora,
+    })
+    .eq("organization_id", org.orgId)
+    .eq("id", leadId);
+  if (error) return { ok: false, erro: erroParaTela(error) };
+  const { error: erroHistorico } = await supabase.from("crm_lead_activities").insert({
+    organization_id: org.orgId,
+    lead_id: leadId,
+    contact_id: atual.contact_id,
+    source_module: "opa",
+    type: "reaberto",
+    payload: { motivo_da_perda: atual.lost_reason },
+    performed_at: agora,
+    performed_by_user_id: user.id,
+  });
+  if (erroHistorico) console.error("[reabrirNegocio] histórico não gravado", { leadId, code: erroHistorico.code });
   revalidatePath(`/app/leads/${leadId}`);
   revalidatePath("/app/pipeline");
   revalidatePath("/app/hoje");

@@ -152,7 +152,7 @@ export default async function ImovelPage({ params }: { params: Promise<{ codigo:
                 <details className="group">
                   <summary className="flex cursor-pointer list-none items-center justify-between gap-3 [&::-webkit-details-marker]:hidden">
                     <TituloBloco icone={Notepad} titulo="Descrição do anúncio" sub="O texto que está no site" />
-                    <CaretRight className="size-5 shrink-0 text-[#8aa3b3] transition-transform group-open:rotate-90" />
+                    <CaretRight className="size-5 shrink-0 text-[#5b7284] transition-transform group-open:rotate-90" />
                   </summary>
                   <p className="mt-5 whitespace-pre-line text-[14px] leading-relaxed text-[#34566b]">{imovel.descricao}</p>
                 </details>
@@ -220,7 +220,7 @@ export default async function ImovelPage({ params }: { params: Promise<{ codigo:
                   })}
                 </ul>
               ) : (
-                <Vazio titulo="Ninguém entrou por ele ainda" />
+                <Vazio titulo="Ninguém entrou por ele ainda" texto="Quando um lead chegar por este imóvel, ele aparece aqui." />
               )}
             </Cartao>
 

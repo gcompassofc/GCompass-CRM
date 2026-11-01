@@ -19,6 +19,7 @@ import {
 } from "@/lib/opa/dados";
 import { contarEtiquetas, etiquetasDoLead } from "@/lib/opa/etiquetas";
 import { afinidade, precoCheio, precoPrincipal } from "@/lib/opa/imoveis";
+import { ReabrirNegocio } from "./_reabrir";
 import { SeloLendo } from "./_lendo";
 import { MontarSelecao } from "./_selecao";
 import { RegistrarLigacao } from "./_ligacao";
@@ -317,6 +318,14 @@ export default async function LeadPage({
   const etiquetas = etiquetasDoLead(lead, entrada);
   const nEtiquetas = contarEtiquetas(etiquetas);
   const aberto = lead.status === "open";
+  // F9: lead perdido mostra o motivo e a data; o gestor reabre.
+  const gestorDaTela = org.role === "manager" || org.role === "admin";
+  const perda =
+    lead.status === "lost"
+      ? ((
+          await supabase.from("crm_leads").select("lost_reason, closed_at").eq("organization_id", org.orgId).eq("id", lead.id).maybeSingle()
+        ).data as { lost_reason: string | null; closed_at: string | null } | null)
+      : null;
   const wa = lead.telefone ? `https://wa.me/${lead.telefone.replace(/\D/g, "")}` : null;
   const linkAba = (a: string) => `/app/leads/${lead.id}${a === "resumo" ? "" : `?aba=${a}`}`;
   const contagem: Record<string, number | null> = {
@@ -337,6 +346,10 @@ export default async function LeadPage({
             ? `Ligação: ${a.payload.resultado === "atendeu" ? "atendeu" : a.payload.resultado === "retorno" ? "pediu retorno" : "não atendeu"}`
           : a.type === "venda_realizada"
             ? `Negócio ganho: VGV ${precoCheio(a.payload.vgv_cents as number)}, comissão ${precoCheio(a.payload.comissao_cents as number)}`
+          : a.type === "respondido"
+            ? "Corretor marcou como respondido"
+          : a.type === "reaberto"
+            ? `Negócio reaberto${a.payload.motivo_da_perda ? ` (tinha sido perdido por: ${String(a.payload.motivo_da_perda)})` : ""}`
             : a.type.replace(/_/g, " "),
       tipo: a.type === "venda_realizada" ? "venda" : "atividade",
     })),
@@ -475,9 +488,18 @@ export default async function LeadPage({
           </section>
         )}
         {lead.status === "lost" && (
-          <Cartao className="flex items-center gap-4">
+          <Cartao className="flex flex-col gap-4 sm:flex-row sm:items-center">
             <IconeRedondo icone={Prohibit} tom="alerta" />
-            <p className="text-[15px] text-[#0a2d40]">Negócio perdido. O card saiu do quadro.</p>
+            <div className="min-w-0 flex-1">
+              <p className="text-[15px] font-semibold text-[#0a2d40]">
+                Negócio perdido{perda?.closed_at ? ` em ${hora(perda.closed_at)}` : ""}
+              </p>
+              <p className="text-[14px] text-[#34566b]">
+                {perda?.lost_reason ? `Motivo: ${perda.lost_reason}.` : "Sem motivo registrado."}{" "}
+                {gestorDaTela ? "Se o cliente voltou a negociar, reabra." : "Se o cliente voltou a negociar, peça ao gestor para reabrir."}
+              </p>
+            </div>
+            {gestorDaTela && <ReabrirNegocio leadId={lead.id} />}
           </Cartao>
         )}
 
@@ -506,7 +528,7 @@ export default async function LeadPage({
                       <input type="hidden" name="leadId" value={lead.id} />
                       <button
                         type="submit"
-                        className="inline-flex h-9 items-center gap-1.5 rounded-full bg-white/10 px-3.5 text-[13px] font-medium text-white hover:bg-white/15"
+                        className="inline-flex h-11 items-center gap-1.5 rounded-full bg-white/10 px-3.5 text-[13px] font-medium text-white hover:bg-white/15"
                       >
                         <ArrowsClockwise className="size-4" /> Ler de novo
                       </button>
@@ -734,7 +756,7 @@ export default async function LeadPage({
                   </p>
                   <FormComRetorno action={alternarLembretes} sucesso={lead.lembretesDesligados ? "Avisos ligados." : "Avisos desligados."}>
                     <input type="hidden" name="leadId" value={lead.id} />
-                    <BotaoEnvio className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#eef3f6] px-4 text-[13px] font-semibold text-[#0a2d40] hover:bg-[#e7f0f5]">
+                    <BotaoEnvio className="inline-flex h-11 items-center gap-1.5 rounded-full bg-[#eef3f6] px-4 text-[13px] font-semibold text-[#0a2d40] hover:bg-[#e7f0f5]">
                       {lead.lembretesDesligados ? "Ligar" : "Desligar"}
                     </BotaoEnvio>
                   </FormComRetorno>
@@ -779,7 +801,7 @@ export default async function LeadPage({
                                   aria-pressed={Boolean(m)}
                                   title={m?.auto ? "Veio do imóvel ou da conversa" : m ? "Desmarcar" : "Marcar"}
                                   className={cn(
-                                    "inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[13px] font-medium transition-colors",
+                                    "inline-flex h-11 items-center gap-1.5 rounded-full px-3.5 text-[13px] font-medium transition-colors",
                                     m ? "bg-[#0a2d40] text-white" : "bg-[#f2f6f9] text-[#34566b] hover:bg-[#e7f0f5]",
                                     m?.auto && "cursor-default",
                                   )}
@@ -1014,7 +1036,7 @@ export default async function LeadPage({
                   );
                 })}
               </ul>
-              {combinam.length === 0 && <Vazio ilustracao={<IlustraCasa />} titulo={`Nada no acervo acima de ${config.cruzamento.minimo}`} />}
+              {combinam.length === 0 && <Vazio ilustracao={<IlustraCasa />} titulo={`Nada no acervo acima de ${config.cruzamento.minimo}`} texto="Quando entrar um imóvel parecido com o que ele procura, ele aparece aqui." />}
               {aberto && (
                 <MontarSelecao
                   nome={lead.nome}
@@ -1098,7 +1120,7 @@ function Diagnostico({
                 <span
                   className={cn(
                     "flex size-10 shrink-0 items-center justify-center rounded-full",
-                    campos[k] ? "bg-[#e7f0f5] text-[#12455f]" : "bg-[#f2f6f9] text-[#8aa3b3]",
+                    campos[k] ? "bg-[#e7f0f5] text-[#12455f]" : "bg-[#f2f6f9] text-[#5b7284]",
                   )}
                   title={CAMPOS[k].rotulo}
                 >
@@ -1144,7 +1166,7 @@ function Diagnostico({
                   )}
                 >
                   <p className="flex items-center gap-1.5 text-[12px] font-medium text-[#5b7284]">
-                    <I className={cn("size-4", valor ? "text-[#12455f]" : "text-[#8aa3b3]")} />
+                    <I className={cn("size-4", valor ? "text-[#12455f]" : "text-[#5b7284]")} />
                     {CAMPOS[k].rotulo}
                     {valor && <SealCheck weight="fill" className="ml-auto size-4 shrink-0 text-[#2a7ca8]" />}
                   </p>

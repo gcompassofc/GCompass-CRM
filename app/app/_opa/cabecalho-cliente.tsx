@@ -101,7 +101,7 @@ export function BuscaGlobal() {
       <input
         name="q"
         placeholder="Buscar lead, telefone ou imóvel"
-        className="h-full w-full rounded-full bg-white pl-10 pr-4 text-[14px] text-[#0a2d40] shadow-[0_1px_2px_rgba(9,44,62,0.04)] outline-none placeholder:text-[#8aa3b3] focus:ring-2 focus:ring-[#8fc4dd]"
+        className="h-full w-full rounded-full bg-white pl-10 pr-4 text-[14px] text-[#0a2d40] shadow-[0_1px_2px_rgba(9,44,62,0.04)] outline-none placeholder:text-[#5b7284] focus:ring-2 focus:ring-[#8fc4dd]"
       />
     </form>
   );

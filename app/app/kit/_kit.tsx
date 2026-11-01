@@ -435,7 +435,7 @@ export function KitCliente({
               type="button"
               onClick={limpar}
               aria-label="Limpar personalização"
-              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-[#eef3f6] px-3.5 text-[13px] font-medium text-[#0a2d40] hover:bg-[#e7f0f5]"
+              className="inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full bg-[#eef3f6] px-3.5 text-[13px] font-medium text-[#0a2d40] hover:bg-[#e7f0f5]"
             >
               <X className="size-4" aria-hidden /> <span className="hidden sm:inline">Limpar</span>
             </button>
@@ -663,7 +663,7 @@ export function KitCliente({
                   </p>
                 )}
                 <div className="mt-auto flex items-center justify-end gap-2 pt-5">
-                  {!link && <span className="mr-auto text-[12px] text-[#8aa3b3]">Escolha um lead para abrir no WhatsApp dele</span>}
+                  {!link && <span className="mr-auto text-[12px] text-[#5b7284]">Escolha um lead para abrir no WhatsApp dele</span>}
                   <button
                     type="button"
                     onClick={() => copiar(it.m)}

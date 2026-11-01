@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import { analisarComIA, analisarPorRegras, EsquemaLeitura, montarEntradaIA, PROMPT_COPILOTO, type ContextoLeitura, type MensagemLida } from "./copiloto";
+import { analisarComIA, analisarPorRegras, EsquemaLeitura, montarEntradaIA, pedidoDaLeitura, PROMPT_COPILOTO, type ContextoLeitura, type MensagemLida } from "./copiloto";
 
 const lead = (body: string, sent_at = "2026-10-30T17:05:00Z"): MensagemLida => ({ direction: "inbound", body, sent_at });
 const corretor = (body: string, sent_at = "2026-10-30T17:00:00Z"): MensagemLida => ({ direction: "outbound", body, sent_at });
@@ -165,6 +165,54 @@ describe("resposta da IA", () => {
     expect(l?.motor).toBe("ia");
   });
 
+  it("campo repetido vira uma sugestão só, com os valores juntos", async () => {
+    const l = await analisarComIA(
+      [lead("Trabalho de home office e tenho dois cachorros.")],
+      "modelo",
+      responder({
+        sugestoes: [
+          { campo: "estilo_vida", valor: "Home office", evidencia: "home office", confianca: 0.9 },
+          { campo: "estilo_vida", valor: "Pet", evidencia: "dois cachorros", confianca: 0.7 },
+          { campo: "estilo_vida", valor: "pet", evidencia: "cachorros", confianca: 0.95 },
+          { campo: "finalidade", valor: "  ", evidencia: "", confianca: 1 },
+        ],
+        resumo: "",
+        proximoPasso: "",
+      }),
+    );
+    expect(l?.sugestoes).toEqual([{ campo: "estilo_vida", valor: "Home office, Pet", evidencia: "home office", confianca: 0.9 }]);
+  });
+
+  it("campo de valor único repetido fica com o de maior confiança, sem juntar", async () => {
+    const l = await analisarComIA(
+      [lead("Quero investir para alugar por temporada.")],
+      "modelo",
+      responder({
+        sugestoes: [
+          { campo: "finalidade", valor: "Temporada", evidencia: "temporada", confianca: 0.6 },
+          { campo: "finalidade", valor: "Investimento", evidencia: "investir", confianca: 0.9 },
+        ],
+        resumo: "",
+        proximoPasso: "",
+      }),
+    );
+    expect(l?.sugestoes.map((s) => s.valor)).toEqual(["Investimento"]);
+  });
+
+  it("sem rascunho quando a última mensagem é do corretor", async () => {
+    const l = await analisarComIA(
+      [lead("Só estou olhando."), corretor("Combinado, fico à disposição.", "2026-10-30T17:10:00Z")],
+      "modelo",
+      responder({ sugestoes: [], resumo: "", proximoPasso: "", mensagem: "Quando quiser, me chama." }),
+    );
+    expect(l?.mensagem).toBe("");
+  });
+
+  it('rascunho escrito como "" vira vazio', async () => {
+    const l = await analisarComIA([lead("Filho, chego amanhã.")], "modelo", responder({ sugestoes: [], resumo: "Conversa pessoal", proximoPasso: "", mensagem: '""' }));
+    expect(l?.mensagem).toBe("");
+  });
+
   it("campo fora da lista é descartado", async () => {
     const l = await analisarComIA([lead("oi")], "modelo", responder({ sugestoes: [{ campo: "constructor", valor: "x" }], resumo: "", proximoPasso: "" }));
     expect(l?.sugestoes).toHaveLength(0);
@@ -198,5 +246,21 @@ describe("resposta da IA", () => {
     expect(EsquemaLeitura.safeParse({ sugestoes: [{ campo: "constructor", valor: "x", evidencia: "", confianca: 1 }], resumo: "", proximoPasso: "", temperatura: "morno", mensagem: "", objecoes: [] }).success).toBe(false);
     expect(EsquemaLeitura.safeParse({ sugestoes: [{ campo: "regiao", valor: "Sul", evidencia: "", confianca: 1 }], resumo: "", proximoPasso: "", temperatura: "quente", mensagem: "", objecoes: [] }).success).toBe(true);
     expect(EsquemaLeitura.safeParse({ sugestoes: [], resumo: "", proximoPasso: "", temperatura: "fervendo", mensagem: "", objecoes: [] }).success).toBe(false);
+  });
+
+  it("o pedido ao SDK leva as instruções em `instructions`, com cache, e nenhuma mensagem system", () => {
+    // O AI SDK 7 recusa `system` dentro de `messages`: a leitura caía nas regras em toda chamada.
+    const p = pedidoDaLeitura({ model: "modelo", instrucoes: PROMPT_COPILOTO, entrada: "<conversa>\nLEAD: oi\n</conversa>", esquema: EsquemaLeitura });
+    expect(p.instructions.content).toBe(PROMPT_COPILOTO);
+    expect(p.instructions.providerOptions.anthropic.cacheControl.type).toBe("ephemeral");
+    expect(p.messages.map((m) => m.role)).toEqual(["user"]);
+    expect(p.messages[0]!.content).toContain("LEAD: oi");
+  });
+
+  it("instruções não trazem bairro com parêntese nem pedem todos os bairros da região", () => {
+    expect(PROMPT_COPILOTO).not.toContain("Centro (Vila)");
+    expect(PROMPT_COPILOTO).toMatch(/Centro e Vila: [^\n]*\bVila\b/);
+    expect(PROMPT_COPILOTO).toMatch(/só os bairros que o cliente citou/);
+    expect(PROMPT_COPILOTO).toMatch(/em locação, deixe o momento de fora/);
   });
 });

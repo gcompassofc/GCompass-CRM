@@ -199,7 +199,7 @@ export function FichaVisitaRapida({
                     type="button"
                     aria-label="Trocar o cliente"
                     onClick={() => setLead(null)}
-                    className="flex size-9 items-center justify-center rounded-full text-[#5b7284] hover:bg-white"
+                    className="flex size-11 items-center justify-center rounded-full text-[#5b7284] hover:bg-white"
                   >
                     <X className="size-4" />
                   </button>
@@ -242,7 +242,7 @@ export function FichaVisitaRapida({
                 </div>
               ) : (
                 <div className="relative">
-                  <MagnifyingGlass className="pointer-events-none absolute left-4 top-3.5 size-4 text-[#8aa3b3]" />
+                  <MagnifyingGlass className="pointer-events-none absolute left-4 top-3.5 size-4 text-[#5b7284]" />
                   <input
                     autoFocus
                     value={busca}
@@ -309,7 +309,7 @@ export function FichaVisitaRapida({
                       type="button"
                       aria-label="Trocar o imóvel"
                       onClick={() => setImovel(null)}
-                      className="flex size-9 items-center justify-center rounded-full text-[#5b7284] hover:bg-white"
+                      className="flex size-11 items-center justify-center rounded-full text-[#5b7284] hover:bg-white"
                     >
                       <X className="size-4" />
                     </button>
@@ -318,7 +318,7 @@ export function FichaVisitaRapida({
               ) : (
                 <div>
                   <div className="relative">
-                    <HouseLine className="pointer-events-none absolute left-4 top-3.5 size-4 text-[#8aa3b3]" />
+                    <HouseLine className="pointer-events-none absolute left-4 top-3.5 size-4 text-[#5b7284]" />
                     <input
                       value={buscaImovel}
                       onChange={(e) => setBuscaImovel(e.target.value)}
@@ -419,7 +419,7 @@ export function FichaVisitaRapida({
                 {rot("obs", "Observações")}
                 <textarea name="obs" rows={2} maxLength={2000} className={cn(campoCls, "h-auto py-3")} />
               </label>
-              <p className="text-[12px] text-[#8aa3b3]">Sem telefone nos textos: o contato do cliente já fica no lead.</p>
+              <p className="text-[12px] text-[#5b7284]">Sem telefone nos textos: o contato do cliente já fica no lead.</p>
             </Passo>
 
             <DialogFooter className="gap-2">

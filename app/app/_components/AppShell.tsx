@@ -8,6 +8,7 @@ import { MobileNav } from "@/components/shell/MobileNav";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { ImmersiveViewProvider, useIsImmersive } from "@/lib/ui/immersive-view";
 import { cn } from "@/lib/utils";
+import { BoasVindasOpa } from "../_opa/tutorial";
 
 interface AppShellProps {
   sidebarCollapsed: boolean;
@@ -100,6 +101,8 @@ function AppShellInterno({ sidebarCollapsed, filaCount, children }: AppShellProp
       </div>
 
       <MobileNav onOpenMenu={() => setMobileNavOpen(true)} hidden={emConversa} />
+      {/* Tutorial de boas-vindas: abre sozinho no primeiro acesso (perfil imobiliária). */}
+      {imobiliaria && <BoasVindasOpa />}
     </div>
   );
 }

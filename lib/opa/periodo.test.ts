@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import { noIntervalo, resolverPeriodo, rotuloIntervalo } from "./periodo";
+import { dataHoraSP, noIntervalo, resolverPeriodo, rotuloIntervalo } from "./periodo";
 
 // 30/10/2026 15h em São Paulo
 const AGORA = Date.parse("2026-10-30T15:00:00-03:00");
@@ -50,5 +50,15 @@ describe("período dos números", () => {
   it("rótulos de intervalo entre meses e anos", () => {
     expect(rotuloIntervalo("2026-09-28", "2026-10-03")).toBe("28 set a 3 out");
     expect(rotuloIntervalo("2025-12-20", "2026-01-05")).toBe("20 dez 2025 a 5 jan 2026");
+  });
+});
+
+describe("dataHoraSP (F6)", () => {
+  it("mostra a hora de São Paulo, não a UTC", () => {
+    expect(dataHoraSP("2026-11-01T02:30:00Z")).toBe("31/10/2026, 23:30");
+  });
+  it("vazio para sem data ou data inválida", () => {
+    expect(dataHoraSP(null)).toBe("");
+    expect(dataHoraSP("ontem")).toBe("");
   });
 });

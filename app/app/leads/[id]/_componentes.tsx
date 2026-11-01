@@ -291,7 +291,7 @@ export function EtapasClicaveis({
               });
             }}
             className={cn(
-              "inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-[13px] font-medium transition-colors",
+              "inline-flex h-11 shrink-0 items-center gap-1.5 rounded-full px-3.5 text-[13px] font-medium transition-colors",
               atualAqui && "bg-[#0a2d40] text-white",
               passou && "bg-[#e7f0f5] text-[#12455f] hover:bg-[#dce8ee]",
               !atualAqui && !passou && "bg-[#f2f6f9] text-[#5b7284] hover:bg-[#e7f0f5] hover:text-[#0a2d40]",

@@ -238,6 +238,17 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     perfil: "imobiliaria",
   },
   {
+    // Porta: o link "Tutoriais" no rodapé do SidebarOpa (fora das listas do
+    // menu de propósito, para não disputar espaço com as telas de trabalho) e
+    // o "?" ao lado do título de cada tela da OPA.
+    href: "/app/tutoriais",
+    label: "Tutoriais",
+    description: "O passo a passo de cada tela e as dúvidas do dia a dia, para corretor e gestor.",
+    icon: BookOpen,
+    group: "atendimento",
+    perfil: "imobiliaria",
+  },
+  {
     href: "/app/conexoes",
     label: "Conexões",
     description: "Os números de WhatsApp da equipe e por onde os leads entram.",

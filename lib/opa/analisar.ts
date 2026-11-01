@@ -1,12 +1,12 @@
 import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
-import { generateText, Output } from "ai";
+import { generateText } from "ai";
 
 import { resolveLanguageModel } from "@/lib/ai/gateway";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 
 import { mesclarCampos } from "./campos";
-import { analisarComIA, analisarPorRegras, CAMPOS, type CampoCopiloto, type ContextoLeitura, type Leitura, type MensagemLida } from "./copiloto";
+import { analisarComIA, analisarPorRegras, CAMPOS, pedidoDaLeitura, type CampoCopiloto, type ContextoLeitura, type Leitura, type MensagemLida } from "./copiloto";
 import { ROTULO_ORIGEM } from "./dados";
 import { precoCurto } from "./imoveis";
 
@@ -127,14 +127,7 @@ export async function analisarLead(supabase: SupabaseClient, orgId: string, lead
           // I2: as instruções (as mesmas em toda leitura, cerca de 2 mil tokens
           // com os 52 bairros) levam ponto de cache; o que muda a cada lead
           // (contexto e conversa) vem depois dele e não entra no cache.
-          const r = await generateText({
-            model: args.model as never,
-            output: Output.object({ schema: args.esquema }),
-            messages: [
-              { role: "system", content: args.instrucoes, providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } },
-              { role: "user", content: args.entrada },
-            ],
-          });
+          const r = await generateText(pedidoDaLeitura(args));
           logger.info("copiloto: leitura da IA", {
             leadId,
             entrada: r.usage?.inputTokens,

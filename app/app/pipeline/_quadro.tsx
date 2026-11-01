@@ -3,7 +3,7 @@
 import { DragDropContext, Draggable, Droppable, type DropResult } from "@hello-pangea/dnd";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState, useSyncExternalStore, useTransition } from "react";
 import { toast } from "sonner";
 
 import {
@@ -26,6 +26,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { marcarRespondido, moverEtapa } from "../leads/actions";
+import { moverCartao } from "./mover";
 
 export interface CartaoQuadro {
   id: string;
@@ -43,6 +44,8 @@ export interface CartaoQuadro {
   lembretesDesligados: boolean;
   parecidos: number;
   esperandoMin: number | null;
+  /** Valor do negócio, para o total da etapa acompanhar o card que muda de coluna (F7). */
+  valorCents: number;
   dono: string | null;
 }
 
@@ -87,37 +90,47 @@ function SeloEtapa({ icone: I, titulo }: { icone: typeof Bell; titulo: string })
   );
 }
 
+/** Tela de toque (celular, tablet): arrastar card com o dedo briga com a rolagem, então lá o card muda de etapa pelo menu "Mover" (U6). */
+function useToque(): boolean {
+  return useSyncExternalStore(
+    (avisar) => {
+      const mq = window.matchMedia("(pointer: coarse)");
+      mq.addEventListener("change", avisar);
+      return () => mq.removeEventListener("change", avisar);
+    },
+    () => window.matchMedia("(pointer: coarse)").matches,
+    () => false,
+  );
+}
+
 export function QuadroOpa({ colunas: inicial }: { colunas: ColunaQuadro[] }) {
   const router = useRouter();
   const [colunas, setColunas] = useState(inicial);
   const [, iniciar] = useTransition();
+  const toque = useToque();
 
-  const soltar = (r: DropResult) => {
-    if (!r.destination || r.destination.droppableId === r.source.droppableId) return;
+  const mover = (cartaoId: string, deId: string, paraId: string) => {
+    if (deId === paraId) return;
     const antes = colunas;
-    const de = colunas.find((c) => c.id === r.source.droppableId)!;
-    const cartao = de.cartoes.find((c) => c.id === r.draggableId)!;
-    setColunas(
-      colunas.map((c) =>
-        c.id === r.source.droppableId
-          ? { ...c, cartoes: c.cartoes.filter((x) => x.id !== cartao.id) }
-          : c.id === r.destination!.droppableId
-            ? { ...c, cartoes: [cartao, ...c.cartoes] }
-            : c,
-      ),
-    );
+    setColunas(moverCartao(colunas, cartaoId, deId, paraId));
     iniciar(async () => {
       const fd = new FormData();
-      fd.set("leadId", cartao.id);
-      fd.set("etapaId", r.destination!.droppableId);
+      fd.set("leadId", cartaoId);
+      fd.set("etapaId", paraId);
       const res = await moverEtapa(fd);
       if (!res.ok) {
         setColunas(antes);
         toast.error(res.erro);
       } else {
+        toast.success(`Card movido para ${colunas.find((c) => c.id === paraId)?.nome ?? "a nova etapa"}.`);
         router.refresh();
       }
     });
+  };
+
+  const soltar = (r: DropResult) => {
+    if (!r.destination) return;
+    mover(r.draggableId, r.source.droppableId, r.destination.droppableId);
   };
 
   return (
@@ -153,7 +166,7 @@ export function QuadroOpa({ colunas: inicial }: { colunas: ColunaQuadro[] }) {
                     const temp = c.temperatura ? TEMP[c.temperatura] : null;
                     const OrigemIcone = c.pago ? Megaphone : Globe;
                     return (
-                      <Draggable key={c.id} draggableId={c.id} index={i}>
+                      <Draggable key={c.id} draggableId={c.id} index={i} isDragDisabled={toque}>
                         {(p, s) => (
                           <article
                             ref={p.innerRef}
@@ -245,11 +258,28 @@ export function QuadroOpa({ colunas: inicial }: { colunas: ColunaQuadro[] }) {
                                 <span className="truncate text-[12px] text-[#5b7284]">{c.dono ? `${c.dono} · respondido` : "respondido"}</span>
                               )}
                               <div className="flex shrink-0 gap-1.5">
+                                {toque && (
+                                  <label className="relative inline-flex h-11 items-center rounded-full bg-[#eef3f6] px-3 text-[13px] font-semibold text-[#0a2d40]">
+                                    Mover
+                                    <select
+                                      aria-label={`Mover ${c.nome} para outra etapa`}
+                                      value={col.id}
+                                      onChange={(ev) => mover(c.id, col.id, ev.target.value)}
+                                      className="absolute inset-0 cursor-pointer opacity-0"
+                                    >
+                                      {colunas.map((o) => (
+                                        <option key={o.id} value={o.id}>
+                                          {o.nome}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </label>
+                                )}
                                 <Link
                                   href={`/app/leads/${c.id}`}
                                   title="Abrir a conversa"
                                   aria-label="Abrir a conversa"
-                                  className="relative inline-flex size-9 items-center justify-center rounded-full bg-[#eef3f6] text-[#0a2d40] hover:bg-[#e7f0f5]"
+                                  className="relative inline-flex size-11 items-center justify-center rounded-full bg-[#eef3f6] text-[#0a2d40] hover:bg-[#e7f0f5]"
                                 >
                                   <ChatCircle className="size-4" />
                                   {c.esperandoMin != null && (
@@ -263,7 +293,7 @@ export function QuadroOpa({ colunas: inicial }: { colunas: ColunaQuadro[] }) {
                                       type="submit"
                                       title="Respondi"
                                       aria-label="Respondi"
-                                      className="inline-flex size-9 items-center justify-center rounded-full bg-[#e5f3ea] text-[#1d6b43] hover:bg-[#cdebd9]"
+                                      className="inline-flex size-11 items-center justify-center rounded-full bg-[#e5f3ea] text-[#1d6b43] hover:bg-[#cdebd9]"
                                     >
                                       <Check className="size-4" weight="bold" />
                                     </button>
@@ -281,7 +311,7 @@ export function QuadroOpa({ colunas: inicial }: { colunas: ColunaQuadro[] }) {
               )}
             </Droppable>
             {col.ocultos > 0 && (
-              <Link href="/app/leads" className="mt-2 rounded-[18px] bg-white px-3 py-2.5 text-center text-[13px] font-semibold text-[#2a7ca8]">
+              <Link href={`/app/leads?etapa=${col.id}`} className="mt-2 rounded-[18px] bg-white px-3 py-3 text-center text-[13px] font-semibold text-[#2a7ca8]">
                 Mais {col.ocultos} nesta etapa. Ver na lista
               </Link>
             )}

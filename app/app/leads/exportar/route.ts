@@ -3,7 +3,8 @@
  * (decisão 6 do protótipo: exportar só o administrador).
  */
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
-import { carregarEquipe, carregarLeads, ROTULO_ORIGEM } from "@/lib/opa/dados";
+import { carregarEquipe, carregarLeadsSemCache, ROTULO_ORIGEM } from "@/lib/opa/dados";
+import { dataHoraSP, diaSP } from "@/lib/opa/periodo";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,8 @@ const cel = (v: unknown) => {
   return `"${t.replace(/"/g, '""')}"`;
 };
 
+const SITUACAO: Record<string, string> = { open: "aberto", won: "ganho", lost: "perdido" };
+
 export async function GET(): Promise<Response> {
   const user = await requireAuth();
   const org = await resolveActiveOrg(user);
@@ -30,12 +33,14 @@ export async function GET(): Promise<Response> {
     return new Response("Confirme a verificação em duas etapas antes de exportar.", { status: 403 });
   }
 
-  const [leads, equipe] = await Promise.all([carregarLeads(org.orgId, { funil: "todos" }), carregarEquipe(org.orgId)]);
+  // F6: a base inteira, com ganhos e perdidos (antes só os abertos).
+  const [leads, equipe] = await Promise.all([carregarLeadsSemCache(org.orgId, { funil: "todos", status: "todos" }), carregarEquipe(org.orgId)]);
   const linhas = [
-    ["nome", "telefone", "origem", "pago", "imovel", "etapa", "corretor", "finalidade", "regiao", "momento", "inegociavel", "entrou_em"],
+    ["nome", "telefone", "situacao", "origem", "pago", "imovel", "etapa", "corretor", "finalidade", "regiao", "momento", "inegociavel", "entrou_em"],
     ...leads.map((l) => [
       l.nome,
       l.telefone,
+      SITUACAO[l.status] ?? l.status,
       ROTULO_ORIGEM[l.origem.canal ?? ""] ?? l.origem.canal,
       l.pago ? "sim" : "não",
       l.imovelCodigo,
@@ -45,14 +50,14 @@ export async function GET(): Promise<Response> {
       l.campos.regiao,
       l.campos.momento,
       l.campos.inegociavel,
-      l.criadoEm,
+      dataHoraSP(l.criadoEm),
     ]),
   ];
   const csv = "﻿" + linhas.map((r) => r.map(cel).join(";")).join("\r\n");
   return new Response(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="leads-${new Date().toISOString().slice(0, 10)}.csv"`,
+      "Content-Disposition": `attachment; filename="leads-${diaSP(Date.now())}.csv"`,
     },
   });
 }

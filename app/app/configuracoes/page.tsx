@@ -67,7 +67,7 @@ const ABAS: Array<[Aba, string, Icone]> = [
 ];
 
 const entrada =
-  "h-11 rounded-[16px] bg-[#f2f6f9] px-4 text-[14px] text-[#0a2d40] outline-none placeholder:text-[#8aa3b3] focus:ring-2 focus:ring-[#8fc4dd]";
+  "h-11 rounded-[16px] bg-[#f2f6f9] px-4 text-[14px] text-[#0a2d40] outline-none placeholder:text-[#5b7284] focus:ring-2 focus:ring-[#8fc4dd]";
 const botaoPrimario =
   "inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-[#0a2d40] px-5 text-[14px] font-semibold text-white hover:bg-[#12455f]";
 const botaoIcone =
@@ -129,7 +129,7 @@ function Interruptor({ ligado, rotulo }: { ligado: boolean; rotulo: string }) {
 function Seletor({ nome, valor, opcoes }: { nome: string; valor: number; opcoes: Array<[number, string]> }) {
   const lista = opcoes.some(([v]) => v === valor) ? opcoes : [...opcoes, [valor, String(valor)] as [number, string]];
   return (
-    <select name={nome} defaultValue={valor} className="h-9 shrink-0 rounded-full bg-white px-3 text-[14px] font-semibold text-[#0a2d40] outline-none focus:ring-2 focus:ring-[#8fc4dd]">
+    <select name={nome} defaultValue={valor} className="h-11 shrink-0 rounded-full bg-white px-3 text-[14px] font-semibold text-[#0a2d40] outline-none focus:ring-2 focus:ring-[#8fc4dd]">
       {lista.map(([v, r]) => (
         <option key={v} value={v}>
           {r}
@@ -391,7 +391,8 @@ function AbaMensagens() {
 
 async function contagemDeEtiquetas(orgId: string): Promise<Map<string, number>> {
   const supabase = await createClient();
-  const { data } = await supabase.from("crm_leads").select("tags, custom_fields").eq("organization_id", orgId).eq("status", "open");
+  const { data, error } = await supabase.from("crm_leads").select("tags, custom_fields").eq("organization_id", orgId).eq("status", "open");
+  if (error) throw new Error(`contagemDeEtiquetas: ${error.message}`);
   const mapa = new Map<string, number>();
   const somar = (k: string) => mapa.set(k, (mapa.get(k) ?? 0) + 1);
   for (const l of (data ?? []) as Array<{ tags: string[] | null; custom_fields: { etiquetas?: Record<string, string[]> } | null }>) {
@@ -638,7 +639,7 @@ function AbaVisita({ config }: { config: ConfigOpa }) {
                 {c.rotulo}
                 {c.obrigatorio ? <span className="text-[#a4410e]"> *</span> : ""}
               </p>
-              <div className="mt-1 h-9 rounded-[12px] bg-[#f2f6f9] px-3 text-[12px] leading-9 text-[#8aa3b3]">
+              <div className="mt-1 h-9 rounded-[12px] bg-[#f2f6f9] px-3 text-[12px] leading-9 text-[#5b7284]">
                 {c.chave === "interesse" ? "1 · 2 · 3 · 4 · 5" : c.opcoes ? c.opcoes[0] : ""}
               </div>
             </div>
@@ -712,14 +713,14 @@ function AbaHorario({ config }: { config: ConfigOpa }) {
                   type="time"
                   name={`abre_${i}`}
                   defaultValue={d.abre || "08:00"}
-                  className="h-9 w-28 rounded-full bg-white px-3 text-[14px] text-[#0a2d40] outline-none focus:ring-2 focus:ring-[#8fc4dd]"
+                  className="h-11 w-28 rounded-full bg-white px-3 text-[14px] text-[#0a2d40] outline-none focus:ring-2 focus:ring-[#8fc4dd]"
                 />
                 até
                 <input
                   type="time"
                   name={`fecha_${i}`}
                   defaultValue={d.fecha || "18:00"}
-                  className="h-9 w-28 rounded-full bg-white px-3 text-[14px] text-[#0a2d40] outline-none focus:ring-2 focus:ring-[#8fc4dd]"
+                  className="h-11 w-28 rounded-full bg-white px-3 text-[14px] text-[#0a2d40] outline-none focus:ring-2 focus:ring-[#8fc4dd]"
                 />
               </span>
               <label className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1.5 text-[13px] font-medium text-[#34566b]">

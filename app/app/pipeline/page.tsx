@@ -4,6 +4,7 @@ import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { carregarConfig } from "@/lib/opa/config";
 import { carregarEquipe, carregarImoveis, carregarLeads, filtrarCorretor, ROTULO_ORIGEM, type LeadOpa } from "@/lib/opa/dados";
 import { afinidade, precoCurto } from "@/lib/opa/imoveis";
+import { diaSP, inicioDoDia } from "@/lib/opa/periodo";
 import { createClient } from "@/lib/supabase/server";
 import { ArrowsClockwise, Bell, Buildings, CheckCircle, ListNumbers, UsersThree, XCircle, Kanban } from "@/lib/ui/icons";
 
@@ -45,9 +46,8 @@ export default async function PipelinePage({
   const funil = funis.find((f) => f.slug === p) ?? funis[0];
   if (!funil) redirect("/app/hoje");
 
-  const inicioMes = new Date();
-  inicioMes.setDate(1);
-  inicioMes.setHours(0, 0, 0, 0);
+  // E8: o mês começa à meia-noite de São Paulo (o servidor roda em UTC).
+  const inicioMes = new Date(inicioDoDia(`${diaSP(new Date().getTime()).slice(0, 7)}-01`));
 
   const [leadsRaw, imoveis, equipe, config, { data: etapasRaw }, { data: contagens }, { data: fechados }] = await Promise.all([
     carregarLeads(org.orgId, { funil: funil.slug }),
@@ -158,6 +158,7 @@ export default async function PipelinePage({
           lembretesDesligados: l.lembretesDesligados,
           parecidos,
           esperandoMin: l.conversa?.esperandoMin ?? null,
+          valorCents: l.valorCents ?? 0,
           dono: equipe.get(l.donoId ?? "")?.nome.split(" ")[0] ?? null,
         };
       }),
@@ -169,7 +170,7 @@ export default async function PipelinePage({
 
   return (
     <>
-      <CabecalhoOpa icone={Kanban} titulo="Pipelines" subtitulo="Arraste o card para mudar de etapa" />
+      <CabecalhoOpa icone={Kanban} titulo="Funis" subtitulo="Arraste o card para mudar de etapa. No celular, toque em Mover." />
       <CorpoOpa largura="max-w-none">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <AbasPilula
