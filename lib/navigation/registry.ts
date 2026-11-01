@@ -212,8 +212,8 @@ export const NAV_DESTINATIONS: NavDestination[] = [
   },
   {
     href: "/app/lembretes",
-    label: "Lembretes e cadência",
-    description: "O que o CRM lembra ao corretor pelo WhatsApp, e quando.",
+    label: "Agenda",
+    description: "Seus retornos marcados e os avisos que o CRM manda no WhatsApp.",
     icon: Bell,
     group: "atendimento",
     sidebar: true,
@@ -685,7 +685,7 @@ const ROTULO_GESTOR: Record<string, string> = {
   "/app/fila": "Fila da equipe",
   "/app/pipeline": "Funis",
   "/app/imoveis": "Imóveis",
-  "/app/lembretes": "Lembretes",
+  "/app/lembretes": "Agenda",
   "/app/configuracoes": "Roleta e funis",
   "/app/membros": "Equipe",
 };

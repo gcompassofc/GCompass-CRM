@@ -159,18 +159,26 @@ export const TOURS: Record<TourId, Tour> = {
     nome: "Agenda e lembretes",
     rota: "/app/lembretes",
     passos: [
-      { alvo: "agenda-abas", titulo: "Trilhas e agenda", texto: "As regras de cada trilha, as mensagens agendadas e os leads com aviso desligado." },
-      { alvo: "agenda-trilha", titulo: "O que o CRM avisa", texto: "Cada linha é um aviso: quando chega e o que diz." },
+      { alvo: "agenda-abas", titulo: "Sua agenda e os avisos", texto: "Minha agenda tem os seus retornos. Avisos mostra quando o CRM te avisa sozinho." },
       {
         alvo: "agenda-agendadas",
-        titulo: "Mensagens agendadas",
-        texto: "Saem na hora marcada pelo OPA Lembretes.",
+        titulo: "Seus retornos",
+        texto: "Hoje e os próximos dias, com a hora. Toque em Abrir cliente para ir direto à ficha.",
         seFaltar: {
-          titulo: "Mensagens agendadas",
-          texto: "Na aba Agendadas ficam os retornos marcados. Agende pelo botão no topo ou pela ficha do lead.",
+          titulo: "Seus retornos",
+          texto: "Em Minha agenda ficam os retornos marcados. Agende pelo botão Agendar lembrete ou pela ficha do cliente.",
         },
       },
-      { alvo: "agenda-nova-regra", titulo: "Nova regra", texto: "Crie um aviso novo para a trilha.", so: "gestor" },
+      {
+        alvo: "agenda-trilha",
+        titulo: "O que o CRM avisa",
+        texto: "Cada linha é um aviso: quando chega e o que diz.",
+        seFaltar: {
+          titulo: "Avisos",
+          texto: "Na aba Avisos você vê quando o CRM te avisa sozinho, como o prazo da primeira resposta.",
+        },
+      },
+      { alvo: "agenda-nova-regra", titulo: "Criar um aviso", texto: "Crie um aviso novo para o tipo de lead escolhido.", so: "gestor" },
     ],
     vazio: { titulo: "Agenda", texto: "Seus lembretes e as mensagens agendadas aparecem aqui." },
   },

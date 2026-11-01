@@ -127,7 +127,7 @@ export const PASSOS: Record<VersaoTutorial, PassoTutorial[]> = {
       detalhes: [
         "Ligar: um toque no telefone e a ligação já começa.",
         "Etapa: mude pela própria ficha quando o cliente avança.",
-        "Kit: mensagens prontas para cada situação, no menu Kit.",
+        "Kit: escolha o cliente e a situação, e a mensagem sai pronta para mandar.",
       ],
     },
     {
@@ -144,7 +144,7 @@ export const PASSOS: Record<VersaoTutorial, PassoTutorial[]> = {
       tela: "agenda",
       icone: "agenda",
       titulo: "Agenda",
-      texto: "Marque retornos e visitas. Na hora marcada, o CRM te lembra pelo WhatsApp.",
+      texto: "Toque em Agendar lembrete e escolha o cliente e a hora. Na hora marcada, o CRM te avisa pelo WhatsApp com a mensagem pronta.",
       href: "/app/lembretes",
       rotuloLink: "Abrir a Agenda",
     },

@@ -154,6 +154,10 @@ const schema = z.object({
   RESEND_API_KEY: z.string().optional().default(""),
   RESEND_FROM_EMAIL: z.string().optional().default(""),
 
+  // Relatório mensal da OPA por e-mail (lib/opa/relatorio-mensal.ts). Estrutura
+  // pronta e DESLIGADA por decisão de 01/11/2026: só envia com "on".
+  OPA_RELATORIO_MENSAL: z.enum(["on", "off"]).optional().default("off"),
+
   // Assinatura HMAC dos convites de equipe (lib/auth/invite-token.ts). Opcional
   // de verdade: na falta dela o segredo cai em INTERNAL_SECRET, que é required
   // acima — o literal "dev-fallback" do módulo é inalcançável em produção.

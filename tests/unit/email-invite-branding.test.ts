@@ -11,9 +11,15 @@
  * sob o jsdom padrão da suíte o resolvedor pegaria o caminho do navegador —
  * o teste passaria a exercitar um caminho que a produção nunca percorre.
  */
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { buildInviteEmail, type InviteEmailOptions } from "@/lib/email/templates/invite";
+
+// Estes testes são da marca genérica (APP_NAME). Com APP_PALETTE=opa, que o
+// .env.local do fork liga, sai o convite da OPA (tests/unit/emails-opa.test.ts).
+beforeEach(() => {
+  vi.stubEnv("APP_PALETTE", "");
+});
 
 const base: InviteEmailOptions = {
   inviterName: "Ana",

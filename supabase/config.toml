@@ -72,13 +72,34 @@ enable_confirmations = true
 
 # Templates apontam para /auth/confirm (fluxo token_hash do @supabase/ssr).
 # Self-host GoTrue: ver docs/deploy-selfhost (GOTRUE_MAILER_TEMPLATES_*).
+# Fork G-Compass: modelos da OPA em supabase/templates/opa/, gerados por
+# scripts/gerar-modelos-email-opa.ts (assuntos iguais aos de lá). Os avisos de
+# segurança (e-mail trocado, segundo fator) ficam só no painel do projeto em
+# produção: docs/EMAILS-OPA.md. Os modelos genéricos continuam em
+# supabase/templates/ para outras instalações.
 [auth.email.template.confirmation]
-subject = "Confirme seu e-mail — DeskcommCRM"
-content_path = "./supabase/templates/confirmation.html"
+subject = "Confirme seu e-mail no CRM da OPA"
+content_path = "./supabase/templates/opa/confirmation.html"
 
 [auth.email.template.recovery]
-subject = "Redefinir senha — DeskcommCRM"
-content_path = "./supabase/templates/recovery.html"
+subject = "Crie uma senha nova para o CRM da OPA"
+content_path = "./supabase/templates/opa/recovery.html"
+
+[auth.email.template.invite]
+subject = "Você foi convidado para o CRM da OPA"
+content_path = "./supabase/templates/opa/invite.html"
+
+[auth.email.template.magic_link]
+subject = "Seu link de acesso ao CRM da OPA"
+content_path = "./supabase/templates/opa/magic_link.html"
+
+[auth.email.template.email_change]
+subject = "Confirme a troca de e-mail no CRM da OPA"
+content_path = "./supabase/templates/opa/email_change.html"
+
+[auth.email.template.reauthentication]
+subject = "Seu código de confirmação do CRM da OPA"
+content_path = "./supabase/templates/opa/reauthentication.html"
 
 [auth.mfa]
 max_enrolled_factors = 10

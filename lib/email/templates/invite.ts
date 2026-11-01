@@ -6,7 +6,9 @@
  * primeira coisa que um convidado vê da instalação, e era o único lugar que
  * ainda dizia "DeskcommCRM" mesmo com a interface já personalizada.
  */
+import { rotuloDoPapel, type Role } from "@/lib/auth/types";
 import { branding } from "@/lib/branding";
+import { esc, marcaOpaAtiva, moldeHtml, moldeTexto } from "@/lib/email/molde";
 
 export interface InviteEmailOptions {
   inviterName: string;
@@ -21,6 +23,8 @@ export function buildInviteEmail(opts: InviteEmailOptions): {
   html: string;
   text: string;
 } {
+  if (marcaOpaAtiva()) return conviteOpa(opts);
+
   const expiresStr = opts.expiresAt.toLocaleString("pt-BR", {
     timeZone: "America/Sao_Paulo",
   });
@@ -62,6 +66,47 @@ export function buildInviteEmail(opts: InviteEmailOptions): {
     "",
     `Expira em ${expiresStr}.`,
   ].join("\n");
+
+  return { subject, html, text };
+}
+
+/**
+ * Convite na marca da OPA. O papel sai como a equipe fala ("Corretor", "Gestor"),
+ * a validade em horário de Brasília, e a origem do link de aceite serve de base
+ * para o logo (é o NEXT_PUBLIC_APP_URL de quem chama).
+ */
+function conviteOpa(opts: InviteEmailOptions): { subject: string; html: string; text: string } {
+  const papel = rotuloDoPapel(opts.role as Role) ?? opts.role;
+  const validade = opts.expiresAt.toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  const urlBase = new URL(opts.acceptUrl).origin;
+  const subject = `${opts.inviterName} convidou você para o CRM da OPA`;
+  const observacao = `O convite vale até ${validade} (horário de Brasília). Se você não esperava este e-mail, pode ignorar.`;
+
+  const html = moldeHtml({
+    urlBase,
+    previa: `Entre como ${esc(papel)} e veja seus leads, sua fila e seus lembretes.`,
+    titulo: "Você foi convidado para o CRM da OPA",
+    paragrafos: [
+      `${esc(opts.inviterName)} convidou você para entrar como <strong>${esc(papel)}</strong>.`,
+      "No CRM você vê seus leads, responde no prazo e recebe os lembretes do dia. No primeiro acesso, um tutorial curto mostra cada tela.",
+    ],
+    botao: { rotulo: "Aceitar convite", url: esc(opts.acceptUrl) },
+    mostrarLink: true,
+    observacao: esc(observacao),
+  });
+
+  const text = moldeTexto({
+    titulo: "Você foi convidado para o CRM da OPA",
+    linhas: [`${opts.inviterName} convidou você para entrar como ${papel}.`, "Para aceitar, abra o endereço abaixo:"],
+    url: opts.acceptUrl,
+    observacao,
+  });
 
   return { subject, html, text };
 }

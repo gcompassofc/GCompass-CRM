@@ -6,7 +6,7 @@
  * antes de falar com o GoTrue. Sem a chamada em signInWithPassword.ts, as seis
  * tentativas chegariam ao provedor e o teste fica vermelho.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
@@ -24,8 +24,15 @@ const signIn = vi.fn(async () => ({
   error: { message: "Invalid login credentials", status: 400 },
 }));
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe("signInWithPassword — teto de tentativas", () => {
   beforeEach(() => {
+    // Contador em memória: com o Redis do `.env.local` a contagem sobrava entre rodadas.
+    vi.stubEnv("UPSTASH_REDIS_REST_URL", "");
+    vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "");
     vi.resetModules();
     signIn.mockClear();
     vi.mocked(headers).mockResolvedValue({

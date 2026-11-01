@@ -27,6 +27,16 @@ const RAIZ = join(__dirname, "..", "..");
 const DIR_CRON = join(RAIZ, "app", "api", "v1", "cron");
 const COMPOSE = join(RAIZ, "docker-compose.prod.yml");
 
+/**
+ * Rotas que existem e ficam FORA do agendador por decisão, cada uma com o motivo.
+ * Entrar aqui exige motivo escrito: a cerca continua pegando o esquecimento.
+ */
+const FORA_DO_AGENDADOR_DE_PROPOSITO: Record<string, string> = {
+  // Decisão do Allyson, 01/11/2026: relatório mensal só com a estrutura pronta.
+  // Para ligar: OPA_RELATORIO_MENSAL=on e a linha no scheduler (docs/EMAILS-OPA.md).
+  "opa-relatorio-mensal": "relatório mensal desligado até decisão",
+};
+
 /** As rotas que existem, lidas do disco — não de uma lista mantida à mão. */
 function rotasNoCodigo(): string[] {
   return readdirSync(DIR_CRON, { withFileTypes: true })
@@ -52,13 +62,20 @@ describe("rotas de cron × agendamento no self-host", () => {
   });
 
   it("toda rota de cron do código está agendada no scheduler", () => {
-    const naoAgendadas = rotasNoCodigo().filter((r) => !rotasAgendadas().includes(r));
+    const naoAgendadas = rotasNoCodigo().filter((r) => !rotasAgendadas().includes(r) && !(r in FORA_DO_AGENDADOR_DE_PROPOSITO));
     expect(
       naoAgendadas,
       `Rota(s) de cron sem linha no crontab do serviço 'scheduler' em docker-compose.prod.yml: ` +
         `${naoAgendadas.join(", ")}. Num self-host elas NUNCA rodam, e a feature não dá erro — ` +
         `só não acontece. Adicione a linha (ou apague a rota, se ela morreu).`,
     ).toEqual([]);
+  });
+
+  it("a lista de fora do agendador só tem rota que existe e não está agendada", () => {
+    for (const rota of Object.keys(FORA_DO_AGENDADOR_DE_PROPOSITO)) {
+      expect(rotasNoCodigo()).toContain(rota);
+      expect(rotasAgendadas()).not.toContain(rota);
+    }
   });
 
   it("todo agendamento aponta para uma rota que existe", () => {

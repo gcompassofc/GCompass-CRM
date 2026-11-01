@@ -6,6 +6,9 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { resetPasswordSchema, type ResetPasswordInput } from "@/lib/auth/schemas";
 import { audit } from "@/lib/audit";
+import { sendEmail } from "@/lib/email/resend";
+import { buildSenhaAlteradaEmail } from "@/lib/email/templates/senha-alterada";
+import { env } from "@/lib/env";
 
 export type UpdatePasswordResult = {
   ok: false;
@@ -93,6 +96,17 @@ export async function updatePassword(
     ip,
     userAgent,
   });
+
+  // Aviso de segurança: se não foi a pessoa, ela fica sabendo pelo e-mail.
+  // Falha no envio não desfaz a troca nem trava o redirecionamento.
+  if (user.email) {
+    const aviso = buildSenhaAlteradaEmail({ urlBase: env.NEXT_PUBLIC_APP_URL, quando: new Date() });
+    await sendEmail({
+      to: user.email,
+      ...aviso,
+      tags: [{ name: "kind", value: "senha_alterada" }],
+    }).catch(() => undefined);
+  }
 
   await supabase.auth.signOut();
   redirect("/login?reset=success");

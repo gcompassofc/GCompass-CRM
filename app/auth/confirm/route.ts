@@ -64,6 +64,16 @@ export async function GET(request: NextRequest) {
     return redirectTo("/login/reset");
   }
 
+  // Modelos da OPA (supabase/templates/opa/): o convite feito pelo painel do
+  // Supabase cria a conta sem senha, então a pessoa vai direto escolher uma; link
+  // mágico e troca de e-mail são de quem já tem conta, e não provisionam empresa.
+  if (type === "invite") {
+    return redirectTo("/login/reset");
+  }
+  if (type === "magiclink" || type === "email_change") {
+    return redirectTo("/app");
+  }
+
   try {
     await ensureTenantForUser(data.user);
   } catch (e) {

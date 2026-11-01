@@ -6,7 +6,7 @@
  * sem mock do limitador. O que se mocka é só o `headers()` do Next, para
  * escolher o IP de cada tentativa.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { headers } from "next/headers";
 
@@ -18,8 +18,21 @@ function comIp(ip: string) {
   } as never);
 }
 
+// Força o contador em memória: com o `.env.local` apontando para um Redis de
+// verdade, as tentativas de uma rodada ficavam 5 minutos lá e a rodada seguinte
+// já começava barrada.
+function semRedis() {
+  vi.stubEnv("UPSTASH_REDIS_REST_URL", "");
+  vi.stubEnv("UPSTASH_REDIS_REST_TOKEN", "");
+}
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe("authRateLimited", () => {
   beforeEach(() => {
+    semRedis();
     vi.resetModules();
   });
 
@@ -133,6 +146,7 @@ describe("sem IP identificável — o balde global que era um DoS", () => {
 
 describe("bloqueio por falha de login (auditoria 30/10/2026, P5)", () => {
   beforeEach(() => {
+    semRedis();
     vi.resetModules();
   });
 

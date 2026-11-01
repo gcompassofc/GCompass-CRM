@@ -68,7 +68,7 @@ export default async function KitPage({
       <CabecalhoOpa
         secao="Seu espaço"
         titulo="Kit de mensagens"
-        subtitulo="Mensagens prontas para cada momento, já com o nome do cliente e o imóvel"
+        subtitulo="Mensagem pronta em 3 toques: o cliente, a situação e mandar"
         icone={PaperPlaneTilt}
         equipe={false}
         ferramentas={false}

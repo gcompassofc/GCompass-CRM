@@ -2,16 +2,18 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
+import { agruparAgenda, diaFalado, horaSP, quandoSimples, textoSimples } from "@/lib/opa/agenda";
 import { carregarConfig, type RegraLembrete } from "@/lib/opa/config";
 import { carregarEquipe, carregarLeads, tempoCurto } from "@/lib/opa/dados";
 import { createClient } from "@/lib/supabase/server";
 import {
+  ArrowRight,
   Bell,
   BellSlash,
   CalendarBlank,
+  CaretDown,
   ChatText,
   CheckCircle,
-  Clock,
   Info,
   Megaphone,
   Microphone,
@@ -33,16 +35,21 @@ import { alternarRegra, cancelarAgendada, editarRegra, excluirRegra, novaRegra, 
 import { AgendarMensagem } from "./_componentes";
 
 export const dynamic = "force-dynamic";
-export const metadata = { title: "Lembretes e cadência" };
+export const metadata = { title: "Agenda" };
 
-type Aba = "pago" | "organico" | "captacao" | "agendadas" | "desligados";
+type Aba = "agenda" | "avisos" | "desligados";
+type Trilha = "pago" | "organico" | "captacao";
 
 const ABAS: Array<[Aba, string, Icone]> = [
-  ["pago", "Tráfego pago", Megaphone],
-  ["organico", "Orgânico", ChatText],
+  ["agenda", "Minha agenda", CalendarBlank],
+  ["avisos", "Avisos", Bell],
+  ["desligados", "Sem aviso", BellSlash],
+];
+
+const TRILHAS: Array<[Trilha, string, Icone]> = [
+  ["pago", "Lead de anúncio", Megaphone],
+  ["organico", "Lead sem anúncio", ChatText],
   ["captacao", "Captação", Target],
-  ["agendadas", "Agendadas", CalendarBlank],
-  ["desligados", "Desligados", BellSlash],
 ];
 
 /** Instante de sete dias atrás, em ISO. */
@@ -50,18 +57,31 @@ function haSeteDias(): string {
   return new Date(Date.now() - 7 * 86_400_000).toISOString();
 }
 
-function quandoCurto(iso: string): string {
-  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }).format(
-    new Date(iso),
-  );
+/** Endereços antigos (?aba=pago, ?aba=agendadas) continuam valendo. */
+function lerAba(aba: string | undefined, trilha: string | undefined): { aba: Aba; trilha: Trilha } {
+  const t: Trilha = TRILHAS.some(([k]) => k === trilha) ? (trilha as Trilha) : "pago";
+  if (aba === "agendadas" || !aba) return { aba: "agenda", trilha: t };
+  if (aba === "pago" || aba === "organico" || aba === "captacao") return { aba: "avisos", trilha: aba };
+  return { aba: ABAS.some(([k]) => k === aba) ? (aba as Aba) : "agenda", trilha: t };
 }
 
-export default async function LembretesPage({ searchParams }: { searchParams: Promise<{ aba?: string }> }) {
+type Agendada = {
+  id: string;
+  lead_id: string | null;
+  para_user_id: string | null;
+  quando: string;
+  mensagem: string;
+  origem: string;
+  status: string;
+  crm_leads: { title: string } | null;
+};
+
+export default async function LembretesPage({ searchParams }: { searchParams: Promise<{ aba?: string; trilha?: string }> }) {
   const user = await requireAuth();
   const org = await resolveActiveOrg(user);
   if (!org) redirect("/app");
-  const { aba: abaParam } = await searchParams;
-  const aba: Aba = ABAS.some(([k]) => k === abaParam) ? (abaParam as Aba) : "pago";
+  const params = await searchParams;
+  const { aba, trilha: trilhaAtual } = lerAba(params.aba, params.trilha);
   const gestor = org.role === "manager" || org.role === "admin";
   const supabase = await createClient();
 
@@ -75,7 +95,7 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
       .eq("organization_id", org.orgId)
       .neq("status", "cancelado")
       // Os que esperam, de qualquer data, e os enviados ou com falha da última semana.
-      .or(`status.eq.pendente,quando.gte.${haSeteDias()}`)
+      .or(`status.eq.pendente,status.eq.enviando,quando.gte.${haSeteDias()}`)
       .order("quando", { ascending: true })
       .limit(100),
     supabase
@@ -86,16 +106,7 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
       .eq("custom_fields->>lembretes_desligados", "true"),
   ]);
 
-  const agendadas = (agendadasRaw ?? []) as unknown as Array<{
-    id: string;
-    lead_id: string | null;
-    para_user_id: string | null;
-    quando: string;
-    mensagem: string;
-    origem: string;
-    status: string;
-    crm_leads: { title: string } | null;
-  }>;
+  const agendadas = (agendadasRaw ?? []) as unknown as Agendada[];
   const desligados = (desligadosRaw ?? []) as unknown as Array<{
     id: string;
     owner_user_id: string | null;
@@ -104,58 +115,100 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
     contacts: { name: string | null } | null;
   }>;
 
-  // Pago e orgânico mostram a trilha e, embaixo, a cadência que vale para os dois.
-  const trilha = aba === "pago" || aba === "organico" ? config.lembretes.filter((r) => r.trilha === aba) : aba === "captacao" ? config.lembretes.filter((r) => r.trilha === "captacao") : [];
-  const cadencia = aba === "pago" || aba === "organico" ? config.lembretes.filter((r) => r.trilha === "cadencia") : [];
+  const agora = new Date().getTime();
+  const agenda = agruparAgenda(agendadas, agora);
+  // Pago e orgânico mostram a trilha e, embaixo, o guia de contato que vale para os dois.
+  const trilha = config.lembretes.filter((r) => r.trilha === trilhaAtual);
+  const cadencia = trilhaAtual === "captacao" ? [] : config.lembretes.filter((r) => r.trilha === "cadencia");
   const nome = (id: string | null) => (id ? (equipe.get(id)?.nome ?? "Corretor") : "Corretor");
-  const pendentes = agendadas.filter((a) => a.status === "pendente").length;
-  const ehRegras = aba === "pago" || aba === "organico" || aba === "captacao";
+  const esperando = agenda.hoje.length + agenda.proximos.length;
+  const prazo = trilhaAtual === "organico" ? config.prazos.organico_min : config.prazos.pago_min;
 
   return (
     <>
-      <CabecalhoOpa secao="Operação" titulo="Lembretes e cadência" subtitulo="O que o CRM vai te lembrar, e quando" icone={Bell}>
+      <CabecalhoOpa
+        secao="Seu dia"
+        titulo="Agenda"
+        subtitulo="Seus retornos marcados. Na hora certa, o CRM te avisa no WhatsApp."
+        icone={CalendarBlank}
+        ferramentas={false}
+        equipe={false}
+      >
         <AgendarMensagem leads={leads.map((l) => ({ id: l.id, nome: l.nome })).sort((a, b) => a.nome.localeCompare(b.nome))} />
       </CabecalhoOpa>
       <CorpoOpa>
-        <p className="flex items-center gap-2 text-[14px] text-[#5b7284]">
-          <Info className="size-4 shrink-0 text-[#2a7ca8]" />
-          O OPA Lembretes avisa o corretor no WhatsApp dele: lembretes agendados, prazo de resposta (avisos e passagem para o próximo da fila) e negócio
-          parado. O resto da cadência é o guia do dia a dia, ainda sem aviso automático.
-        </p>
-
         <div data-tour="agenda-abas" className="flex flex-wrap items-center gap-3">
           <AbasPilula
             itens={ABAS.map(([k, r, I]) => ({
-              href: k === "pago" ? "/app/lembretes" : `/app/lembretes?aba=${k}`,
+              href: k === "agenda" ? "/app/lembretes" : `/app/lembretes?aba=${k}`,
               rotulo: r,
               icone: I,
               ativo: aba === k,
-              contagem: k === "agendadas" ? pendentes : k === "desligados" ? desligados.length : null,
+              contagem: k === "agenda" ? esperando : k === "desligados" ? desligados.length : null,
             }))}
           />
-          {gestor && ehRegras && (
-            <a
-              href="#nova-regra"
-              className="ml-auto inline-flex h-11 items-center gap-2 rounded-full bg-white px-5 text-[14px] font-semibold text-[#0a2d40] hover:bg-[#e7f0f5]"
-            >
-              <Plus className="size-4" weight="bold" /> Nova regra
-            </a>
-          )}
         </div>
 
-        <div className="grid gap-5 xl:grid-cols-[1fr_380px] [&>*]:min-w-0">
-          <div className="flex flex-col gap-5">
+        {aba === "agenda" && (
+          <Cartao bloco tour="agenda-agendadas" className="mx-auto w-full max-w-[920px]">
+            {esperando === 0 ? (
+              <Vazio
+                ilustracao={<IlustraAgenda />}
+                titulo="Nada marcado por enquanto"
+                texto="Toque em Agendar lembrete para não esquecer de um retorno. Dá para agendar também pela ficha do cliente."
+              />
+            ) : (
+              <div className="flex flex-col gap-7">
+                <GrupoAgenda titulo="Hoje" vazio="Nada para hoje." itens={agenda.hoje} agora={agora} nome={nome} />
+                <GrupoAgenda titulo="Próximos dias" vazio="Nada marcado para os próximos dias." itens={agenda.proximos} agora={agora} nome={nome} />
+              </div>
+            )}
+
+            {agenda.saiu.length > 0 && (
+              <details className="group mt-6 border-t border-[#eef3f6] pt-4">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[14px] font-semibold text-[#2a7ca8] [&::-webkit-details-marker]:hidden">
+                  Ver o que já saiu nos últimos 7 dias ({agenda.saiu.length})
+                  <CaretDown className="size-4 transition-transform group-open:rotate-180" aria-hidden />
+                </summary>
+                <ul className="mt-3 flex flex-col gap-2">
+                  {agenda.saiu.map((a) => (
+                    <LinhaAgenda key={a.id} a={a} agora={agora} nome={nome} />
+                  ))}
+                </ul>
+              </details>
+            )}
+
+            <p className="mt-6 flex items-start gap-2 text-[13px] leading-snug text-[#5b7284]">
+              <Info className="mt-0.5 size-4 shrink-0 text-[#2a7ca8]" />O CRM nunca escreve para o cliente sozinho. Na hora marcada, você recebe a mensagem pronta e manda
+              do seu WhatsApp.
+            </p>
+          </Cartao>
+        )}
+
+        {aba === "avisos" && (
+          <div className="mx-auto flex w-full max-w-[920px] flex-col gap-5">
+            <p className="text-[15px] leading-relaxed text-[#34566b]">
+              O CRM avisa você sozinho nestes casos, pelo número <b className="font-semibold text-[#0a2d40]">OPA Lembretes</b>. Escolha o tipo de lead para ver quando cada aviso chega.
+            </p>
+
+            <AbasPilula
+              itens={TRILHAS.map(([k, r, I]) => ({
+                href: `/app/lembretes?aba=avisos&trilha=${k}`,
+                rotulo: r,
+                icone: I,
+                ativo: trilhaAtual === k,
+              }))}
+            />
+
             {trilha.length > 0 && (
               <Cartao bloco tour="agenda-trilha">
                 <TituloBloco
-                  icone={aba === "captacao" ? Target : aba === "organico" ? ChatText : Megaphone}
-                  titulo={aba === "captacao" ? "Captação pelo OPA Radar" : aba === "organico" ? "Lead orgânico" : "Lead do tráfego pago"}
+                  icone={trilhaAtual === "captacao" ? Target : trilhaAtual === "organico" ? ChatText : Megaphone}
+                  titulo={trilhaAtual === "captacao" ? "Captação pelo OPA Radar" : trilhaAtual === "organico" ? "Lead que chegou sem anúncio" : "Lead que veio de anúncio"}
                   sub={
-                    aba === "captacao"
-                      ? `${config.captacao.por_semana} imóveis por semana, devolutiva em ${config.captacao.devolutiva_dias} dias. Os avisos começam quando o OPA Radar for ligado`
-                      : aba === "organico"
-                        ? `Prazo de ${tempoCurto(config.prazos.organico_min)} para o primeiro atendimento. Depois da primeira resposta, o lead fica com o corretor`
-                        : `Prazo de ${tempoCurto(config.prazos.pago_min)} para o primeiro atendimento. Depois da primeira resposta, o lead fica com o corretor`
+                    trilhaAtual === "captacao"
+                      ? `${config.captacao.por_semana} imóveis por semana, resposta em ${config.captacao.devolutiva_dias} dias. Começa quando o OPA Radar for ligado`
+                      : `Você tem ${tempoCurto(prazo)} para a primeira resposta. Depois dela, o lead fica com você`
                   }
                 />
                 <ul className="mt-5 flex flex-col gap-2">
@@ -163,159 +216,227 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
                     <LinhaRegra key={r.id} regra={r} gestor={gestor} />
                   ))}
                 </ul>
+                {trilhaAtual === "captacao" && gestor && (
+                  <p className="mt-4 flex items-center gap-2 text-[13px] text-[#5b7284]">
+                    <Info className="size-4 shrink-0 text-[#2a7ca8]" /> Prazos ajustáveis em{" "}
+                    <Link href="/app/configuracoes" className="font-semibold text-[#2a7ca8]">
+                      Configurações, Roleta
+                    </Link>
+                    .
+                  </p>
+                )}
               </Cartao>
             )}
 
             {cadencia.length > 0 && (
-              <Cartao bloco>
-                <TituloBloco icone={CalendarBlank} titulo="Cadência do atendimento" sub="Vale para pago e orgânico, do primeiro contato ao relacionamento" />
-                <ul className="mt-5 flex flex-col gap-2">
+              <details className="group rounded-[32px] bg-white px-7 py-5 shadow-[0_1px_2px_rgba(9,44,62,0.04)]">
+                <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden">
+                  <IconeRedondo icone={CalendarBlank} tom="claro" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[17px] font-semibold tracking-[-0.02em] text-[#0a2d40]">Guia de contato</span>
+                    <span className="block text-[13px] text-[#5b7284]">Quando falar com o cliente, do primeiro contato em diante. Sugestão, sem aviso automático</span>
+                  </span>
+                  <CaretDown className="size-4 shrink-0 text-[#5b7284] transition-transform group-open:rotate-180" aria-hidden />
+                </summary>
+                <ul className="mt-5 flex flex-col gap-2 pb-2">
                   {cadencia.map((r) => (
                     <LinhaRegra key={r.id} regra={r} gestor={gestor} />
                   ))}
                 </ul>
-              </Cartao>
+              </details>
             )}
 
-            {aba === "captacao" && (
-              <p className="flex items-center gap-2 text-[13px] text-[#5b7284]">
-                <Info className="size-4 shrink-0 text-[#2a7ca8]" /> Prazos ajustáveis em{" "}
-                <Link href="/app/configuracoes" className="font-semibold text-[#2a7ca8]">
-                  Configurações, Roleta
-                </Link>
-                .
-              </p>
-            )}
-
-            {gestor && ehRegras && (
+            {gestor && (
               <Cartao bloco tour="agenda-nova-regra">
                 <div id="nova-regra" className="scroll-mt-6" />
-                <TituloBloco icone={Plus} titulo="Nova regra" sub={`Entra na trilha ${aba === "captacao" ? "de captação" : aba === "organico" ? "do orgânico" : "do tráfego pago"}`} />
+                <TituloBloco
+                  icone={Plus}
+                  titulo="Criar um aviso"
+                  sub={`Entra em ${trilhaAtual === "captacao" ? "Captação" : trilhaAtual === "organico" ? "Lead sem anúncio" : "Lead de anúncio"}. Só gestor e administrador veem isto`}
+                />
                 <form action={novaRegra} className="mt-5 grid gap-3 md:grid-cols-2">
-                  <input type="hidden" name="trilha" value={aba === "captacao" ? "captacao" : aba === "organico" ? "organico" : "pago"} />
-                  <CampoTexto nome="etapa" rotulo="Etapa" dica="Ex.: Visita realizada" obrigatorio />
-                  <CampoTexto nome="quando" rotulo="Quando" dica="Ex.: D2, 9h ou 1 h sem resposta" />
-                  <CampoTexto nome="oQue" rotulo="O que o corretor recebe" dica="O texto do aviso" obrigatorio largo />
-                  <CampoTexto nome="para" rotulo="Para" dica="Corretor, Corretor e gestor" />
+                  <input type="hidden" name="trilha" value={trilhaAtual} />
+                  <CampoTexto nome="etapa" rotulo="Em que etapa" dica="Ex.: Visita realizada" obrigatorio />
+                  <CampoTexto nome="quando" rotulo="Quando avisar" dica="Ex.: 1 dia depois, 9h" />
+                  <CampoTexto nome="oQue" rotulo="O que o aviso diz" dica="Ex.: Pergunte o que o cliente achou da visita" obrigatorio largo />
+                  <CampoTexto nome="para" rotulo="Quem recebe" dica="Corretor, ou Corretor e gestor" />
                   <div className="flex items-end">
                     <button type="submit" className="inline-flex h-11 items-center gap-2 rounded-full bg-[#0a2d40] px-5 text-[14px] font-semibold text-white hover:bg-[#12455f]">
-                      <Plus className="size-4" weight="bold" /> Criar regra
+                      <Plus className="size-4" weight="bold" /> Criar aviso
                     </button>
                   </div>
                 </form>
               </Cartao>
             )}
 
-            {aba === "agendadas" && (
-              <Cartao bloco tour="agenda-agendadas">
-                <TituloBloco icone={CalendarBlank} titulo="Mensagens agendadas" sub="Saem na hora marcada pelo OPA Lembretes" />
-                {agendadas.length === 0 ? (
-                  <Vazio ilustracao={<IlustraAgenda />} titulo="Nenhuma mensagem agendada" texto="Agende pelo botão no topo ou pela ficha do lead." />
-                ) : (
-                  <ul className="mt-5 flex flex-col gap-2">
-                    {agendadas.map((a) => {
-                      const lead = a.crm_leads?.title.split(" · ")[0] ?? null;
-                      const paraLead = a.origem !== "para_corretor";
-                      return (
-                        <li key={a.id} className="flex flex-wrap items-start gap-3 rounded-[22px] bg-[#f2f6f9] p-4">
-                          <IconeRedondo icone={paraLead ? WhatsappLogo : Bell} tom={paraLead ? "acao" : "claro"} />
-                          <div className="min-w-0 flex-1">
-                            <p className="text-[15px] font-semibold text-[#0a2d40]">
-                              {paraLead ? (lead ?? "Lead") : nome(a.para_user_id)}
-                              <span className="font-normal text-[#5b7284]">
-                                {paraLead ? ` · aviso para ${nome(a.para_user_id).split(" ")[0]} com a mensagem pronta` : ` · pelo OPA Lembretes${lead ? `, sobre ${lead}` : ""}`}
-                              </span>
-                            </p>
-                            <p className="mt-1 line-clamp-2 text-[13px] text-[#34566b]">{a.mensagem}</p>
-                            <div className="mt-2 flex flex-wrap gap-1.5">
-                              <Chip icone={Clock} tom="claro">
-                                {quandoCurto(a.quando)}
-                              </Chip>
-                              {a.status === "enviado" ? (
-                                <Chip icone={CheckCircle} tom="ok">
-                                  enviada
-                                </Chip>
-                              ) : a.status === "falhou" ? (
-                                <Chip icone={XCircle} tom="alerta">
-                                  não saiu
-                                </Chip>
-                              ) : a.status === "enviando" ? (
-                                <Chip icone={Clock} tom="claro">
-                                  enviando
-                                </Chip>
-                              ) : (
-                                <Chip icone={CalendarBlank} tom="neutro">
-                                  agendada
-                                </Chip>
-                              )}
-                            </div>
-                          </div>
-                          {a.status === "pendente" && (
-                            <form action={cancelarAgendada}>
-                              <input type="hidden" name="id" value={a.id} />
-                              <button
-                                type="submit"
-                                className="inline-flex h-11 items-center gap-1.5 rounded-full bg-white px-3.5 text-[13px] font-semibold text-[#a4410e] hover:bg-[#fdeee3]"
-                              >
-                                <XCircle className="size-4" /> Cancelar
-                              </button>
-                            </form>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-                <p className="mt-4 flex items-start gap-2 text-[12px] text-[#5b7284]">
-                  <Info className="mt-0.5 size-3.5 shrink-0 text-[#2a7ca8]" /> O CRM não escreve para o lead sozinho: o corretor recebe o aviso com a mensagem pronta e manda pelo WhatsApp dele.
-                </p>
-              </Cartao>
-            )}
-
-            {aba === "desligados" && (
-              <Cartao bloco>
-                <TituloBloco icone={BellSlash} titulo="Leads com lembretes desligados" sub="O corretor desliga na ficha ou respondendo “parar avisos”" />
-                {desligados.length === 0 ? (
-                  <Vazio ilustracao={<IlustraSino />} titulo="Todos os lembretes ligados" texto="Nenhum lead com aviso desligado." />
-                ) : (
-                  <ul className="mt-5 flex flex-col gap-2">
-                    {desligados.map((l) => {
-                      const dono = equipe.get(l.owner_user_id ?? "");
-                      const quando = l.custom_fields?.lembretes_desligados_em;
-                      return (
-                        <li key={l.id} className="flex items-center gap-3 rounded-[22px] bg-[#f2f6f9] p-3.5">
-                          <Avatar texto={iniciaisDe(l.contacts?.name ?? "?")} />
-                          <div className="min-w-0 flex-1">
-                            <Link href={`/app/leads/${l.id}`} className="text-[15px] font-semibold text-[#0a2d40] hover:text-[#2a7ca8]">
-                              {l.contacts?.name ?? "Lead"}
-                            </Link>
-                            <p className="flex flex-wrap items-center gap-x-2 text-[13px] text-[#5b7284]">
-                              <span className="inline-flex items-center gap-1">
-                                <UserCircle className="size-3.5" /> {dono?.nome ?? "sem corretor"}
-                              </span>
-                              {(l.tags ?? []).includes("proprio") && <span>· lead próprio</span>}
-                              {quando ? <span>· desde {new Date(quando).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</span> : null}
-                            </p>
-                          </div>
-                          <form action={religarLembretes}>
-                            <input type="hidden" name="leadId" value={l.id} />
-                            <button type="submit" className="inline-flex h-11 items-center gap-1.5 rounded-full bg-white px-3.5 text-[13px] font-semibold text-[#0a2d40] hover:bg-[#e7f0f5]">
-                              <Bell className="size-4" /> Religar
-                            </button>
-                          </form>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </Cartao>
-            )}
+            <details className="group rounded-[32px] bg-white px-7 py-5 shadow-[0_1px_2px_rgba(9,44,62,0.04)]">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-3 [&::-webkit-details-marker]:hidden">
+                <IconeRedondo icone={WhatsappLogo} tom="claro" />
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[17px] font-semibold tracking-[-0.02em] text-[#0a2d40]">Ver como o aviso chega no celular</span>
+                  <span className="block text-[13px] text-[#5b7284]">Um exemplo da conversa com o OPA Lembretes</span>
+                </span>
+                <CaretDown className="size-4 shrink-0 text-[#5b7284] transition-transform group-open:rotate-180" aria-hidden />
+              </summary>
+              <div className="mx-auto mt-5 max-w-[380px] pb-2">
+                <Celular captacao={trilhaAtual === "captacao"} />
+              </div>
+            </details>
           </div>
+        )}
 
-          <Celular captacao={aba === "captacao"} />
-        </div>
+        {aba === "desligados" && (
+          <Cartao bloco className="mx-auto w-full max-w-[920px]">
+            <TituloBloco icone={BellSlash} titulo="Clientes sem aviso" sub="O CRM não manda aviso sobre estes clientes. Religue quando quiser" />
+            {desligados.length === 0 ? (
+              <Vazio ilustracao={<IlustraSino />} titulo="Todos os avisos ligados" texto="Para parar os avisos de um cliente, use a ficha dele." />
+            ) : (
+              <ul className="mt-5 flex flex-col gap-2">
+                {desligados.map((l) => {
+                  const dono = equipe.get(l.owner_user_id ?? "");
+                  const quando = l.custom_fields?.lembretes_desligados_em;
+                  return (
+                    <li key={l.id} className="flex items-center gap-3 rounded-[22px] bg-[#f2f6f9] p-3.5">
+                      <Avatar texto={iniciaisDe(l.contacts?.name ?? "?")} />
+                      <div className="min-w-0 flex-1">
+                        <Link href={`/app/leads/${l.id}`} className="text-[15px] font-semibold text-[#0a2d40] hover:text-[#2a7ca8]">
+                          {l.contacts?.name ?? "Cliente"}
+                        </Link>
+                        <p className="flex flex-wrap items-center gap-x-2 text-[13px] text-[#5b7284]">
+                          <span className="inline-flex items-center gap-1">
+                            <UserCircle className="size-3.5" /> {dono?.nome ?? "sem corretor"}
+                          </span>
+                          {(l.tags ?? []).includes("proprio") && <span>· lead próprio</span>}
+                          {quando ? <span>· desde {new Date(quando).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</span> : null}
+                        </p>
+                      </div>
+                      <form action={religarLembretes}>
+                        <input type="hidden" name="leadId" value={l.id} />
+                        <button type="submit" className="inline-flex h-11 items-center gap-1.5 rounded-full bg-white px-4 text-[13px] font-semibold text-[#0a2d40] hover:bg-[#e7f0f5]">
+                          <Bell className="size-4" /> Religar
+                        </button>
+                      </form>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </Cartao>
+        )}
       </CorpoOpa>
     </>
+  );
+}
+
+/** Quantos retornos por grupo aparecem sem clicar: o resto fica em "Ver mais". */
+const VISIVEIS = 8;
+
+function GrupoAgenda({
+  titulo,
+  vazio,
+  itens,
+  agora,
+  nome,
+}: {
+  titulo: string;
+  vazio: string;
+  itens: Agendada[];
+  agora: number;
+  nome: (id: string | null) => string;
+}) {
+  return (
+    <section>
+      <h2 className="flex items-center gap-2 text-[17px] font-semibold tracking-[-0.02em] text-[#0a2d40]">
+        {titulo}
+        <span className="rounded-full bg-[#eef3f6] px-2 text-[12px] font-medium tabular-nums text-[#5b7284]">{itens.length}</span>
+      </h2>
+      {itens.length === 0 ? (
+        <p className="mt-2 text-[14px] text-[#5b7284]">{vazio}</p>
+      ) : (
+        <>
+          <ul className="mt-3 flex flex-col gap-2">
+            {itens.slice(0, VISIVEIS).map((a) => (
+              <LinhaAgenda key={a.id} a={a} agora={agora} nome={nome} />
+            ))}
+          </ul>
+          {itens.length > VISIVEIS && (
+            <details className="group mt-2">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center gap-2 text-[14px] font-semibold text-[#2a7ca8] [&::-webkit-details-marker]:hidden">
+                Ver mais {itens.length - VISIVEIS}
+                <CaretDown className="size-4 transition-transform group-open:rotate-180" aria-hidden />
+              </summary>
+              <ul className="mt-2 flex flex-col gap-2">
+                {itens.slice(VISIVEIS).map((a) => (
+                  <LinhaAgenda key={a.id} a={a} agora={agora} nome={nome} />
+                ))}
+              </ul>
+            </details>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+/** Um retorno marcado: a hora grande à esquerda, quem e o quê no meio, as ações à direita. */
+function LinhaAgenda({ a, agora, nome }: { a: Agendada; agora: number; nome: (id: string | null) => string }) {
+  const cliente = a.crm_leads?.title.split(" · ")[0] ?? null;
+  const paraCliente = a.origem !== "para_corretor";
+  const passou = Date.parse(a.quando) <= agora;
+  return (
+    <li className="flex flex-wrap items-center gap-3 rounded-[22px] bg-[#f2f6f9] p-3.5 sm:flex-nowrap">
+      <div className="flex w-[72px] shrink-0 flex-col items-center rounded-[16px] bg-white px-2 py-2 text-center">
+        <span className="text-[17px] font-semibold tabular-nums leading-none text-[#0a2d40]">{horaSP(a.quando)}</span>
+        <span className="mt-1 text-[11px] font-medium text-[#5b7284]">{diaFalado(a.quando, agora)}</span>
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-semibold text-[#0a2d40]">
+          {cliente ?? (paraCliente ? "Cliente" : "Lembrete para você")}
+          {paraCliente ? (
+            <Chip icone={WhatsappLogo} tom="claro">
+              mensagem para o cliente
+            </Chip>
+          ) : (
+            <Chip icone={Bell} tom="neutro">
+              lembrete para {nome(a.para_user_id).split(" ")[0]}
+            </Chip>
+          )}
+          {a.status === "enviado" ? (
+            <Chip icone={CheckCircle} tom="ok">
+              avisado
+            </Chip>
+          ) : a.status === "falhou" ? (
+            <Chip icone={XCircle} tom="alerta">
+              não saiu
+            </Chip>
+          ) : a.status === "enviando" || passou ? (
+            <Chip tom="aviso">saindo agora</Chip>
+          ) : null}
+        </p>
+        <p className="mt-1 line-clamp-2 text-[13px] leading-snug text-[#34566b]">{a.mensagem}</p>
+      </div>
+      <div className="flex w-full shrink-0 items-center justify-end gap-2 sm:w-auto">
+        {a.lead_id && (
+          <Link
+            href={`/app/leads/${a.lead_id}`}
+            className="inline-flex h-11 items-center gap-1.5 rounded-full bg-white px-4 text-[13px] font-semibold text-[#0a2d40] hover:bg-[#e7f0f5]"
+          >
+            Abrir cliente <ArrowRight className="size-4" aria-hidden />
+          </Link>
+        )}
+        {a.status === "pendente" && (
+          <form action={cancelarAgendada}>
+            <input type="hidden" name="id" value={a.id} />
+            <button
+              type="submit"
+              className="inline-flex h-11 items-center gap-1.5 rounded-full bg-white px-4 text-[13px] font-semibold text-[#a4410e] hover:bg-[#fdeee3]"
+            >
+              <XCircle className="size-4" aria-hidden /> Cancelar
+            </button>
+          </form>
+        )}
+      </div>
+    </li>
   );
 }
 
@@ -356,30 +477,28 @@ function LinhaRegra({ regra: r, gestor }: { regra: RegraLembrete; gestor: boolea
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1.5">
           <p className="text-[15px] font-semibold text-[#0a2d40]">{r.etapa}</p>
-          <Chip icone={Clock} tom="claro">
-            {r.quando}
-          </Chip>
+          <Chip tom="claro">{quandoSimples(r.quando)}</Chip>
         </div>
-        <p className="mt-1 text-[13px] leading-relaxed text-[#34566b]">{r.oQue}</p>
+        <p className="mt-1 text-[13px] leading-relaxed text-[#34566b]">{textoSimples(r.oQue)}</p>
         <p className="mt-1.5 flex items-center gap-1 text-[12px] text-[#5b7284]">
-          <UserCircle className="size-3.5" /> {r.para}
+          <UserCircle className="size-3.5" /> Quem recebe: {r.para}
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
         {gestor ? (
           <form action={alternarRegra}>
             <input type="hidden" name="id" value={r.id} />
-            <Interruptor ligado={r.ativa} rotulo={r.ativa ? "Desligar regra" : "Ligar regra"} />
+            <Interruptor ligado={r.ativa} rotulo={r.ativa ? "Desligar aviso" : "Ligar aviso"} />
           </form>
         ) : (
-          <Interruptor ligado={r.ativa} rotulo={r.ativa ? "Ligada" : "Desligada"} desabilitado />
+          <Chip tom={r.ativa ? "ok" : "neutro"}>{r.ativa ? "ligado" : "desligado"}</Chip>
         )}
         {gestor && (
           <details className="relative">
             <summary
               className="flex size-11 cursor-pointer list-none items-center justify-center rounded-full bg-white text-[#12455f] hover:bg-[#e7f0f5]"
-              aria-label="Editar regra"
-              title="Editar regra"
+              aria-label="Editar aviso"
+              title="Editar aviso"
             >
               <PencilSimple className="size-4" />
             </summary>
@@ -446,8 +565,7 @@ function Celular({ captacao }: { captacao: boolean }) {
   );
 
   return (
-    <Cartao escuro bloco className="flex h-fit flex-col gap-5 xl:sticky xl:top-6">
-      <TituloBloco icone={WhatsappLogo} claro titulo="Como chega no celular" sub="O corretor responde com o número da opção" />
+    <div className="flex flex-col gap-4">
       <div className="overflow-hidden rounded-[24px] bg-[#efe9e1]">
         <div className="flex items-center gap-2.5 bg-[#075e54] px-4 py-3 text-white">
           <span className="flex size-8 items-center justify-center rounded-full bg-white text-[10px] font-bold text-[#12455f]">OPA</span>
@@ -517,9 +635,9 @@ function Celular({ captacao }: { captacao: boolean }) {
           )}
         </div>
       </div>
-      <p className="flex items-start gap-2 text-[12px] text-white/65">
-        <Info className="mt-0.5 size-3.5 shrink-0" /> Desenho do aviso. Hoje ele chega com o link da ficha e o do WhatsApp do lead; responder pelo número ainda não move o card.
+      <p className="flex items-start gap-2 text-[12px] leading-snug text-[#5b7284]">
+        <Info className="mt-0.5 size-3.5 shrink-0 text-[#2a7ca8]" /> Exemplo. Hoje o aviso chega com o link da ficha e o do WhatsApp do cliente; responder pelo número ainda não move o card.
       </p>
-    </Cartao>
+    </div>
   );
 }

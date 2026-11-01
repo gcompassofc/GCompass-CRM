@@ -85,6 +85,19 @@ if (!LOCAL) {
 // "comunidade" é o atalho que lib/sentry/dsn.ts troca pelo DSN da comunidade.
 checa(!env.SENTRY_DSN || /^(off|false|0)$/i.test(env.SENTRY_DSN) || (!/58fabf8ad5450486/.test(env.SENTRY_DSN) && !/^comunidade$/i.test(env.SENTRY_DSN.trim())), "erros não vão para o Sentry de terceiros", "SENTRY_DSN aponta para o Sentry da comunidade");
 checa(env.CADASTRO_ABERTO !== "true", "cadastro do app fechado (só convite)", "CADASTRO_ABERTO=true");
+// E-mails utilitários (docs/EMAILS-OPA.md): sem a chave o CRM funciona, mas o
+// convite não sai por e-mail e o aviso de senha alterada não chega. Só aviso.
+{
+  const chave = env.RESEND_API_KEY ?? "";
+  const remetente = (env.RESEND_FROM_EMAIL ?? "").match(/<?([^<>\s]+@[^<>\s]+)>?\s*$/)?.[1] ?? "";
+  const dominioOk = /@opailhabela\.com\.br$/i.test(remetente);
+  if (/^re_[A-Za-z0-9_]{10,}$/.test(chave) && dominioOk) ok("e-mails pela Resend (remetente no domínio opailhabela.com.br)");
+  else if (!chave) aviso("e-mails pela Resend", "RESEND_API_KEY vazia: convite e aviso de senha alterada não saem por e-mail");
+  else if (!/^re_/.test(chave)) aviso("e-mails pela Resend", "RESEND_API_KEY não parece uma chave da Resend (começa com re_)");
+  else aviso("e-mails pela Resend", "RESEND_FROM_EMAIL precisa ser do domínio verificado opailhabela.com.br");
+}
+if (env.OPA_RELATORIO_MENSAL === "on") aviso("relatório mensal ligado", "a decisão de 01/11/2026 era deixar desligado: confirme que mudou");
+else ok("relatório mensal desligado (decisão de 01/11/2026)");
 forteOuAviso(env.NODE_ENV === "production", "NODE_ENV=production", `está ${env.NODE_ENV || "vazio"}`);
 forteOuAviso((env.NEXT_PUBLIC_APP_URL ?? "").startsWith("https://"), "app em https", env.NEXT_PUBLIC_APP_URL ?? "");
 checa(
