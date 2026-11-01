@@ -6,11 +6,8 @@ node_modules
 .env
 .env.*
 test-results
-tests
-# Os tipos do jest-dom (toBeInTheDocument) vêm daqui; sem este arquivo o `next build`
-# reprova os *.test.tsx na checagem de tipos dentro do Docker.
-!tests/setup
-!tests/setup/vitest.setup.ts
+# `tests` fica DENTRO da imagem de build: o `next build` checa os tipos dos *.test.ts(x),
+# que importam @/tests/helpers e os tipos do jest-dom (tests/setup). Só 3,4 MB.
 playwright.config.ts
 *.png
 *.log
