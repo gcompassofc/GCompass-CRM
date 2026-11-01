@@ -15,6 +15,13 @@ import {
 } from "@/lib/channels/sessao-do-dono";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getWahaClient, wahaFriendlyError } from "@/lib/waha/client";
+import {
+  abrirJanelaDeImportacao,
+  fecharJanelaSeVenceu,
+  numeroDoCorretor,
+  resumoDoNumero,
+} from "@/lib/waha/contatos-pessoais";
+import { emJanelaDeImportacao } from "@/lib/opa/contatos-whatsapp";
 
 /**
  * O corretor liga o próprio WhatsApp (decisão de 01/11/2026). Tudo aqui é sobre a
@@ -28,6 +35,39 @@ export interface MeuWhatsapp {
   sessaoId: string | null;
   telefone: string | null;
   erro?: string;
+  /** Contatos pessoais protegidos (a IA só lê os leads). Só com o número conectado. */
+  protecao?: {
+    pessoais: number;
+    aClassificar: number;
+    leads: number;
+    /** Ainda nos 15 minutos depois de conectar: o que chega é tratado como do aparelho. */
+    separando: boolean;
+    /** As etiquetas "Lead OPA" e "Pessoal" existem no WhatsApp Business deste número. */
+    etiquetas: boolean;
+  };
+}
+
+/** Separação pessoal x lead do número conectado (0123). Nunca derruba a tela. */
+async function protecaoDoNumero(admin: ReturnType<typeof createAdminClient>, orgId: string, donoId: string, sessaoId: string) {
+  try {
+    const s = await numeroDoCorretor(admin, orgId, donoId);
+    if (!s || s.id !== sessaoId) return undefined;
+    // Reserva do evento WORKING do webhook: abre a janela se ela nunca abriu.
+    if (!s.pessoais_import_inicio) {
+      await abrirJanelaDeImportacao(admin, s);
+      s.pessoais_import_inicio = new Date().toISOString();
+    } else {
+      await fecharJanelaSeVenceu(admin, s);
+    }
+    const r = await resumoDoNumero(admin, s.id);
+    return {
+      ...r,
+      separando: emJanelaDeImportacao({ pessoais_import_inicio: s.pessoais_import_inicio, pessoais_importados_em: s.pessoais_importados_em ?? null }),
+      etiquetas: Boolean(s.etiqueta_lead_id && s.etiqueta_pessoal_id),
+    };
+  } catch {
+    return undefined;
+  }
 }
 
 const ERRO_PREPARO = "Não consegui preparar o seu número. Tente de novo em instantes.";
@@ -93,7 +133,9 @@ export async function estadoMeuWhatsapp(): Promise<MeuWhatsapp> {
       return { ...resposta({ ...sessao, status }), erro: "Este número já está ligado em outra conta do CRM." };
     }
   }
-  return resposta({ ...sessao, status, phone_number: telefone });
+  const r = resposta({ ...sessao, status, phone_number: telefone });
+  if (r.estado === "conectado") r.protecao = await protecaoDoNumero(c.admin, c.org.orgId, c.user.id, sessao.id);
+  return r;
 }
 
 /** Cria (uma vez) o número do corretor e já pede o QR ao WhatsApp. */

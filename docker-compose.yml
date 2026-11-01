@@ -32,7 +32,7 @@ services:
       # container seria o próprio WAHA e o webhook nunca chegaria. Porta 3002:
       # a stack da fusão é isolada do checkout principal (3001 é do gov-loop).
       WHATSAPP_HOOK_URL: ${WAHA_HOOK_BASE_URL:-http://host.docker.internal:3003}/api/v1/webhooks/waha
-      WHATSAPP_HOOK_EVENTS: "message,message.any,message.ack,session.status,state.change"
+      WHATSAPP_HOOK_EVENTS: "message,message.any,message.ack,session.status,state.change,label.upsert,label.deleted,label.chat.added,label.chat.deleted"
       # HMAC SHA512 do payload, validado server-side via crypto.timingSafeEqual.
       # O nome certo é WHATSAPP_HOOK_HMAC_KEY: com WHATSAPP_HOOK_HMAC o WAHA ignora
       # e não assina nada (medido em 30/10/2026, WAHA 2026.9.2 Core).

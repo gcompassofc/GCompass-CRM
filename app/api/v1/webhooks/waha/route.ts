@@ -11,12 +11,13 @@
  * vivem no módulo compartilhado.
  */
 import { randomUUID } from "node:crypto";
-import type { NextRequest, NextResponse } from "next/server";
+import { after, type NextRequest, type NextResponse } from "next/server";
 
 import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "@/lib/channels/archived";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { COLUNAS_SESSAO_DO_CORRETOR, filtrarEventoDoCorretor } from "@/lib/waha/contatos-pessoais";
 import { dispatchWahaEvent, type WahaEnvelope } from "@/lib/waha/ingest";
 import { authenticateWahaWebhook } from "@/lib/waha/webhook-auth";
 
@@ -49,7 +50,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     admin
       .from("channel_sessions")
       .select(
-        "id, organization_id, waha_session_name, webhook_secret_encrypted, status, is_warmup_complete, warmup_started_at",
+        `id, organization_id, waha_session_name, webhook_secret_encrypted, status, is_warmup_complete, warmup_started_at, ${COLUNAS_SESSAO_DO_CORRETOR}`,
       )
       .eq("waha_session_name", sessionName);
   const { data: session, error: sessErr } = await queryTolerantToMissingArchived(
@@ -99,6 +100,14 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   }
   const validSignature = auth.signatureVerified;
 
+  // Número do corretor (Meu WhatsApp): contato pessoal ou a classificar não deixa
+  // corpo em lugar nenhum, nem neste log. Decide ANTES de gravar qualquer coisa.
+  // Regra em lib/opa/contatos-whatsapp.ts; número sem dono passa direto.
+  const filtro = await filtrarEventoDoCorretor(admin, session, envelope, requestId);
+  if (filtro.acao === "descartar") {
+    return ok({ accepted: true }, { requestId });
+  }
+
   const eventType = envelope.event ?? "unknown";
   const externalId = envelope.payload?.id ?? null;
 
@@ -115,8 +124,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     webhook_path_token: null,
     http_method: "POST",
     headers: headersJson,
-    raw_body: rawBody,
-    payload_parsed: envelope as unknown as Record<string, unknown>,
+    raw_body: filtro.registrarCorpo ? rawBody : "",
+    payload_parsed: filtro.registrarCorpo ? (envelope as unknown as Record<string, unknown>) : null,
     signature_header: sigHeader ?? null,
     valid_signature: validSignature,
     event_type: eventType,
@@ -130,6 +139,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   } catch (err) {
     console.error("[waha.webhook] handler failed", err);
   }
+  // Contato que acabou de virar lead: cria o lead e traz o histórico depois de responder.
+  if (filtro.depois) after(filtro.depois);
 
   return ok({ accepted: true }, { requestId });
 }

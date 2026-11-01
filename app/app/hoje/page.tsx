@@ -6,6 +6,8 @@ import { resolverPeriodo } from "@/lib/opa/periodo";
 import { Sun } from "@/lib/ui/icons";
 
 import { CabecalhoOpa, CorpoOpa } from "../_opa/cabecalho";
+import { ContatosNovos } from "../_opa/contatos-novos";
+import { listarContatosNovos } from "../_opa/contatos-novos-actions";
 import { FiltroPeriodo } from "../_opa/periodo";
 import { VisaoCorretor, VisaoGestor } from "./_visoes";
 
@@ -31,12 +33,14 @@ export default async function InicioPage({
   const gestor = org.role === "manager" || org.role === "admin";
   const filtroFila = params.fila === "atrasados" || params.fila === "novos" ? params.fila : "todos";
 
-  const [leadsTodos, imoveis, equipe, vendasTodas, liberado] = await Promise.all([
+  const [leadsTodos, imoveis, equipe, vendasTodas, liberado, contatosNovos] = await Promise.all([
     carregarLeads(org.orgId),
     carregarImoveis(org.orgId),
     carregarEquipe(org.orgId),
     gestor ? carregarVendas(org.orgId, new Date(periodo.de).toISOString(), new Date(periodo.ate).toISOString()) : Promise.resolve([] as Venda[]),
     gestor ? gerenteVeReceita(org.orgId) : Promise.resolve(false),
+    // Do WhatsApp da própria pessoa (corretor ou gestor que atende): quem escreveu e ainda não foi classificado.
+    listarContatosNovos(),
   ]);
   const leads = filtrarCorretor(leadsTodos, corretor);
   const vendas = filtrarCorretor(vendasTodas, corretor);
@@ -64,6 +68,7 @@ export default async function InicioPage({
         {gestor && <FiltroPeriodo chave={periodo.chave} rotulo={periodo.rotulo} deDia={periodo.deDia} ateDia={periodo.ateDia} hoje={periodo.hoje} />}
       </CabecalhoOpa>
       <CorpoOpa>
+        <ContatosNovos inicial={contatosNovos} />
         {gestor ? (
           <VisaoGestor
             leads={leads}

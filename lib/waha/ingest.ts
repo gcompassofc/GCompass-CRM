@@ -242,7 +242,7 @@ function notifyNameOf(p: WahaPayload): string | null {
  * Upsert atômico de contato pela identidade canônica. Retorna null se a
  * identidade for de grupo ou a RPC falhar.
  */
-async function upsertContact(
+export async function upsertContact(
   admin: Admin,
   orgId: string,
   parsed: ChatIdentity,
@@ -283,7 +283,7 @@ async function upsertContact(
   return (data as string) ?? null;
 }
 
-async function upsertConversation(
+export async function upsertConversation(
   admin: Admin,
   orgId: string,
   contactId: string,
@@ -367,6 +367,7 @@ async function handleInbound(
   session: Session,
   p: WahaPayload,
   requestId: string,
+  historico = false,
 ): Promise<void> {
   const chatId = p.from ?? "";
   const parsed = parseChatId(chatId);
@@ -434,6 +435,11 @@ async function handleInbound(
     });
     return;
   }
+
+  // Histórico trazido quando o contato vira lead (lib/waha/contatos-pessoais.ts):
+  // só grava. Sem carimbo (quem traz carimba uma vez com a mais nova), sem STOP,
+  // sem auditoria por mensagem antiga e sem acionar agente.
+  if (historico) return;
 
   await markConversation(admin, session.organization_id, conversationId, "inbound", previewFromMessage(p), now);
 
@@ -526,6 +532,7 @@ async function handleOutboundFromUserPhone(
   session: Session,
   p: WahaPayload,
   requestId: string,
+  historico = false,
 ): Promise<void> {
   // De onde sai o chat, em ordem de confiança:
   //   1. `to`  — o WEBJS manda; é o destinatário explícito.
@@ -628,6 +635,8 @@ async function handleOutboundFromUserPhone(
     return;
   }
 
+  if (historico) return; // mesma razão do inbound
+
   await markConversation(admin, session.organization_id, conversationId, "outbound", previewFromMessage(p), now);
 
   await audit({
@@ -699,6 +708,44 @@ async function handleSessionStatus(
     update.warmup_completed_at = now;
   }
   await admin.from("channel_sessions").update(update).eq("id", session.id);
+}
+
+/**
+ * Grava as mensagens antigas de uma conversa que acabou de virar lead, da mais
+ * velha para a mais nova, sem disparar nada por mensagem (é contexto para a IA,
+ * não mensagem nova). No fim carimba a conversa uma vez, com a mais recente.
+ * O dedup por `external_id` impede duplicar o que já estava gravado.
+ */
+export async function ingerirHistorico(
+  admin: Admin,
+  session: Session,
+  mensagens: WahaPayload[],
+  requestId: string,
+): Promise<number> {
+  const ordem = [...mensagens].filter((m) => m.id).sort((a, b) => (a.timestamp ?? 0) - (b.timestamp ?? 0));
+  for (const m of ordem) {
+    if (m.fromMe) await handleOutboundFromUserPhone(admin, session, m, requestId, true);
+    else await handleInbound(admin, session, m, requestId, true);
+  }
+  const ultima = ordem.at(-1);
+  if (!ultima) return 0;
+  const chatId = ultima.fromMe ? (ultima.to ?? chatIdFromWaMessageId(ultima.id ?? "") ?? ultima.from ?? "") : (ultima.from ?? "");
+  const parsed = parseChatId(chatId);
+  if (!ehEnderecavel(parsed)) return ordem.length;
+  const contactId = await upsertContact(admin, session.organization_id, parsed, chatId, null);
+  if (!contactId) return ordem.length;
+  const conversationId = await upsertConversation(admin, session.organization_id, contactId, session.id);
+  if (!conversationId) return ordem.length;
+  const em = ultima.timestamp ? new Date(ultima.timestamp * 1000).toISOString() : new Date().toISOString();
+  await markConversation(
+    admin,
+    session.organization_id,
+    conversationId,
+    ultima.fromMe ? "outbound" : "inbound",
+    previewFromMessage(ultima),
+    em,
+  );
+  return ordem.length;
 }
 
 /**

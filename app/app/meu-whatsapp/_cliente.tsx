@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 import { Chip, Cartao, TituloBloco } from "../_opa/ui";
-import { ArrowsClockwise, CheckCircle, CircleNotch, QrCode, WhatsappLogo, WifiHigh, WifiSlash } from "@/lib/ui/icons";
+import { ArrowsClockwise, CheckCircle, CircleNotch, Lock, QrCode, WhatsappLogo, WifiHigh, WifiSlash } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
 
 import { conectarMeuWhatsapp, estadoMeuWhatsapp, reconectarMeuWhatsapp, type MeuWhatsapp } from "./actions";
@@ -32,6 +32,50 @@ function Passos() {
 
 const BOTAO =
   "inline-flex h-11 items-center justify-center gap-2 rounded-full px-5 text-[15px] font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60";
+
+const PASSOS_ETIQUETA = [
+  "No WhatsApp Business, abra a conversa do cliente.",
+  "Toque no nome dele e depois em Etiquetar (ou segure a conversa na lista).",
+  "Escolha Lead OPA. Pronto: o CRM passa a acompanhar e a IA lê só essa conversa.",
+];
+
+/**
+ * Quantos contatos pessoais estão protegidos e como marcar um lead. Pessoal não
+ * aparece em lista nenhuma: só o número, para o corretor confiar que está separado.
+ */
+function Protecao({ p }: { p?: MeuWhatsapp["protecao"] }) {
+  if (!p) return null;
+  return (
+    <div data-tour="whats-protecao" className="rounded-[24px] bg-[#f2f6f9] p-5">
+      <p className="flex items-start gap-3 text-[15px] font-semibold text-[#0a2d40]">
+        <Lock className="mt-0.5 size-5 shrink-0" aria-hidden />
+        {p.pessoais} {p.pessoais === 1 ? "contato pessoal protegido" : "contatos pessoais protegidos"}. A IA só lê seus leads.
+      </p>
+      <p className="mt-1 pl-8 text-[13px] leading-relaxed text-[#5b7284]">
+        {p.separando
+          ? "Separando agora: nos primeiros 15 minutos, o que aparece é tratado como conversa que já estava no seu celular."
+          : `${p.leads} ${p.leads === 1 ? "lead acompanhado" : "leads acompanhados"}${p.aClassificar ? `, ${p.aClassificar} esperando você dizer se é lead` : ""}.`}
+      </p>
+      <details className="mt-4 pl-8">
+        <summary className="cursor-pointer text-[14px] font-semibold text-[#2a7ca8]">Como marcar um lead pelo WhatsApp</summary>
+        <ol className="mt-3 flex flex-col gap-2">
+          {PASSOS_ETIQUETA.map((t, i) => (
+            <li key={t} className="flex items-start gap-3 text-[14px] text-[#0a2d40]">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#0a2d40] text-[12px] font-semibold text-white">{i + 1}</span>
+              <span>{t}</span>
+            </li>
+          ))}
+        </ol>
+        <p className="mt-3 text-[13px] leading-relaxed text-[#5b7284]">
+          {p.etiquetas
+            ? "As etiquetas Lead OPA e Pessoal já estão no seu WhatsApp Business."
+            : "Não achei as etiquetas no seu WhatsApp. Se for o WhatsApp Business, crie Lead OPA e Pessoal em Ferramentas, Etiquetas. No WhatsApp comum, use os botões É lead e Pessoal aqui no CRM."}{" "}
+          Lead que chega de anúncio, do site ou que você cadastra no CRM entra sozinho.
+        </p>
+      </details>
+    </div>
+  );
+}
 
 export function MeuWhatsappCliente({ inicial }: { inicial: MeuWhatsapp }) {
   const [e, setE] = useState<MeuWhatsapp>(inicial);
@@ -165,8 +209,9 @@ export function MeuWhatsappCliente({ inicial }: { inicial: MeuWhatsapp }) {
         <div className="mt-6 flex flex-col gap-5">
           <p className="flex items-start gap-3 text-[15px] leading-relaxed text-[#34566b]">
             <CheckCircle weight="fill" className="mt-0.5 size-6 shrink-0 text-[#1d6b43]" aria-hidden />
-            Tudo certo. As conversas novas do seu WhatsApp chegam para você classificar como lead ou particular.
+            Tudo certo. Você continua atendendo pelo seu WhatsApp; o CRM acompanha só os seus leads.
           </p>
+          <Protecao p={e.protecao} />
           <div>
             <button type="button" onClick={() => reconectar(false)} disabled={pendente} className={cn(BOTAO, "bg-[#e7f0f5] text-[#0a2d40] hover:bg-[#d5e2ea]")}>
               {pendente ? <CircleNotch className="size-5 animate-spin" aria-hidden /> : <ArrowsClockwise className="size-5" aria-hidden />}

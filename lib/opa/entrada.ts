@@ -189,6 +189,53 @@ export async function registrarEntrada(admin: SupabaseClient, orgId: string, e: 
   return { tipo: "novo", leadId, donoId: dono };
 }
 
+/**
+ * Lead para um contato que já existe no CRM (veio do WhatsApp do corretor e virou
+ * lead: etiqueta, botão "É lead", anúncio ou site). O dono é sempre o corretor do
+ * número, sem roleta. Se o contato já tem lead aberto, devolve esse.
+ */
+export async function registrarLeadDoContato(
+  admin: SupabaseClient,
+  orgId: string,
+  contactId: string,
+  e: Pick<Entrada, "nome" | "origem" | "imovelCodigo" | "dono" | "proprio">,
+): Promise<{ leadId: string; novo: boolean }> {
+  const { data: aberto } = await admin
+    .from("crm_leads")
+    .select("id")
+    .eq("organization_id", orgId)
+    .eq("contact_id", contactId)
+    .eq("status", "open")
+    .limit(1)
+    .maybeSingle();
+  if (aberto) return { leadId: (aberto as { id: string }).id, novo: false };
+  if (!e.dono) throw new Error("entrada: lead do WhatsApp sem dono");
+
+  const { data: imovel } = e.imovelCodigo
+    ? await admin
+        .from("imoveis")
+        .select("codigo, preco_venda_cents, off_market")
+        .eq("organization_id", orgId)
+        .eq("codigo", e.imovelCodigo)
+        .maybeSingle()
+    : { data: null };
+  const em = new Date().toISOString();
+  const entrada: Entrada = { ...e, telefone: "" };
+  const origem = { canal: e.origem, campanha: null, conjunto: null, anuncio: null };
+  const leadId = await criarLead(
+    admin,
+    orgId,
+    contactId,
+    e.dono,
+    entrada,
+    origem,
+    imovel as { codigo: string; preco_venda_cents: number | null; off_market: boolean } | null,
+    em,
+    {},
+  );
+  return { leadId, novo: true };
+}
+
 async function criarLead(
   admin: SupabaseClient,
   orgId: string,

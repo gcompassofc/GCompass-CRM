@@ -190,6 +190,12 @@ export const TOURS: Record<TourId, Tour> = {
     passos: [
       { alvo: "whats-cartao", titulo: "Seu número", texto: "Aqui você liga o seu WhatsApp ao CRM. Só você mexe nele." },
       { alvo: "whats-estado", titulo: "Situação", texto: "Mostra se está conectado, esperando a leitura ou desconectado." },
+      {
+        alvo: "whats-protecao",
+        titulo: "Conversas pessoais protegidas",
+        texto: "O que é pessoal não é guardado nem lido. A IA acompanha só os leads: use a etiqueta Lead OPA ou o botão É lead.",
+      },
+      { alvo: "contatos-novos", titulo: "É lead?", texto: "Quem escreveu e ainda não foi classificado. Um toque decide." },
       { alvo: "whats-acao", titulo: "Conectar", texto: "Leia o código com o celular, em Aparelhos conectados no WhatsApp." },
     ],
     vazio: { titulo: "Meu WhatsApp", texto: "Aqui você liga o seu número lendo um código com o celular." },

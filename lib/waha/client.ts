@@ -152,6 +152,47 @@ export class WahaClient {
     }
   }
 
+  private async getJson<T>(path: string): Promise<T> {
+    const res = await fetch(`${this.baseUrl}${path}`, { headers: { "X-Api-Key": this.apiKey } });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`waha_${res.status}: ${body.slice(0, 200)}`);
+    }
+    return (await res.json()) as T;
+  }
+
+  /**
+   * Cria uma etiqueta no WhatsApp Business do número. Conta comum não tem
+   * etiqueta e devolve erro: quem chama trata como "não deu" e segue.
+   *
+   * Listar conversas e etiquetas (`GET /chats`, `GET /labels`) NÃO é usado de
+   * propósito: no NOWEB exige o store ligado, que grava as mensagens do aparelho
+   * (inclusive as pessoais) no disco do servidor. Os eventos de etiqueta chegam
+   * pela conexão, sem store.
+   */
+  async createLabel(session: string, name: string, color = 0): Promise<{ id: string; name: string }> {
+    const res = await fetch(`${this.baseUrl}/api/${encodeURIComponent(session)}/labels`, {
+      method: "POST",
+      headers: { "X-Api-Key": this.apiKey, "Content-Type": "application/json" },
+      body: JSON.stringify({ name, color }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`waha_label_${res.status}: ${body.slice(0, 200)}`);
+    }
+    return (await res.json()) as { id: string; name: string };
+  }
+
+  /**
+   * Últimas mensagens de uma conversa, sem baixar mídia (contexto para a IA quando
+   * o contato vira lead). No NOWEB sem store vem da memória da sessão.
+   */
+  async getChatMessages(session: string, chatId: string, limit: number): Promise<Array<Record<string, unknown>>> {
+    return this.getJson(
+      `/api/${encodeURIComponent(session)}/chats/${encodeURIComponent(chatId)}/messages?limit=${limit}&downloadMedia=false`,
+    );
+  }
+
   async sendMessage(session: string, chatId: string, text: string): Promise<unknown> {
     const res = await fetch(`${this.baseUrl}/api/sendText`, {
       method: "POST",

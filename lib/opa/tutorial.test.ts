@@ -198,9 +198,10 @@ describe("conteúdo", () => {
     for (const d of DUVIDAS) if (d.href) expect(d.href).toMatch(/^\/app\//);
   });
 
-  it("dúvidas frequentes: de 8 a 12, resposta de 1 a 3 frases, ids únicos", () => {
+  // 13: a dúvida "O CRM lê minhas conversas pessoais?" entrou com a separação pessoal x lead (01/11/2026).
+  it("dúvidas frequentes: de 8 a 13, resposta de 1 a 3 frases, ids únicos", () => {
     expect(DUVIDAS.length).toBeGreaterThanOrEqual(8);
-    expect(DUVIDAS.length).toBeLessThanOrEqual(12);
+    expect(DUVIDAS.length).toBeLessThanOrEqual(13);
     expect(new Set(DUVIDAS.map((d) => d.id)).size).toBe(DUVIDAS.length);
     for (const d of DUVIDAS) {
       const frases = d.resposta.split(/[.!?](?:\s|$)/).filter((f) => f.trim()).length;

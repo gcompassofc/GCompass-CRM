@@ -153,8 +153,13 @@ export const PASSOS: Record<VersaoTutorial, PassoTutorial[]> = {
       tela: "whatsapp",
       icone: "whatsapp",
       titulo: "Ligue o seu WhatsApp",
-      texto: "Em Meu WhatsApp, leia o código com o celular, como no WhatsApp Web. Suas conversas com clientes passam a aparecer aqui.",
-      detalhes: ["Só você mexe no seu número.", "Se a conexão cair, o CRM avisa e você lê o código de novo."],
+      texto: "Em Meu WhatsApp, leia o código com o celular. Suas conversas pessoais ficam protegidas: o CRM e a IA só acompanham os seus leads.",
+      detalhes: [
+        "Só você mexe no seu número.",
+        "Contato novo aparece em Contatos novos: toque em É lead ou Pessoal.",
+        "No WhatsApp Business, a etiqueta Lead OPA também marca o lead.",
+        "Se a conexão cair, o CRM avisa e você lê o código de novo.",
+      ],
       href: "/app/meu-whatsapp",
       rotuloLink: "Ligar meu WhatsApp",
     },
@@ -362,6 +367,15 @@ export const DUVIDAS: Duvida[] = [
     tela: "agenda",
     href: "/app/lembretes",
     rotuloLink: "Abrir a Agenda",
+  },
+  {
+    id: "conversa-pessoal",
+    pergunta: "O CRM lê minhas conversas pessoais?",
+    resposta:
+      "Não. O que já estava no seu WhatsApp é pessoal e não é guardado. A IA só lê quem é lead: veio de anúncio ou do site, foi cadastrado no CRM ou você marcou com a etiqueta Lead OPA ou o botão É lead.",
+    tela: "whatsapp",
+    href: "/app/meu-whatsapp",
+    rotuloLink: "Abrir Meu WhatsApp",
   },
   {
     id: "whatsapp-caiu",
