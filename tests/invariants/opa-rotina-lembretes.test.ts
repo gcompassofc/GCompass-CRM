@@ -75,7 +75,8 @@ describe("0119: lembretes agendados são reservados uma vez", () => {
     expect(reservados).not.toContain(L_FUTURO);
     expect(reservados).not.toContain(L_VELHO);
 
-    expect(campo("lembretes_agendados", L_VENCIDO, "status || '|' || tentativas || '|' || (enviado_em is not null)")).toBe("enviado|1|true");
+    // Desde a 0122 a reserva marca 'enviando'; o 'enviado' só vem depois do WhatsApp aceitar.
+    expect(campo("lembretes_agendados", L_VENCIDO, "status || '|' || tentativas || '|' || (enviado_em is not null)")).toBe("enviando|1|true");
     expect(campo("lembretes_agendados", L_FUTURO, "status")).toBe("pendente");
     expect(campo("lembretes_agendados", L_VELHO, "status")).toBe("falhou");
   });

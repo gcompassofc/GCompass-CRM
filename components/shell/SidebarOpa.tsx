@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
  */
 const PAPEL: Record<string, string> = {
   admin: "Administrador",
-  manager: "Gerente",
+  manager: "Gestor",
   agent: "Corretor",
   viewer: "Leitura",
 };

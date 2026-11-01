@@ -75,3 +75,23 @@ describe("POST /api/v1/team/invite", () => {
     expect(sendEmail).not.toHaveBeenCalled();
   });
 });
+
+describe("POST /api/v1/team/invite, link de aceite (0121, A7)", () => {
+  const enviados = async (res: Response) =>
+    ((await res.json()) as { data: { sent: Array<{ accept_url?: string }> } }).data.sent;
+
+  it.each([true, false])("gerente não recebe o link, com e-mail enviado = %s", async (saiu) => {
+    vi.mocked(sendEmail).mockResolvedValueOnce({ ok: saiu } as never);
+    comoPapel("manager");
+    const sent = await enviados(await pedir("agent"));
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).not.toHaveProperty("accept_url");
+  });
+
+  it("administrador recebe o link", async () => {
+    vi.mocked(sendEmail).mockResolvedValueOnce({ ok: false } as never);
+    comoPapel("admin");
+    const sent = await enviados(await pedir("agent"));
+    expect(sent[0]?.accept_url).toBe("https://crm.exemplo.test/team/accept-invite/token-de-teste");
+  });
+});

@@ -154,8 +154,8 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
                     aba === "captacao"
                       ? `${config.captacao.por_semana} imóveis por semana, devolutiva em ${config.captacao.devolutiva_dias} dias. Os avisos começam quando o OPA Radar for ligado`
                       : aba === "organico"
-                        ? `Prazo de ${tempoCurto(config.prazos.organico_min)} para o primeiro atendimento`
-                        : `Prazo de ${tempoCurto(config.prazos.pago_min)} para o primeiro atendimento`
+                        ? `Prazo de ${tempoCurto(config.prazos.organico_min)} para o primeiro atendimento. Depois da primeira resposta, o lead fica com o corretor`
+                        : `Prazo de ${tempoCurto(config.prazos.pago_min)} para o primeiro atendimento. Depois da primeira resposta, o lead fica com o corretor`
                   }
                 />
                 <ul className="mt-5 flex flex-col gap-2">
@@ -196,7 +196,7 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
                   <CampoTexto nome="etapa" rotulo="Etapa" dica="Ex.: Visita realizada" obrigatorio />
                   <CampoTexto nome="quando" rotulo="Quando" dica="Ex.: D2, 9h ou 1 h sem resposta" />
                   <CampoTexto nome="oQue" rotulo="O que o corretor recebe" dica="O texto do aviso" obrigatorio largo />
-                  <CampoTexto nome="para" rotulo="Para" dica="Corretor, Corretor e gerente" />
+                  <CampoTexto nome="para" rotulo="Para" dica="Corretor, Corretor e gestor" />
                   <div className="flex items-end">
                     <button type="submit" className="inline-flex h-11 items-center gap-2 rounded-full bg-[#0a2d40] px-5 text-[14px] font-semibold text-white hover:bg-[#12455f]">
                       <Plus className="size-4" weight="bold" /> Criar regra
@@ -208,7 +208,7 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
 
             {aba === "agendadas" && (
               <Cartao bloco>
-                <TituloBloco icone={CalendarBlank} titulo="Mensagens agendadas" sub="Saem na hora marcada; até ligar o envio, ficam na fila" />
+                <TituloBloco icone={CalendarBlank} titulo="Mensagens agendadas" sub="Saem na hora marcada pelo OPA Lembretes" />
                 {agendadas.length === 0 ? (
                   <Vazio ilustracao={<IlustraAgenda />} titulo="Nenhuma mensagem agendada" texto="Agende pelo botão no topo ou pela ficha do lead." />
                 ) : (
@@ -238,6 +238,10 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
                               ) : a.status === "falhou" ? (
                                 <Chip icone={XCircle} tom="alerta">
                                   não saiu
+                                </Chip>
+                              ) : a.status === "enviando" ? (
+                                <Chip icone={Clock} tom="claro">
+                                  enviando
                                 </Chip>
                               ) : (
                                 <Chip icone={CalendarBlank} tom="neutro">
@@ -345,7 +349,7 @@ function CampoTexto({
 }
 
 function LinhaRegra({ regra: r, gestor }: { regra: RegraLembrete; gestor: boolean }) {
-  const paraGestao = /gerente|marco|june|captador/i.test(r.para);
+  const paraGestao = /gestor|gerente|marco|june|captador/i.test(r.para);
   return (
     <li className={cn("flex items-start gap-3 rounded-[22px] bg-[#f2f6f9] p-4", !r.ativa && "opacity-55")}>
       <IconeRedondo icone={paraGestao ? Users : Bell} tom="claro" className="bg-white" />

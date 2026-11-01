@@ -231,7 +231,7 @@ export const PADRAO: ConfigOpa = {
         ["Lead que já está no CRM preenche outro formulário", "Na hora", "Vai direto ao corretor responsável, sem roleta. Boas-vindas do número dele, aviso com o imóvel novo e o card sobe na fila como \"voltou\"", "Corretor"],
         ["Lead recebido", "20 min sem resposta", "Primeiro aviso: nome do lead, imóvel e o link da conversa", "Corretor"],
         ["Lead recebido", "40 min sem resposta", "Segundo aviso, com o tempo que falta", "Corretor"],
-        ["Lead recebido", "1 h sem resposta", "Lead passa para o próximo da fila. Quem perdeu é avisado", "Corretor e gerente"],
+        ["Lead recebido", "1 h sem resposta", "Lead passa para o próximo da fila. Quem perdeu é avisado", "Corretor e gestor"],
         ["Lead recebido", "Fila inteira passou", "Escala para a gestão", "June e Marco"],
       ] as const
     ).map(([etapa, quando, oQue, para], i) => ({ id: `pago-${i + 1}`, trilha: "pago" as const, etapa, quando, oQue, para, ativa: true })),
@@ -242,7 +242,7 @@ export const PADRAO: ConfigOpa = {
         ["Lead recebido", "20 min sem resposta", "Primeiro aviso", "Corretor"],
         ["Lead recebido", "1 h sem resposta", "Segundo aviso", "Corretor"],
         ["Lead recebido", "2 h sem resposta", "Terceiro aviso, com o tempo que falta", "Corretor"],
-        ["Lead recebido", "3 h sem resposta", "Lead passa para o próximo da fila", "Corretor e gerente"],
+        ["Lead recebido", "3 h sem resposta", "Lead passa para o próximo da fila", "Corretor e gestor"],
       ] as const
     ).map(([etapa, quando, oQue, para], i) => ({ id: `org-${i + 1}`, trilha: "organico" as const, etapa, quando, oQue, para, ativa: true })),
     ...(
@@ -268,7 +268,7 @@ export const PADRAO: ConfigOpa = {
         ["Oportunidade do Radar", "Segunda, 9h", "Os 2 imóveis da semana: tipo, bairro, valor anunciado, onde foi visto e quantos compradores da OPA combinam. Opções: \"Vou atrás\", \"Já conheço o dono\", \"Não consigo\"", "Corretor"],
         ["Oportunidade do Radar", "3º dia sem retorno", "Lembrete do que foi mandado", "Corretor"],
         ["Oportunidade do Radar", "Dia do prazo (7º dia)", "Último aviso: \"achei o dono\", \"mais 7 dias\" (uma vez) ou \"não consigo\"", "Corretor"],
-        ["Oportunidade do Radar", "Prazo vencido sem retorno", "Passa para o próximo corretor da roleta de captação. Quem perdeu é avisado", "Corretor e gerente"],
+        ["Oportunidade do Radar", "Prazo vencido sem retorno", "Passa para o próximo corretor da roleta de captação. Quem perdeu é avisado", "Corretor e gestor"],
         ["Oportunidade do Radar", "3 corretores sem sucesso", "Volta para a gestão decidir", "Marco"],
         ["Contato / candidatura", "15 dias sem cadastro", "Cobrar o cadastro completo no Painel, com dados e fotos", "Corretor"],
       ] as const

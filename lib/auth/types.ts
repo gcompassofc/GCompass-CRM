@@ -39,6 +39,19 @@ export const ROTULO_DO_PAPEL: Record<Role, string> = {
 };
 
 /**
+ * No perfil imobiliária (CRM da OPA) a equipe fala "corretor" e "gestor"
+ * (pedido do Allyson, 01/11/2026). Só o rótulo muda: os códigos `agent` e
+ * `manager` seguem iguais no banco e nas permissões.
+ */
+const ROTULO_IMOBILIARIA: Partial<Record<Role, string>> = { agent: "Corretor", manager: "Gestor" };
+
+export function rotuloDoPapel(role: Role): string {
+  const perfil =
+    typeof window !== "undefined" ? window.__PUBLIC_ENV__?.APP_PROFILE : process.env.APP_PROFILE;
+  return (perfil?.trim() === "imobiliaria" ? ROTULO_IMOBILIARIA[role] : undefined) ?? ROTULO_DO_PAPEL[role];
+}
+
+/**
  * Escopo de visualização de conversas por atendente (G4-01, spec 13 §3.5).
  * Só restringe o role `agent`; viewer/manager/admin seguem org-wide.
  */

@@ -204,9 +204,11 @@ rm -rf "$TMP3"
 echo "sincronia: o install.sh grava as chaves que o .env.hostgator.example promete"
 # O install.sh monta o .env a partir de uma LISTA FECHADA de `envq` e fecha com
 # `} > .env`, que TRUNCA. Chave fora da lista simplesmente não é gravada — e se a
-# pessoa a tiver posto à mão, some no próximo install, num script que o README
-# vende como idempotente. Medido: uma chave posta à mão é carregada por load_env
-# e depois DESCARTADA na escrita.
+# pessoa a tiver posto à mão, sumia no próximo install, num script que o README
+# vende como idempotente. Medido: uma chave posta à mão era carregada por load_env
+# e depois DESCARTADA na escrita. Desde 01/11/2026 o chaves_extras devolve essas
+# linhas (teste "o caso da OPA"); esta checagem continua porque quem instala do
+# zero, sem .env anterior, ainda não recebe a chave que o exemplo promete.
 #
 # Passou despercebido porque o env-example-sync do repo compara .env.example com
 # lib/env.ts e nunca olha para o install.sh — ninguém guardava esta ponta.
@@ -776,6 +778,66 @@ STUB
 ) || fail=1
 rm -rf "$TMP3B"
 
+echo "integração: .env de produção trazido pronto, imagem construída na VPS (o caso da OPA)"
+# Medido na VPS da OPA em 01/11/2026, tudo numa instalação só:
+#   - o bloco "Escrevendo .env" descartou 13 chaves que vinham prontas (PII_*,
+#     APP_PROFILE…) e voltou APP_PULL_POLICY para "always";
+#   - o `dc pull` geral trocou a imagem local pela do registry;
+#   - numa VPS sem crontab, o `crontab -l` (sai 1) derrubou o instalador no
+#     agendamento, depois de o drain já ter sido gravado;
+#   - o .env veio do Windows, com CRLF.
+# O crontab desta rodada é NOVO (o compartilhado já tem linhas das rodadas
+# anteriores, e com ele o `crontab -l` sai 0 e o defeito não aparece).
+TMP3C="$(mktemp -d)"
+(
+  montar_vps "$TMP3C" "crmopa" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$DOCKER_LOG"
+case "$1" in
+  compose) case "$*" in
+             *" exec "*) printf 'healthy\n{"data":{"status":"healthy"}}\n' ;;
+             *" config --services"*) printf 'app\nworker\nwaha\nredis\n' ;;
+           esac; exit 0 ;;
+  # A imagem do app ainda não existe nesta VPS: o instalador tem de construí-la.
+  image)   exit 1 ;;
+esac
+exit 0
+STUB
+  : > "$VPS_PROJ/docker-compose.build.yml"
+  CRONTAB_SANDBOX="$TMP3C/crontab-novo.txt"
+  extra="PII_CHAVES='v1:chave-de-teste'
+APP_PROFILE='imobiliaria'
+INVITE_TOKEN_SECRET='segredo-do-convite'
+APP_PULL_POLICY='never'
+SENTRY_DSN=''
+APP_IMAGE='ghcr.io/exemplo/crm:latest'
+APP_PALETTE=opa"$'\r'
+  saida="$(rodar install.sh --yes "$extra")"
+  chegou_na_deteccao || exit 1
+  e="$VPS_PROJ/.env"; ruim=0
+  for linha in "PII_CHAVES='v1:chave-de-teste'" "APP_PROFILE='imobiliaria'" "INVITE_TOKEN_SECRET='segredo-do-convite'" "APP_PALETTE=opa"; do
+    grep -qxF "$linha" "$e" || { printf '  ✗ a chave trazida pronta sumiu ou mudou: %s\n' "$linha"; ruim=1; }
+  done
+  grep -q $'\r' "$e" && { printf '  ✗ o .env escrito ainda tem CR (veio do Windows)\n'; ruim=1; }
+  grep -qx "APP_PULL_POLICY='never'" "$e" || { printf '  ✗ APP_PULL_POLICY voltou para %s\n' "$(grep '^APP_PULL_POLICY=' "$e")"; ruim=1; }
+  grep -qx "SENTRY_DSN=''" "$e" || { printf '  ✗ SENTRY_DSN mudou: %s\n' "$(grep '^SENTRY_DSN=' "$e")"; ruim=1; }
+  [ "$(grep -c '^PII_CHAVES=' "$e")" = 1 ] || { printf '  ✗ PII_CHAVES duplicada no .env\n'; ruim=1; }
+  grep -qE -- '-f docker-compose.build.yml build app$' "$VPS_LOG" \
+    || { printf '  ✗ sem a imagem local, o instalador não a construiu\n'; ruim=1; }
+  if grep -E '^compose .* pull' "$VPS_LOG" | grep -qwE 'app|worker|pull$'; then
+    printf '  ✗ o pull tocou na imagem local: %s\n' "$(grep -E '^compose .* pull' "$VPS_LOG" | head -1)"; ruim=1
+  fi
+  grep -qE '^compose .* pull waha redis$' "$VPS_LOG" \
+    || { printf '  ✗ os serviços de imagem pronta não foram puxados\n'; ruim=1; }
+  if ! printf '%s' "$saida" | grep -q 'atualização pela tela ativa'; then
+    printf '  ✗ o agendamento morreu numa VPS sem crontab (o agente não foi agendado)\n'
+    printf '     última linha da saída: %s\n' "$(printf '%s' "$saida" | tail -1)"; ruim=1
+  fi
+  [ "$ruim" = 0 ] || exit 1
+  printf '  ✓ chaves preservadas sem CR, pull sem tocar no app, build local e cron numa VPS sem crontab\n'
+) || fail=1
+rm -rf "$TMP3C"
+
 echo "integração: instalação NOVA numa VPS com Traefik em modo host"
 # O install.sh roda contra um `docker` dublê que imita a Hostinger: 80/443
 # ocupadas, NINGUÉM publicando, um Traefik em `--network host`, e a rede do
@@ -985,6 +1047,38 @@ NEXT_PUBLIC_APP_URL='https://crm.exemplo.com.br'")"
   printf '  ✓ o update.sh recria a bridge do proxy antes de subir a stack\n'
 ) || fail=1
 rm -rf "$TMP6"
+
+echo "integração: update.sh numa VPS com a imagem construída localmente"
+# O update.sh puxa a imagem da tag no registry e devolve o pull para "always":
+# numa instalação de build local (APP_PULL_POLICY=never) isso troca a imagem da
+# casa pela do registry — o que aconteceu com o CRM da OPA em 01/11/2026 pelo
+# caminho do install. O botão "Atualizar agora" chega aqui pelo agent.sh.
+TMP6B="$(mktemp -d)"
+(
+  montar_vps "$TMP6B" "crmlocal" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$DOCKER_LOG"
+exit 0
+STUB
+  (cd "$VPS_PROJ" && git init -q -b main . \
+    && git -c user.email=t@exemplo -c user.name=teste add -A \
+    && git -c user.email=t@exemplo -c user.name=teste commit -qm base \
+    && git tag v9.9.9) >/dev/null 2>&1
+  saida="$(rodar update.sh --skip-backup "APP_PULL_POLICY='never'
+INTERNAL_SECRET='segredo-de-teste'
+NEXT_PUBLIC_APP_URL='https://crm.exemplo.com.br'")"
+  if ! printf '%s' "$saida" | grep -q 'constrói a imagem do app na própria VPS'; then
+    printf '  ✗ o update.sh não recusou a instalação de build local\n'
+    printf '     última linha da saída: %s\n' "$(printf '%s' "$saida" | tail -1)"; exit 1
+  fi
+  if grep -qE '^compose .* (pull|up -d)' "$VPS_LOG"; then
+    printf '  ✗ recusou, mas antes mexeu na stack: %s\n' "$(grep -E '^compose' "$VPS_LOG" | head -1)"; exit 1
+  fi
+  grep -qx "APP_PULL_POLICY='never'" "$VPS_PROJ/.env" \
+    || { printf '  ✗ a política de pull do .env foi trocada\n'; exit 1; }
+  printf '  ✓ recusa sem puxar imagem nem trocar a política de pull\n'
+) || fail=1
+rm -rf "$TMP6B"
 
 echo "nome do projeto que o docker compose usa"
 # O compose faz TrimLeft("_-") no basename. Sem isso, uma pasta /root/_deskcomm

@@ -119,6 +119,21 @@ proxy errado deixa o site no ar sem responder, o instalador mostra o que encontr
 confirmação. Em `bash install.sh --yes` não há a quem perguntar: ele para e pede que você
 declare `REVERSE_PROXY=traefik` no `.env` — aí a escolha é sua e ele segue sem perguntar.
 
+### Fork sem imagem publicada: build na própria VPS
+
+Quem roda um fork que não publica imagem no registry (caso do CRM da OPA) constrói a imagem
+do app na VPS. Ponha `APP_PULL_POLICY=never` no `.env` antes de instalar:
+
+- se a imagem de `APP_IMAGE` ainda não existe na VPS, o instalador a constrói com o
+  `docker-compose.build.yml` (de 6 a 25 minutos, uns 4 GB de RAM);
+- o `pull` só baixa os serviços de imagem pronta (WAHA, Redis, Caddy…), nunca o app;
+- o `update.sh` e o botão "Atualizar agora" recusam: a atualização é trazer o código novo,
+  aplicar as migrations e rodar `build app` e `up -d`.
+
+Levando o código do Windows (`git archive`), o `.gitattributes` do repositório garante LF nos
+scripts. Um `.env` vindo do Windows pode ter CRLF: o instalador lê sem problema e regrava em LF,
+e as chaves que ele não conhece (`PII_*`, `APP_PROFILE`…) são preservadas.
+
 ## Scripts do kit
 
 | Script | Função |

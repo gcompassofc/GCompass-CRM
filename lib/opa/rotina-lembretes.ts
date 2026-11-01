@@ -3,11 +3,15 @@
  * minuto por /api/v1/cron/opa-lembretes. Faz, nesta ordem:
  *
  *  1. manda os lembretes agendados que venceram (OPA Lembretes -> corretor);
- *  2. avisa o corretor quando o lead espera há 20/40 min (pago) ou 20/60/120 min
- *     (orgânico), ou o que Configurações definir, contando só o horário de atendimento;
- *  3. no fim do prazo, passa o lead para o próximo da roleta (menos lead próprio
- *     do corretor) e avisa quem recebeu, quem perdeu e o gerente; se ninguém mais
- *     pode pegar, escala para a gestão;
+ *  2. avisa o corretor quando o lead espera o PRIMEIRO atendimento há 20/40 min
+ *     (pago) ou 20/60/120 min (orgânico), ou o que Configurações definir, contando
+ *     só o horário de atendimento. Lead que já teve resposta, ou com lembretes
+ *     desligados, fica fora (pendências de 01/11/2026, A2);
+ *  3. no fim do prazo, passa o lead para o próximo da roleta que ainda está na
+ *     equipe (menos lead próprio do corretor), desde que o dono tenha recebido
+ *     algum aviso antes, e avisa quem recebeu, quem perdeu e o gerente; se ninguém
+ *     mais pode pegar, ou o dono não foi avisado, ou o dono saiu da equipe, escala
+ *     para a gestão;
  *  4. avisa negócio parado em proposta, negociação e fechamento.
  *
  * Nada aqui fala com o cliente. Cada aviso é reservado antes do envio por uma
@@ -38,7 +42,18 @@ import { carregarConfig, type ConfigOpa } from "./config";
 import { carregarEquipe, type Pessoa } from "./dados";
 import { emLotes } from "./lotes";
 import { diaSP } from "./periodo";
-import { avisosDevidos, decidirRepasse, limitesDeParado, prazosDaTrilha, repasseLigado } from "./repasse";
+import {
+  aguardaPrimeiraResposta,
+  avisosDevidos,
+  avisosLigados,
+  decidirRepasse,
+  destinoDoLembrete,
+  limitesDeParado,
+  prazosDaTrilha,
+  repasseLiberado,
+  repasseLigado,
+  roletaDaEquipe,
+} from "./repasse";
 
 const DIA_MS = 86_400_000;
 /** Lead que espera há mais que isto já não é assunto de aviso. */
@@ -116,6 +131,7 @@ interface Agendado {
 }
 
 async function enviarAgendados(admin: Admin, agora: number, canais: Map<string, CanalDeAvisos>, r: ResultadoRotina) {
+  // Reserva como 'enviando' (migration 0122): o 'enviado' só é gravado depois do envio.
   const { data, error } = await admin.rpc("fn_opa_reservar_lembretes", { p_limite: 30 });
   if (error) throw new Error(`fn_opa_reservar_lembretes: ${error.message}`);
   const lembretes = (data ?? []) as Agendado[];
@@ -126,7 +142,8 @@ async function enviarAgendados(admin: Admin, agora: number, canais: Map<string, 
       await admin.from("lembretes_agendados").update({ status: "pendente", enviado_em: null, tentativas: Math.max(0, l.tentativas - 1) }).eq("id", l.id);
       continue;
     }
-    let resultado: ResultadoAviso = "sem_numero";
+    // "sem_sessao" até provar o contrário: falha antes do envio volta para a fila.
+    let resultado: ResultadoAviso = "sem_sessao";
     let erro: string | null = null;
     try {
       const equipe = await carregarEquipe(l.organization_id);
@@ -150,6 +167,7 @@ async function enviarAgendados(admin: Admin, agora: number, canais: Map<string, 
         fone = digitos(c?.contacts?.phone_number);
       }
       if (!pessoa) {
+        resultado = "sem_numero";
         erro = "O corretor do lembrete não está mais na equipe.";
       } else {
         const texto = textoLembrete({
@@ -163,21 +181,22 @@ async function enviarAgendados(admin: Admin, agora: number, canais: Map<string, 
         resultado = await avisarPessoa(canal, pessoa, texto);
         if (resultado === "sem_numero") erro = "A pessoa não tem WhatsApp conectado com o nome dela.";
         if (resultado === "sem_sessao") erro = "O OPA Lembretes não está conectado.";
-        if (resultado === "erro") erro = "O WhatsApp não aceitou o envio.";
+        if (resultado === "erro") erro = "O WhatsApp não confirmou o envio. Pode ter saído: confira antes de agendar de novo.";
       }
     } catch (e) {
-      resultado = "erro";
-      erro = e instanceof Error ? e.message.slice(0, 200) : "Falha ao enviar.";
+      // Falhou antes de chegar ao WhatsApp (avisarPessoa nunca lança): nada saiu.
+      resultado = "sem_sessao";
+      erro = e instanceof Error ? e.message.slice(0, 200) : "Falha ao preparar o envio.";
     }
 
-    if (resultado === "enviado") {
+    const destino = destinoDoLembrete(resultado, l.tentativas, Boolean(l.para_user_id), MAX_TENTATIVAS_LEMBRETE);
+    if (destino === "enviado") {
+      await admin.from("lembretes_agendados").update({ status: "enviado", enviado_em: new Date().toISOString(), erro: null }).eq("id", l.id);
       r.lembretes++;
     } else {
-      // Tenta de novo nas próximas rodadas, até o limite; depois fica como falhou.
-      const desiste = l.tentativas >= MAX_TENTATIVAS_LEMBRETE || !l.para_user_id;
       await admin
         .from("lembretes_agendados")
-        .update({ status: desiste ? "falhou" : "pendente", erro, enviado_em: null })
+        .update({ status: destino, erro, ...(destino === "pendente" ? { enviado_em: null } : {}) })
         .eq("id", l.id);
       if (resultado === "sem_numero") r.semNumero++;
     }
@@ -272,7 +291,11 @@ interface Contexto {
   feitos: Set<string>;
   /** Quem já segurou cada lead por repasse, na janela do ciclo. */
   repassados: Map<string, string[]>;
+  /** `lead|marca` de esperas em que algum aviso de prazo chegou ao corretor. */
+  avisoSaiu: Set<string>;
 }
+
+const chaveDaEspera = (leadId: string, marca: string) => `${leadId}|${marca}`;
 
 const link = (leadId: string) => `${env.NEXT_PUBLIC_APP_URL}/app/leads/${leadId}`;
 const nomeDoLead = (l: LinhaLead) => l.contacts?.name ?? l.title.split(" · ")[0] ?? "Lead";
@@ -294,11 +317,20 @@ async function avisar(c: Contexto, linha: Omit<LinhaAviso, "orgId">, pessoa: Pes
 async function carregarHistorico(c: Contexto, leadIds: string[]) {
   const desde = new Date(c.agora - Math.max(JANELA_DIAS * DIA_MS, 31 * DIA_MS)).toISOString();
   const linhas = await emLotes(leadIds, (lote) =>
-    c.admin.from("opa_avisos").select("lead_id, user_id, tipo, marca, dados, created_at").eq("organization_id", c.orgId).in("lead_id", lote).gte("created_at", desde),
+    c.admin.from("opa_avisos").select("lead_id, user_id, tipo, marca, status, dados, created_at").eq("organization_id", c.orgId).in("lead_id", lote).gte("created_at", desde),
   );
   const corte = c.agora - CICLO_REPASSE_MS;
-  for (const x of linhas as Array<{ lead_id: string; user_id: string | null; tipo: string; marca: string; dados: { de?: string } | null; created_at: string }>) {
+  for (const x of linhas as Array<{
+    lead_id: string;
+    user_id: string | null;
+    tipo: string;
+    marca: string;
+    status: string;
+    dados: { de?: string; pulado?: boolean } | null;
+    created_at: string;
+  }>) {
     c.feitos.add(chaveDoAviso({ leadId: x.lead_id, tipo: x.tipo, marca: x.marca, userId: x.user_id }));
+    if (x.tipo.startsWith("aviso_") && x.status === "enviado" && !x.dados?.pulado) c.avisoSaiu.add(chaveDaEspera(x.lead_id, x.marca));
     if (x.tipo === "repasse" && x.dados?.de && Date.parse(x.created_at) >= corte) {
       c.repassados.set(x.lead_id, [...(c.repassados.get(x.lead_id) ?? []), x.dados.de]);
     }
@@ -318,10 +350,29 @@ async function processarFila(c: Contexto, inicio: number) {
   for (const l of leads) {
     if (Date.now() - inicio > ORCAMENTO_MS) return;
     const donoId = l.owner_user_id;
-    const dono = donoId ? c.equipe.get(donoId) : undefined;
-    if (!donoId || !dono) continue;
+    if (!donoId) continue;
+    const dono = c.equipe.get(donoId);
+    if (!dono) {
+      // O dono saiu da equipe (C1): o lead não fica preso, a gestão decide. Uma vez por lead e dono.
+      let enviou = false;
+      for (const g of c.gestores) {
+        enviou =
+          (await avisar(
+            c,
+            { leadId: l.id, userId: g.id, tipo: "escala", marca: `dono-saiu:${donoId}` },
+            g,
+            textoEscala({ gestor: g.nome, lead: nomeDoLead(l), dono: null, link: link(l.id), motivo: "dono_saiu" }),
+          )) || enviou;
+      }
+      if (enviou) c.r.escaladas++;
+      continue;
+    }
     const cf = (l.custom_fields ?? {}) as { voltou?: { em?: string }; respondido_em?: string; lembretes_desligados?: boolean };
+    // Lembretes desligados no lead: nem aviso nem repasse (A2).
+    if (cf.lembretes_desligados) continue;
     const conv = l.contact_id ? conversas.get(l.contact_id) : undefined;
+    // Só a espera pelo PRIMEIRO atendimento gera aviso e repasse (A2).
+    if (!aguardaPrimeiraResposta({ criadoEm: l.created_at, respondidoEm: cf.respondido_em, ultimaSaidaEm: conv?.last_outbound_at })) continue;
     const desde = esperaDesde({
       status: l.status,
       criadoEm: l.created_at,
@@ -346,7 +397,7 @@ async function processarFila(c: Contexto, inicio: number) {
     const fone = digitos(l.contacts?.phone_number);
 
     // 2. avisos de prazo: se a rotina ficou fora do ar, manda só o mais recente.
-    if (!cf.lembretes_desligados && esperaMin < prazoMin) {
+    if (esperaMin < prazoMin) {
       const devidos = avisosDevidos(c.config, trilha, esperaMin);
       const novos: Array<{ a: number; id: string }> = [];
       for (const a of devidos) {
@@ -364,30 +415,39 @@ async function processarFila(c: Contexto, inicio: number) {
           textoAvisoDePrazo({ corretor: dono.nome, lead: nome, esperaMin, faltaMin: prazoMin - esperaMin, proprio, link: link(l.id), whatsapp: fone }),
         );
         if (resultado === "sem_numero") c.r.semNumero++;
+        if (resultado === "enviado") c.avisoSaiu.add(chaveDaEspera(l.id, marca));
         await fecharAviso(c.admin, n.id, resultado);
         c.r.avisos++;
       }
     }
 
-    // 3. repasse no fim do prazo
-    const decisao = decidirRepasse({
+    // 3. repasse no fim do prazo, só entre quem ainda está na equipe (C1)
+    let decisao = decidirRepasse({
       esperaMin,
       prazoMin,
       proprio,
       repasseLigado: repasseLigado(c.config, trilha),
       donoId,
-      roleta: c.config.roleta,
+      roleta: roletaDaEquipe(c.config.roleta, c.equipe),
       pausados: c.config.roleta_pausados,
       jaTentaram: c.repassados.get(l.id) ?? [],
     });
+    // O dono não foi avisado (OPA Lembretes fora, corretor sem número): não tira o lead dele,
+    // leva para a gestão (C4).
+    let motivoEscala: "roleta" | "sem_aviso" = "roleta";
+    if (decisao.tipo === "passar" && !repasseLiberado({ avisoSaiu: c.avisoSaiu.has(chaveDaEspera(l.id, marca)), avisosDaTrilha: avisosLigados(c.config, trilha).length })) {
+      decisao = { tipo: "escalar" };
+      motivoEscala = "sem_aviso";
+    }
 
     if (decisao.tipo === "passar") {
       const novo = c.equipe.get(decisao.para);
       if (!novo) continue;
-      const id = await reservarAviso(c.admin, { orgId: c.orgId, leadId: l.id, userId: null, tipo: "repasse", marca, dados: { de: donoId, para: decisao.para } }, c.feitos);
+      const linhaRepasse = { orgId: c.orgId, leadId: l.id, userId: null, tipo: "repasse", marca, dados: { de: donoId, para: decisao.para } };
+      const id = await reservarAviso(c.admin, linhaRepasse, c.feitos);
       if (!id) continue;
       const agoraIso = new Date(c.agora).toISOString();
-      const { data: mudou } = await c.admin
+      const { data: mudou, error: erroRepasse } = await c.admin
         .from("crm_leads")
         .update({ owner_user_id: decisao.para, assigned_at: agoraIso, last_activity_at: agoraIso })
         .eq("organization_id", c.orgId)
@@ -395,6 +455,13 @@ async function processarFila(c: Contexto, inicio: number) {
         .eq("owner_user_id", donoId)
         .eq("status", "open")
         .select("id");
+      if (erroRepasse) {
+        // Falha passageira: desfaz a reserva para a próxima rodada tentar de novo (C4).
+        await c.admin.from("opa_avisos").delete().eq("id", id);
+        c.feitos.delete(chaveDoAviso(linhaRepasse));
+        logger.warn("[opa-lembretes] repasse não gravou", { leadId: l.id, error: erroRepasse.message });
+        continue;
+      }
       if (!mudou || mudou.length === 0) {
         await fecharAviso(c.admin, id, "pulado", { motivo: "o lead mudou de dono antes do repasse" });
         continue;
@@ -425,7 +492,12 @@ async function processarFila(c: Contexto, inicio: number) {
       let enviou = false;
       for (const g of c.gestores) {
         enviou =
-          (await avisar(c, { leadId: l.id, userId: g.id, tipo: "escala", marca }, g, textoEscala({ gestor: g.nome, lead: nome, dono: dono.nome, link: link(l.id) }))) || enviou;
+          (await avisar(
+            c,
+            { leadId: l.id, userId: g.id, tipo: "escala", marca },
+            g,
+            textoEscala({ gestor: g.nome, lead: nome, dono: dono.nome, link: link(l.id), motivo: motivoEscala }),
+          )) || enviou;
       }
       if (enviou) c.r.escaladas++;
     }
@@ -456,14 +528,14 @@ async function processarParados(c: Contexto) {
     const achados = (data ?? []) as unknown as Array<LinhaLead & { last_activity_at: string; crm_stages: { slug: string; name: string } }>;
     await carregarHistorico(c, achados.map((l) => l.id));
     for (const l of achados) {
+      // Dono que saiu da equipe: o aviso vai só para a gestão (C1).
       const dono = l.owner_user_id ? c.equipe.get(l.owner_user_id) : undefined;
-      if (!dono) continue;
       const dias = Math.floor((c.agora - Date.parse(l.last_activity_at)) / DIA_MS);
       const marca = `${lim.etapa}:${diaSP(Date.parse(l.last_activity_at))}`;
       const texto = (p: Pessoa) => textoParado({ corretor: p.nome, lead: nomeDoLead(l), etapa: l.crm_stages.name, dias, link: link(l.id) });
-      let enviou = await avisar(c, { leadId: l.id, userId: dono.id, tipo: "parado", marca }, dono, texto(dono));
+      let enviou = dono ? await avisar(c, { leadId: l.id, userId: dono.id, tipo: "parado", marca }, dono, texto(dono)) : false;
       for (const g of c.gestores) {
-        if (g.id === dono.id) continue;
+        if (g.id === dono?.id) continue;
         enviou = (await avisar(c, { leadId: l.id, userId: g.id, tipo: "parado", marca }, g, texto(g))) || enviou;
       }
       if (enviou) c.r.parados++;
@@ -512,7 +584,7 @@ export async function rodarRotinaLembretes(admin: Admin, agora = Date.now()): Pr
       const gerentes = [...equipe.values()].filter((p) => p.papel === "manager");
       // Sem gerente cadastrado, a gestão é o administrador.
       const gestores = gerentes.length ? gerentes : [...equipe.values()].filter((p) => p.papel === "admin");
-      const c: Contexto = { admin, orgId, config, equipe, canal, agora, r, gestores, feitos: new Set(), repassados: new Map() };
+      const c: Contexto = { admin, orgId, config, equipe, canal, agora, r, gestores, feitos: new Set(), repassados: new Map(), avisoSaiu: new Set() };
 
       await processarFila(c, agora);
 

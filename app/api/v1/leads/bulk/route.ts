@@ -16,6 +16,7 @@ import { ok, fail } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
 import { resolveOwnerPatch } from "@/lib/leads/owner-patch";
 import { emitLeadActivity, stageChangeReason } from "@/lib/leads/activity-emitter";
+import { tocaEtiquetaReservada } from "@/lib/leads/etiquetas-reservadas";
 import { registraFalhaDeAtividade } from "@/lib/leads/activity-write-failure";
 import { bulkLeadActionSchema, validateRequest } from "@/lib/schemas";
 import { createClient } from "@/lib/supabase/server";
@@ -59,6 +60,13 @@ export async function POST(req: NextRequest): Promise<Response> {
   if (input.action === "delete") {
     const adm = await requireRole("admin", { requestId, resource: "crm_leads" });
     if (!adm.ok) return adm.response;
+  }
+
+  // Etiquetas de regra (lead próprio, pago, orgânico) mudam a roleta e o prazo: o
+  // corretor não as grava nem tira (pendência A4 de 01/11/2026; o banco repete na 0121).
+  if (input.action === "tag" && tocaEtiquetaReservada(input.params.add, input.params.remove)) {
+    const mgr = await requireRole("manager", { requestId, resource: "crm_leads" });
+    if (!mgr.ok) return mgr.response;
   }
 
   if (input.action === "assign") {

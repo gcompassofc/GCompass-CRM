@@ -4,7 +4,9 @@
  * O aviso vai do número da OPA para o WhatsApp do corretor ou do gerente, nunca
  * para o cliente. O número de cada pessoa é o da sessão de WhatsApp que ela
  * conectou (`channel_sessions.owner_user_id`, migration 0120). Sessão antiga,
- * sem dono gravado, ainda é achada pelo nome de exibição.
+ * sem dono gravado, ainda é achada pelo nome de exibição, mas só para quem não
+ * tem sessão própria e só quando o nome é único: o nome da pessoa é editável por
+ * ela, e casar por nome deixava um corretor receber os avisos de um gestor (A6).
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -21,8 +23,50 @@ export interface CanalDeAvisos {
   sessaoLembretes: string | null;
   /** Id da pessoa -> só dígitos do WhatsApp dela. */
   telefonePorPessoa: Map<string, string>;
-  /** Nome da pessoa sem acento -> dígitos (sessões sem dono gravado). */
+  /** Nome sem acento -> dígitos, só de sessões sem dono e com nome único. */
   telefonePorNome: Map<string, string>;
+  /** Quem tem sessão própria (com ou sem número): nunca é achado pelo nome. */
+  comSessaoPropria: Set<string>;
+}
+
+interface SessaoDoCanal {
+  waha_session_name: string;
+  display_name: string | null;
+  phone_number: string | null;
+  status: string;
+  owner_user_id: string | null;
+}
+
+/** Monta o canal a partir das sessões ativas da org (separado para testar sem banco). */
+export function montarCanalDeAvisos(sessoes: SessaoDoCanal[]): CanalDeAvisos {
+  const lembretes = sessoes.find((s) => s.waha_session_name === "opa-lembretes" && s.status === "WORKING");
+  const telefonePorPessoa = new Map<string, string>();
+  const comSessaoPropria = new Set<string>();
+  const porNome = new Map<string, string | null>();
+  for (const s of sessoes) {
+    if (s.waha_session_name === "opa-lembretes") continue;
+    if (s.owner_user_id) comSessaoPropria.add(s.owner_user_id);
+    const digitos = (s.phone_number ?? "").replace(/\D/g, "");
+    if (!digitos) continue;
+    if (s.owner_user_id) {
+      telefonePorPessoa.set(s.owner_user_id, digitos);
+    } else if (s.display_name) {
+      const nome = semAcento(s.display_name);
+      // Dois números sem dono com o mesmo nome: ambíguo, nenhum vale.
+      porNome.set(nome, porNome.has(nome) && porNome.get(nome) !== digitos ? null : digitos);
+    }
+  }
+  const telefonePorNome = new Map<string, string>();
+  for (const [nome, digitos] of porNome) if (digitos) telefonePorNome.set(nome, digitos);
+  return { sessaoLembretes: lembretes?.waha_session_name ?? null, telefonePorPessoa, telefonePorNome, comSessaoPropria };
+}
+
+/** O WhatsApp da pessoa: o da sessão dela; pelo nome só se ela não tem sessão própria. */
+export function telefoneDaPessoa(canal: CanalDeAvisos, pessoa: { id: string; nome: string }): string | undefined {
+  const proprio = canal.telefonePorPessoa.get(pessoa.id);
+  if (proprio) return proprio;
+  if (canal.comSessaoPropria.has(pessoa.id)) return undefined;
+  return canal.telefonePorNome.get(semAcento(pessoa.nome));
 }
 
 /** Lê as sessões da org: o OPA Lembretes e o número de cada pessoa. */
@@ -33,30 +77,17 @@ export async function carregarCanalDeAvisos(admin: SupabaseClient, orgId: string
     .eq("organization_id", orgId)
     .is("archived_at", null);
   if (error) throw new Error(`carregarCanalDeAvisos: ${error.message}`);
-  const sessoes = (data ?? []) as Array<{
-    waha_session_name: string;
-    display_name: string | null;
-    phone_number: string | null;
-    status: string;
-    owner_user_id: string | null;
-  }>;
-  const lembretes = sessoes.find((s) => s.waha_session_name === "opa-lembretes" && s.status === "WORKING");
-  const telefonePorPessoa = new Map<string, string>();
-  const telefonePorNome = new Map<string, string>();
-  for (const s of sessoes) {
-    if (s.waha_session_name === "opa-lembretes" || !s.phone_number) continue;
-    const digitos = s.phone_number.replace(/\D/g, "");
-    if (!digitos) continue;
-    if (s.owner_user_id) telefonePorPessoa.set(s.owner_user_id, digitos);
-    if (s.display_name) telefonePorNome.set(semAcento(s.display_name), digitos);
-  }
-  return { sessaoLembretes: lembretes?.waha_session_name ?? null, telefonePorPessoa, telefonePorNome };
+  return montarCanalDeAvisos((data ?? []) as SessaoDoCanal[]);
 }
 
-/** Manda o texto do OPA Lembretes para o WhatsApp da pessoa. Nunca lança: devolve o resultado. */
+/**
+ * Manda o texto do OPA Lembretes para o WhatsApp da pessoa. Nunca lança: devolve
+ * o resultado. "erro" quer dizer que o WhatsApp não confirmou: a mensagem pode ter
+ * saído ou não, e quem chama não deve reenviar sozinho.
+ */
 export async function avisarPessoa(canal: CanalDeAvisos, pessoa: { id: string; nome: string }, texto: string): Promise<ResultadoAviso> {
   if (!canal.sessaoLembretes) return "sem_sessao";
-  const telefone = canal.telefonePorPessoa.get(pessoa.id) ?? canal.telefonePorNome.get(semAcento(pessoa.nome));
+  const telefone = telefoneDaPessoa(canal, pessoa);
   if (!telefone) return "sem_numero";
   const waha = getWahaClient();
   if (!waha) return "sem_sessao";
@@ -124,12 +155,28 @@ export function textoRepasseParaGestor(p: { gestor: string; lead: string; de: st
   return `${primeiroNomeDe(p.gestor)}, ${p.lead} saiu de ${primeiroNomeDe(p.de)} e foi para ${primeiroNomeDe(p.para)} por falta de resposta no prazo.\nFicha: ${p.link}`;
 }
 
-export function textoEscala(p: { gestor: string; lead: string; dono: string | null; link: string }): string {
+export function textoEscala(p: {
+  gestor: string;
+  lead: string;
+  dono: string | null;
+  link: string;
+  /** Por que a gestão decide: ninguém mais da roleta, o dono não foi avisado, ou o dono saiu da equipe. */
+  motivo?: "roleta" | "sem_aviso" | "dono_saiu";
+}): string {
+  const motivo = p.motivo ?? "roleta";
+  const abertura =
+    motivo === "dono_saiu"
+      ? `${primeiroNomeDe(p.gestor)}, ${p.lead} está com alguém que saiu da equipe.`
+      : motivo === "sem_aviso"
+        ? `${primeiroNomeDe(p.gestor)}, ${p.lead} passou do prazo sem resposta e o aviso não chegou ao corretor, então ele não foi passado adiante.`
+        : `${primeiroNomeDe(p.gestor)}, ${p.lead} passou do prazo e ninguém mais da roleta pôde pegar.`;
   return [
-    `${primeiroNomeDe(p.gestor)}, ${p.lead} passou do prazo e ninguém mais da roleta pôde pegar.`,
-    p.dono ? `Está com ${primeiroNomeDe(p.dono)}.` : "Está sem dono.",
+    abertura,
+    motivo === "dono_saiu" ? null : p.dono ? `Está com ${primeiroNomeDe(p.dono)}.` : "Está sem dono.",
     `Decida quem atende: ${p.link}`,
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 export function textoParado(p: { corretor: string; lead: string; etapa: string; dias: number; link: string }): string {

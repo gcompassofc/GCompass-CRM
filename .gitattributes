@@ -1,0 +1,11 @@
+# Arquivos que rodam ou são lidos na VPS (Linux) saem SEMPRE com LF, inclusive
+# num `git archive` feito no Windows com core.autocrlf=true. Medido na instalação
+# da OPA em 01/11/2026: o pacote levado por `git archive` chegou com CRLF e o
+# install.sh morreu na linha 12 ("set: pipefail: invalid option name", o CR
+# grudado no nome da opção). O índice já guarda LF; isto só fixa a saída.
+*.sh                text eol=lf
+*.sql               text eol=lf
+Caddyfile           text eol=lf
+Dockerfile*         text eol=lf
+docker-compose*.yml text eol=lf
+.env*.example       text eol=lf

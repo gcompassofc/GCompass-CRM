@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { audit } from "@/lib/audit";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
+import { podeMexerNoNumero } from "@/lib/channels/dono";
 import { estadoDaSessao, mascararTelefone, type EstadoMeuWhatsapp } from "@/lib/channels/meu-whatsapp";
 import {
   apagarSessaoRecemCriada,
@@ -35,8 +36,16 @@ const ERRO_SEM_WAHA = "O serviço do WhatsApp não está no ar agora. Avise o ad
 async function contexto() {
   const user = await requireAuth();
   const org = await resolveActiveOrg(user);
-  // Leitura não atende cliente: não tem WhatsApp próprio.
-  if (!org || org.role === "viewer") return null;
+  // Mesma regra do QR e da reconexão (podeMexerNoNumero), aplicada ao número da
+  // própria pessoa: leitura (viewer) e operador de IA não têm WhatsApp próprio.
+  if (!org) return null;
+  const pode = podeMexerNoNumero({
+    papel: org.role,
+    souPlatformAdmin: user.is_platform_admin,
+    userId: user.id,
+    donoDaSessao: user.id,
+  });
+  if (!pode) return null;
   return { user, org, admin: createAdminClient() };
 }
 

@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
+import { listarNumerosDaEquipe } from "@/lib/channels/numeros";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CheckCircle, Clock, Info, Kanban, ShieldCheck, Users, WhatsappLogo, WifiSlash, XCircle } from "@/lib/ui/icons";
 
@@ -12,7 +13,7 @@ export const metadata = { title: "Membros" };
 
 const PAPEL: Record<string, string> = {
   admin: "Administrador",
-  manager: "Gerente",
+  manager: "Gestor",
   agent: "Corretor",
   viewer: "Leitura",
 };
@@ -70,12 +71,11 @@ interface Membro {
 async function carregarMembros(orgId: string): Promise<Membro[]> {
   const admin = createAdminClient();
   // Uma chamada ao auth para a equipe toda, em vez de uma por pessoa.
-  const [{ data: membros }, { data: sessoes }, { data: lista }] = await Promise.all([
+  const [{ data: membros }, numeros, { data: lista }] = await Promise.all([
     admin.from("user_organizations").select("user_id, role").eq("organization_id", orgId).is("revoked_at", null),
-    admin.from("channel_sessions").select("display_name, status, owner_user_id").eq("organization_id", orgId).is("archived_at", null),
+    listarNumerosDaEquipe(admin, orgId),
     admin.auth.admin.listUsers({ perPage: 1000 }),
   ]);
-  const numeros = (sessoes ?? []) as Array<{ display_name: string | null; status: string; owner_user_id: string | null }>;
   const porId = new Map((lista?.users ?? []).map((u) => [u.id, u]));
 
   return ((membros ?? []) as Array<{ user_id: string; role: string }>)
@@ -121,7 +121,7 @@ export default async function MembrosPage() {
         <div className="grid gap-5 sm:grid-cols-3">
           <CartaoNumero icone={Users} rotulo="Na equipe" valor={membros.length} contexto={`${gestores} na gestão`} />
           <CartaoNumero icone={WhatsappLogo} rotulo="Com WhatsApp conectado" valor={conectados} contexto={`de ${membros.length} membros`} />
-          <CartaoNumero icone={ShieldCheck} rotulo="Atendentes" valor={membros.filter((m) => m.papel === "agent").length} contexto="veem só os próprios leads" />
+          <CartaoNumero icone={ShieldCheck} rotulo="Corretores" valor={membros.filter((m) => m.papel === "agent").length} contexto="veem só os próprios leads" />
         </div>
 
         <Cartao bloco>
@@ -171,8 +171,8 @@ export default async function MembrosPage() {
               <div className="grid grid-cols-[1fr_130px_130px_130px] gap-2 px-4 pb-3 text-center text-[12px] font-semibold text-[#5b7284]">
                 <span />
                 <span>Administrador total</span>
-                <span>Gerente</span>
-                <span>Atendente</span>
+                <span>Gestor</span>
+                <span>Corretor</span>
               </div>
               <ul className="flex flex-col gap-1.5">
                 {MATRIZ.map(([o, a, g, at]) => (

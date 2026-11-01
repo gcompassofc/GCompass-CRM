@@ -8,6 +8,7 @@
  */
 import Link from "next/link";
 
+import { listarNumerosDaEquipe } from "@/lib/channels/numeros";
 import { carregarConfig } from "@/lib/opa/config";
 import { CAMPOS, type CampoCopiloto } from "@/lib/opa/copiloto";
 import {
@@ -586,10 +587,10 @@ export async function VisaoGestor({
   const fimHoje = new Date(inicioDoDia(somarDias(hoje, 1))).toISOString();
 
   const config = await carregarConfig(supabase, orgId);
-  const [numeros, { data: sessoesRaw }, { count: visitasAgendadas }, { count: visitasHoje }] = await Promise.all([
+  const [numeros, sessoes, { count: visitasAgendadas }, { count: visitasHoje }] = await Promise.all([
     // Leads novos de todos os status e a primeira resposta por lead (lib/opa/inicio.ts).
     carregarNumerosDoInicio(orgId, periodo, config, { corretor }),
-    supabase.from("channel_sessions").select("display_name, status").eq("organization_id", orgId).is("archived_at", null),
+    listarNumerosDaEquipe(supabase, orgId),
     supabase.from("visitas").select("id", { count: "exact", head: true }).eq("organization_id", orgId).eq("status", "agendada").gte("quando", inicioHoje),
     supabase
       .from("visitas")
@@ -609,7 +610,6 @@ export async function VisaoGestor({
   const emProposta = leads.filter((l) => ["proposta", "negociacao", "fechamento"].includes(l.etapa.slug));
   const pctDiagnostico = leads.length ? Math.round((leads.filter((l) => diagnosticoCompleto(l.campos) === 4).length / leads.length) * 100) : 0;
 
-  const sessoes = (sessoesRaw ?? []) as Array<{ display_name: string | null; status: string }>;
   const semAcento = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
   const whatsCaiu = (nome: string) => sessoes.some((s) => s.display_name && semAcento(s.display_name) === semAcento(nome) && s.status !== "WORKING");
 

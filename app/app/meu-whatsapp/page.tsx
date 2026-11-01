@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
+import { podeMexerNoNumero } from "@/lib/channels/dono";
 import { WhatsappLogo } from "@/lib/ui/icons";
 
 import { CabecalhoOpa, CorpoOpa } from "../_opa/cabecalho";
@@ -14,8 +15,10 @@ export default async function MeuWhatsappPage() {
   const user = await requireAuth();
   const org = await resolveActiveOrg(user);
   if (!org) redirect("/app");
-  // Leitura não atende cliente.
-  if (org.role === "viewer") redirect("/app/hoje");
+  // Leitura e operador de IA não atendem cliente: mesma regra das ações (podeMexerNoNumero).
+  if (!podeMexerNoNumero({ papel: org.role, souPlatformAdmin: user.is_platform_admin, userId: user.id, donoDaSessao: user.id })) {
+    redirect("/app/hoje");
+  }
 
   const inicial = await estadoMeuWhatsapp();
 

@@ -82,7 +82,8 @@ if (!LOCAL) {
     .filter((k) => env[k] && local[k] && h(env[k]) === h(local[k]));
   checa(repetidos.length === 0, "segredos diferentes dos do computador local", `iguais ao .env.local: ${repetidos.join(", ")}`);
 }
-checa(!env.SENTRY_DSN || /^(off|false|0)$/i.test(env.SENTRY_DSN) || !/58fabf8ad5450486/.test(env.SENTRY_DSN), "erros não vão para o Sentry de terceiros", "SENTRY_DSN aponta para o Sentry da comunidade");
+// "comunidade" é o atalho que lib/sentry/dsn.ts troca pelo DSN da comunidade.
+checa(!env.SENTRY_DSN || /^(off|false|0)$/i.test(env.SENTRY_DSN) || (!/58fabf8ad5450486/.test(env.SENTRY_DSN) && !/^comunidade$/i.test(env.SENTRY_DSN.trim())), "erros não vão para o Sentry de terceiros", "SENTRY_DSN aponta para o Sentry da comunidade");
 checa(env.CADASTRO_ABERTO !== "true", "cadastro do app fechado (só convite)", "CADASTRO_ABERTO=true");
 forteOuAviso(env.NODE_ENV === "production", "NODE_ENV=production", `está ${env.NODE_ENV || "vazio"}`);
 forteOuAviso((env.NEXT_PUBLIC_APP_URL ?? "").startsWith("https://"), "app em https", env.NEXT_PUBLIC_APP_URL ?? "");

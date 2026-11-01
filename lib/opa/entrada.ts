@@ -125,8 +125,6 @@ export async function registrarEntrada(admin: SupabaseClient, orgId: string, e: 
       if (cf.imovel_codigo) interesse.add(cf.imovel_codigo as string);
       if (im) interesse.add(im.codigo);
       const vez = (((cf.voltou as { vez?: number }) ?? {}).vez ?? 1) + 1;
-      const tags = new Set(aberto.tags ?? []);
-      if (im?.off_market) tags.add("off-market-comprador");
       // Só as chaves que mudam: o que o corretor gravou no meio (E1) não se perde.
       await mesclarCampos(
         admin,
@@ -134,7 +132,11 @@ export async function registrarEntrada(admin: SupabaseClient, orgId: string, e: 
         { imoveis_interesse: [...interesse], voltou: { em, vez, origem, imovel_codigo: im?.codigo ?? null } },
         { atividade: em, orgId },
       );
-      await admin.from("crm_leads").update({ tags: [...tags] }).eq("id", aberto.id);
+      if (im?.off_market) {
+        // Acrescenta no banco, sem ler e regravar a lista (C8): etiqueta gravada no meio não se perde.
+        const { error: erroTags } = await admin.rpc("fn_opa_anexar_etiquetas", { p_lead: aberto.id, p_tags: ["off-market-comprador"], p_org: orgId });
+        if (erroTags) throw new Error(`etiquetas do lead: ${erroTags.message}`);
+      }
       await admin.from("crm_lead_activities").insert({
         organization_id: orgId,
         lead_id: aberto.id,

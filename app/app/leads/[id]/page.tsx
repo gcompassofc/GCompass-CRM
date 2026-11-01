@@ -206,11 +206,16 @@ export default async function LeadPage({
   // "Lendo a conversa", e a leitura roda depois que a resposta saiu.
   const ultimaMsg = lead.conversa?.ultimaEm ? Date.parse(lead.conversa.ultimaEm) : 0;
   const lidoEm = lead.copiloto.analisado_em ? Date.parse(lead.copiloto.analisado_em) : 0;
-  const lendo = Boolean(lead.conversa?.id) && ultimaMsg > lidoEm;
+  // Quem só lê (viewer) não dispara leitura paga da IA (pendência C6).
+  let lendo = Boolean(lead.conversa?.id) && ultimaMsg > lidoEm && org.role !== "viewer";
   if (lendo) {
+    // A identidade já foi validada no servidor do Auth por requireAuth (getUser).
+    // Daqui só sai o token para a leitura rodar com a RLS de quem abriu, e só se
+    // a sessão do cookie for da mesma pessoa validada.
     const { data: sessao } = await supabase.auth.getSession();
-    const token = sessao.session?.access_token;
-    after(() => lerEmSegundoPlano(token, org.orgId, id));
+    const token = sessao.session?.user.id === user.id ? sessao.session.access_token : undefined;
+    if (token) after(() => lerEmSegundoPlano(token, org.orgId, id));
+    else lendo = false;
   }
 
   const [

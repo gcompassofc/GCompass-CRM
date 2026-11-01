@@ -15,11 +15,11 @@ import {
 } from "@/components/ui/select";
 import { useActiveOrg } from "@/hooks/auth/AuthProvider";
 import { papeisQueConvida } from "@/lib/auth/convite";
-import { ROTULO_DO_PAPEL } from "@/lib/auth/types";
+import { rotuloDoPapel } from "@/lib/auth/types";
 import type { Role } from "@/lib/schemas/team";
 
 interface ResultState {
-  sent: Array<{ email: string; accept_url: string; email_dispatched: boolean; expires_at: string }>;
+  sent: Array<{ email: string; accept_url?: string; email_dispatched: boolean; expires_at: string }>;
   failed: Array<{ email: string; reason: string }>;
 }
 
@@ -82,7 +82,7 @@ export function InviteForm() {
             <SelectContent>
               {papeis.map((r) => (
                 <SelectItem key={r} value={r}>
-                  {ROTULO_DO_PAPEL[r]}
+                  {rotuloDoPapel(r)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -105,10 +105,12 @@ export function InviteForm() {
                       <div className="font-medium">{s.email}</div>
                       <div className="text-xs text-muted-foreground">
                         {s.email_dispatched
-                          ? "Email enviado."
-                          : "Resend não configurado — link copiável abaixo (DEV)."}
+                          ? "E-mail enviado."
+                          : s.accept_url
+                            ? "O e-mail não saiu. Mande este link para a pessoa (vale 24 horas):"
+                            : "O e-mail não saiu. Peça ao administrador para mandar o convite."}
                       </div>
-                      {!s.email_dispatched ? (
+                      {!s.email_dispatched && s.accept_url ? (
                         <code className="mt-1 block break-all text-xs">{s.accept_url}</code>
                       ) : null}
                     </li>

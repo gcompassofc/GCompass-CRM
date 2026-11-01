@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { copyToClipboard } from "@/lib/clipboard";
 import { CalendarBlank, Check, Copy, MapPin, Plus, Prohibit, Trophy, WhatsappLogo } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
 
@@ -69,7 +70,10 @@ export function MensagemPronta({ texto, telefone }: { texto: string; telefone: s
           title={copiado ? "Copiada" : "Copiar"}
           aria-label={copiado ? "Mensagem copiada" : "Copiar mensagem"}
           onClick={async () => {
-            await navigator.clipboard.writeText(texto);
+            if (!(await copyToClipboard(texto))) {
+              toast.error("Não consegui copiar. Selecione o texto e copie à mão.");
+              return;
+            }
             setCopiado(true);
             setTimeout(() => setCopiado(false), 2000);
           }}

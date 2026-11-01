@@ -65,8 +65,11 @@ describe("canSee", () => {
     expect(canSee(dest("/app/inbox"), VIEWER.platform, VIEWER.role)).toBe(true);
   });
 
+  // "Tudo" é tudo o que EXISTE nesta instalação: tela com `perfil` só existe com
+  // o APP_PROFILE dela (o perfil é da instalação, não é permissão). Sem perfil
+  // ativo, que é o ambiente desta suíte, as telas da imobiliária não contam.
   it("platform admin vê tudo, inclusive sem org ativa", () => {
-    for (const d of NAV_DESTINATIONS) expect(canSee(d, true, null)).toBe(true);
+    for (const d of NAV_DESTINATIONS.filter((x) => !x.perfil)) expect(canSee(d, true, null)).toBe(true);
   });
 
   it("sem papel e sem ser platform admin não vê nada", () => {

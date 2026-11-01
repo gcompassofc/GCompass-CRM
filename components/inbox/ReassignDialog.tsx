@@ -19,6 +19,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/auth/AuthProvider";
+import { rotuloDoPapel } from "@/lib/auth/types";
 import { useAssignableMembers } from "@/hooks/inbox/useAssignableMembers";
 import { useTransferConversation } from "@/hooks/inbox/useTransferConversation";
 
@@ -29,7 +30,7 @@ interface Props {
 }
 
 const ROLE_LABEL: Record<string, string> = {
-  agent: "Atendente",
+  agent: rotuloDoPapel("agent"),
   manager: "Gestor",
   admin: "Admin",
 };

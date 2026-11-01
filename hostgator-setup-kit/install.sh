@@ -399,6 +399,37 @@ ram_abaixo_do_recomendado() { [ "${1:-0}" -lt "$RAM_MINIMA_KB" ]; }
 # save_partial abaixo grava durante a ENTREVISTA, muito antes daquele bloco.
 envq() { printf "%s='%s'\n" "$1" "$(printf '%s' "${2-}" | sed "s/'/'\\\\''/g")"; }
 
+# chaves_extras <.env anterior> <.env novo>: imprime, como estavam, as linhas do
+# .env anterior cuja chave o novo não tem. O bloco "Escrevendo .env" monta o
+# arquivo a partir de uma LISTA FECHADA de `envq` e trunca o resto — medido na
+# VPS da OPA em 01/11/2026: sumiram as chaves de cifra PII_*, INVITE_TOKEN_SECRET,
+# APP_PROFILE (o menu voltou genérico) e mais nove, todas trazidas prontas de
+# um .env de produção. Chave que o kit não conhece não é chave sem dono: é
+# configuração de quem instalou, e a regra do instalador é não apagar escolha.
+# CR no fim da linha sai aqui também: .env vindo do Windows chega com CRLF.
+chaves_extras() {
+  local anterior="$1" novo="$2" line key vistas=" "
+  [ -f "$anterior" ] || return 0
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    case "$line" in ''|'#'*) continue;; *=*) ;; *) continue;; esac
+    key="${line%%=*}"
+    case "$key" in ''|*[!A-Za-z0-9_]*) continue;; esac
+    case "$vistas" in *" $key "*) continue;; esac
+    vistas="$vistas$key "
+    grep -qE "^${key}=" "$novo" && continue
+    printf '%s\n' "$line"
+  done < "$anterior"
+}
+
+# Com APP_PULL_POLICY=never a imagem do app é LOCAL (construída nesta VPS): o
+# `dc pull` só pode tocar nos serviços de imagem pronta. Medido na VPS da OPA em
+# 01/11/2026: um `dc pull` geral baixou do registry uma imagem ANTIGA com o mesmo
+# nome e ela tomou o lugar da que tinha acabado de ser construída — o CRM subiu
+# sem nenhuma tela da OPA. app e worker ficam de fora (o worker é sempre build).
+# Lê a lista de serviços em stdin e imprime a que pode ser puxada.
+servicos_para_pull() { grep -vxE 'app|worker' || true; }
+
 # Guarda cada resposta no instante em que ela é aceita. Antes, as 12 respostas
 # só viravam arquivo no FIM: quem travasse na connection string — a pergunta
 # mais difícil, e a última das credenciais — perdia tudo o que já tinha digitado
@@ -1008,6 +1039,11 @@ garantir_rede_do_proxy
 # final, DEPOIS de instalado. Num produto que roda na infraestrutura do usuário,
 # com dados de clientes dele, o consentimento vem antes.
 # Quem já tem valor no .env manda: a pergunta não sobrescreve escolha anterior.
+#
+# Fork G-Compass: VAZIO também é desligado (lib/sentry/dsn.ts); o Sentry da
+# comunidade só liga com o valor explícito "comunidade". Antes o "sim" daqui
+# gravava vazio, herança da semântica do projeto original, e no fork isso virava
+# o contrário do que a pessoa escolheu.
 if [ -z "${SENTRY_DSN+x}" ]; then
   if [ "$NONINTERACTIVE" = 1 ]; then
     # Automação não consente por ninguém. Sem valor explícito, fica desligado.
@@ -1022,7 +1058,7 @@ if [ -z "${SENTRY_DSN+x}" ]; then
     printf '\n%s\n' "Você pode mudar depois no .env, a qualquer momento."
     read -r -p "  Enviar relatórios de erro anonimizados? (s/N) " _tel
     if resposta_sim "${_tel:-}"; then
-      SENTRY_DSN=""
+      SENTRY_DSN="comunidade"
       c_grn "✓ Telemetria de erros ligada — obrigado, isso ajuda o projeto."
     else
       SENTRY_DSN="off"
@@ -1033,6 +1069,10 @@ fi
 
 step "Escrevendo .env"
 umask 077
+# Cópia do .env como chegou: as chaves que a lista abaixo não conhece voltam
+# dela no fim do bloco (ver chaves_extras).
+ENV_ANTERIOR="$(mktemp)"
+[ -f .env ] && cp .env "$ENV_ANTERIOR"
 
 # Todo valor sai entre aspas simples, com aspa interna escapada. Sem isso, um
 # `APP_NAME=Loja do João` (ou uma senha com # ou $) quebrava tudo que lê este
@@ -1043,7 +1083,9 @@ umask 077
 {
   printf '# Gerado por install.sh — NÃO comitar. Contém segredos.\n'
   envq APP_IMAGE "$APP_IMAGE"
-  envq APP_PULL_POLICY "always"
+  # "never" de quem constrói a imagem na própria VPS tem que sobreviver: voltar
+  # para "always" fazia o próximo pull trocar a imagem local pela do registry.
+  envq APP_PULL_POLICY "${APP_PULL_POLICY:-always}"
   envq DOMAIN "$DOMAIN"
   envq ACME_EMAIL "$ACME_EMAIL"
   printf '# Proxy reverso: "caddy" (o kit sobe o dele nas portas 80/443) ou "traefik"\n'
@@ -1083,10 +1125,10 @@ umask 077
   printf '# Opcional — sem ela a IA responde sem a base e pede o áudio em texto.\n'
   envq OPENAI_API_KEY "${OPENAI_API_KEY:-}"
   printf '# Telemetria de erros (você escolheu isto durante a instalação).\n'
-  printf '#   "off"  = não envia nada.\n'
-  printf '#   vazio  = só ERRO pro Sentry da comunidade, com CPF/telefone/e-mail\n'
-  printf '#            substituídos e token de URL redigido. Sem trace, sem replay.\n'
-  printf '#   <dsn>  = manda pro SEU Sentry (aí com performance e replay).\n'
+  printf '#   "off" ou vazio = não envia nada.\n'
+  printf '#   "comunidade"   = só ERRO pro Sentry da comunidade, com CPF/telefone/e-mail\n'
+  printf '#                    substituídos e token de URL redigido. Sem trace, sem replay.\n'
+  printf '#   <dsn>          = manda pro SEU Sentry (aí com performance e replay).\n'
   envq SENTRY_DSN "${SENTRY_DSN:-}"
   envq INTERNAL_SECRET "$INTERNAL_SECRET"
   envq INTERNAL_CRON_SECRET "$INTERNAL_CRON_SECRET"
@@ -1116,6 +1158,13 @@ umask 077
   envq OWNER_EMAIL "$OWNER_EMAIL"
   envq OWNER_PASSWORD "$OWNER_PASSWORD"
 } > .env
+_extras="$(chaves_extras "$ENV_ANTERIOR" .env)"
+if [ -n "$_extras" ]; then
+  { printf '# Preservadas do .env anterior (chaves que este instalador não gera).\n'
+    printf '%s\n' "$_extras"; } >> .env
+  c_grn "✓ $(printf '%s\n' "$_extras" | wc -l | tr -d ' ') chave(s) do .env anterior preservada(s)"
+fi
+rm -f "$ENV_ANTERIOR"; unset _extras
 chmod 600 .env
 # O .env definitivo existe: o rascunho cumpriu o papel e some — deixá-lo no
 # disco seria uma segunda cópia dos segredos, e desatualizada na primeira
@@ -1268,7 +1317,23 @@ SQL
 # ── 9. Sobe a stack ─────────────────────────────────────────────────────────
 fase 4 "Colocando o CRM no ar"
 step "Puxando a imagem e subindo os serviços"
-dc pull
+if [ "${APP_PULL_POLICY:-always}" = "never" ]; then
+  # Build local: a imagem do app é a desta VPS (ver servicos_para_pull). Sem
+  # ela aqui, constrói agora com o override de build — é o caminho de quem
+  # instala um fork que não publica imagem no registry. Leva de 6 a 25 minutos
+  # e pede uns 4 GB de RAM.
+  if ! docker image inspect "$APP_IMAGE" >/dev/null 2>&1; then
+    [ -f docker-compose.build.yml ] || die "APP_PULL_POLICY=never, mas a imagem ${APP_IMAGE} não existe aqui e falta o docker-compose.build.yml para construí-la."
+    c_ylw "  A imagem ${APP_IMAGE} não existe nesta VPS: construindo agora (6 a 25 minutos)…"
+    docker compose -f "$COMPOSE" -f docker-compose.build.yml build app
+  fi
+  _servicos="$(dc config --services 2>/dev/null | servicos_para_pull)"
+  # shellcheck disable=SC2086  # a lista é de nomes de serviço, sem espaço
+  [ -n "$_servicos" ] && dc pull $_servicos
+  unset _servicos
+else
+  dc pull
+fi
 dc up -d
 c_grn "✓ containers no ar"
 

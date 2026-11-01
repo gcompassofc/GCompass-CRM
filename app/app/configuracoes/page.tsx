@@ -288,7 +288,7 @@ function AbaRoleta({ config, equipe }: { config: ConfigOpa; equipe: Map<string, 
                   <Seletor nome="volta_dias" valor={config.volta_dias} opcoes={[[30, "30 dias"], [90, "90 dias"], [180, "180 dias"], [365, "1 ano"]]} />
                   mesmo corretor
                 </Regra>
-                <Regra rotulo="Corretor saiu da OPA ou da roleta">o gerente redistribui</Regra>
+                <Regra rotulo="Corretor saiu da OPA ou da roleta">o gestor redistribui</Regra>
               </ul>
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3">

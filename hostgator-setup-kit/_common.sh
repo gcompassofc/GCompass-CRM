@@ -244,6 +244,10 @@ load_env() {
   local file="${1:-.env}" line key val
   [ -f "$file" ] || return 0
   while IFS= read -r line || [ -n "$line" ]; do
+    # .env editado ou gerado no Windows chega com CRLF: sem isto o CR vira o
+    # último caractere de TODO valor (a senha não bate, a URL ganha um byte
+    # invisível) e o erro aparece longe daqui. Medido na VPS da OPA, 01/11/2026.
+    line="${line%$'\r'}"
     case "$line" in ''|'#'*) continue;; esac
     case "$line" in *=*) ;; *) continue;; esac
     key="${line%%=*}"; val="${line#*=}"
@@ -341,6 +345,14 @@ cron_merge() {  # cron_merge <marcador> <assinatura_legada> <linha_nova>
   printf '%s\n' "$nova"
 }
 
+# O crontab atual, ou nada. `crontab -l` SAI 1 quando o usuário ainda não tem
+# crontab — o estado de toda VPS nova. Dentro de `crontab -l | cron_merge ... |
+# crontab -` com pipefail, esse 1 vira o status do cano e o `set -e` derruba o
+# instalador DEPOIS de a linha nova já ter sido gravada: medido na VPS da OPA em
+# 01/11/2026, o drain ficou agendado, o agente de atualização não, e a instalação
+# terminou no painel "A instalação parou" com o app saudável.
+crontab_atual() { crontab -l 2>/dev/null || true; }
+
 setup_event_log_drain_cron() {
   command -v crontab >/dev/null 2>&1 || { c_ylw "⚠ 'crontab' não encontrado — instale o pacote 'cron' e rode de novo pra ativar as automações."; return 0; }
 
@@ -359,7 +371,7 @@ setup_event_log_drain_cron() {
   if crontab -l 2>/dev/null | grep -qF -e "$url_drain"; then first_time=0; fi
 
   local cron_line="* * * * * curl -fsS -H \"Authorization: Bearer ${secret}\" \"${url_drain}\" >/dev/null 2>&1 ${marcador}"
-  ( crontab -l 2>/dev/null | cron_merge "$marcador" "$url_drain" "$cron_line" ) | crontab -
+  crontab_atual | cron_merge "$marcador" "$url_drain" "$cron_line" | crontab -
   c_grn "✓ automações ativas (cron do event-log-drain, a cada minuto)"
 
   if [ "$first_time" = 1 ]; then
@@ -398,7 +410,7 @@ setup_update_agent_cron() {
   local legado="cd ${PROJECT_DIR} && bash hostgator-setup-kit/agent.sh"
   local marcador; marcador="$(cron_tag agent)"
   local cron_line="*/5 * * * * ${legado} >/dev/null 2>&1 ${marcador}"
-  ( crontab -l 2>/dev/null | cron_merge "$marcador" "$legado" "$cron_line" ) | crontab -
+  crontab_atual | cron_merge "$marcador" "$legado" "$cron_line" | crontab -
   c_grn "✓ atualização pela tela ativa (agente a cada 5 minutos)"
 }
 

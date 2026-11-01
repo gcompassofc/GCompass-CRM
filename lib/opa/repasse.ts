@@ -49,6 +49,71 @@ export function avisosDevidos(config: ConfigOpa, trilha: TrilhaDeResposta, esper
   return prazosDaTrilha(config, trilha).avisos.filter((a) => esperaMin >= a && avisoLigado(config, trilha, a));
 }
 
+/** Avisos de prazo que a trilha manda de fato (configurados e ligados). */
+export function avisosLigados(config: ConfigOpa, trilha: TrilhaDeResposta): number[] {
+  return prazosDaTrilha(config, trilha).avisos.filter((a) => avisoLigado(config, trilha, a));
+}
+
+// ---------------------------------------------------------------- primeira resposta
+
+export interface DadosDaPrimeiraResposta {
+  /** Criação do lead (ISO). */
+  criadoEm: string;
+  /** custom_fields.respondido_em: "Respondi" ou ligação (nunca é apagado). */
+  respondidoEm?: string | null;
+  /** Última mensagem do corretor na conversa do contato. */
+  ultimaSaidaEm?: string | null;
+}
+
+/**
+ * O lead ainda espera o PRIMEIRO atendimento? Só ele entra nos avisos de prazo e
+ * no repasse da roleta (pendências de 01/11/2026, A2). Lead que já teve resposta
+ * (mensagem depois que entrou, ligação ou "Respondi") fica com o corretor mesmo
+ * que o cliente escreva de novo e espere: um "ok, obrigado" em negociação não
+ * pode tirar o lead de quem atende. Mensagem do corretor de antes de o lead
+ * existir (conversa antiga do mesmo contato) não conta.
+ */
+export function aguardaPrimeiraResposta(d: DadosDaPrimeiraResposta): boolean {
+  if (d.respondidoEm) return false;
+  const criado = Date.parse(d.criadoEm);
+  const saiu = d.ultimaSaidaEm ? Date.parse(d.ultimaSaidaEm) : NaN;
+  return !(Number.isFinite(saiu) && Number.isFinite(criado) && saiu > criado);
+}
+
+/** A roleta só com quem ainda está na equipe (quem saiu nunca recebe repasse). */
+export function roletaDaEquipe(roleta: string[], equipe: { has(id: string): boolean }): string[] {
+  return roleta.filter((id) => equipe.has(id));
+}
+
+/**
+ * Pode passar o lead adiante? Só se o dono foi avisado antes (algum aviso de
+ * prazo saiu de fato), ou se a trilha não tem aviso nenhum ligado. Sem aviso
+ * entregue (OPA Lembretes desconectado, corretor sem número), o lead vai para a
+ * gestão decidir, não para o próximo da fila (C4).
+ */
+export function repasseLiberado(p: { avisoSaiu: boolean; avisosDaTrilha: number }): boolean {
+  return p.avisoSaiu || p.avisosDaTrilha === 0;
+}
+
+// ---------------------------------------------------------------- lembrete agendado
+
+/**
+ * O que fazer com o lembrete depois da tentativa (C3). Só "enviado" confirma.
+ * "erro" é ambíguo (o WhatsApp não confirmou, mas pode ter entregue): não volta
+ * para a fila, para não mandar em dobro. Sem número, sem sessão ou falha antes do
+ * envio voltam para a fila até o limite de tentativas.
+ */
+export function destinoDoLembrete(
+  resultado: "enviado" | "sem_numero" | "sem_sessao" | "erro",
+  tentativas: number,
+  temDestinatario: boolean,
+  maxTentativas: number,
+): "enviado" | "pendente" | "falhou" {
+  if (resultado === "enviado") return "enviado";
+  if (resultado === "erro") return "falhou";
+  return tentativas >= maxTentativas || !temDestinatario ? "falhou" : "pendente";
+}
+
 // ---------------------------------------------------------------- repasse
 
 export type DecisaoRepasse =

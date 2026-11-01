@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Fragment, useState } from "react";
 import { toast } from "sonner";
 
+import { copyToClipboard } from "@/lib/clipboard";
 import { fotoUrl, precoCheio } from "@/lib/opa/imoveis";
 import { KIT, PERFIS_KIT, type EtapaKit, type ItemKit, type ModuloKit, type PerfilKit } from "@/lib/opa/kit";
 import {
@@ -307,12 +308,8 @@ export function KitCliente({
   };
 
   const copiar = async (txt: string) => {
-    try {
-      await navigator.clipboard.writeText(textoFinal(txt));
-      toast.success("Mensagem copiada já personalizada");
-    } catch {
-      toast.error("Não consegui copiar. Selecione o texto e copie à mão.");
-    }
+    if (await copyToClipboard(textoFinal(txt))) toast.success("Mensagem copiada já personalizada");
+    else toast.error("Não consegui copiar. Selecione o texto e copie à mão.");
   };
 
   const wa = (txt: string) =>

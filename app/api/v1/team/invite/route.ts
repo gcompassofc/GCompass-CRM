@@ -16,7 +16,7 @@ import { env } from "@/lib/env";
 import { ok, fail } from "@/lib/api/wrappers";
 import { ApiError } from "@/lib/api/types";
 import { audit, isServiceRoleConfigured } from "@/lib/audit";
-import { podeConvidarComo } from "@/lib/auth/convite";
+import { podeConvidarComo, veLinkDoConvite } from "@/lib/auth/convite";
 import { requireRole } from "@/lib/auth/require-role";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { inviteMemberSchema, validateRequest } from "@/lib/schemas";
@@ -31,7 +31,8 @@ interface SentItem {
   invite_id: string;
   expires_at: string;
   email_dispatched: boolean;
-  accept_url: string;
+  /** Só para o administrador (veLinkDoConvite). */
+  accept_url?: string;
 }
 interface FailedItem {
   email: string;
@@ -144,7 +145,7 @@ export async function POST(req: NextRequest): Promise<Response> {
       invite_id: inviteId,
       expires_at: expiresAt.toISOString(),
       email_dispatched: result.ok,
-      accept_url: acceptUrl,
+      ...(veLinkDoConvite(activeOrg.role) ? { accept_url: acceptUrl } : {}),
     });
 
     await audit({

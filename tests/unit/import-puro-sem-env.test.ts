@@ -43,16 +43,20 @@ const MODULOS_PUROS = ["@/lib/leads/timeline-query"] as const;
 /** Importa o módulo num processo filho SEM as variáveis do app. */
 function importaComAmbienteLimpo(modulo: string): { ok: boolean; erro: string } {
   const script = `import(${JSON.stringify(modulo)}).then(()=>{console.log("OK")},(e)=>{console.log("ERRO:"+String(e && e.message).split("\\n")[0]);});`;
-  // Só PATH e HOME: PATH para achar o `npx`, HOME para o cache dele. Nenhuma
-  // variável do app — é justamente a ausência delas que o teste mede.
+  // Só PATH e HOME (e, no Windows, SystemRoot, sem o qual o Node não sobe).
+  // Nenhuma variável do app — é justamente a ausência delas que o teste mede.
   // `NODE_ENV` fica de fora de propósito; o cast existe porque o tipo do Node o
   // exige e aqui a omissão é o ponto.
   const limpo = {
     PATH: process.env.PATH ?? "",
     HOME: process.env.HOME ?? "",
+    ...(process.platform === "win32" ? { SystemRoot: process.env.SystemRoot ?? "" } : {}),
   } as unknown as NodeJS.ProcessEnv;
   try {
-    const saida = execFileSync("npx", ["tsx", "--eval", script], {
+    // O CLI do tsx pelo próprio Node, e não `npx tsx`: no Windows o `npx` é um
+    // .cmd que o execFileSync não abre (ENOENT), e esse ENOENT deixava o teste
+    // vermelho em toda máquina Windows — e o controle positivo VERDE por acaso.
+    const saida = execFileSync(process.execPath, [join(RAIZ, "node_modules/tsx/dist/cli.mjs"), "--eval", script], {
       cwd: RAIZ,
       env: limpo,
       encoding: "utf8",
@@ -80,6 +84,9 @@ describe("módulo de função pura importa sem ambiente", () => {
     // `@/lib/env` DEVE falhar sem ambiente: é literalmente o trabalho dele.
     const controle = importaComAmbienteLimpo("@/lib/env");
     expect(controle.ok, `esperava @/lib/env FALHAR sem env, veio: ${controle.erro}`).toBe(false);
+    // E falhar PELO MOTIVO CERTO: o import tem de ter rodado e recusado. Um
+    // processo que nem abre (ENOENT) também dá ok:false — e passava aqui.
+    expect(controle.erro, `o processo filho nem chegou a importar: ${controle.erro}`).toMatch(/^ERRO:/m);
   });
 
   it.each(MODULOS_PUROS)("%s importa com ambiente vazio", { timeout: 60_000 }, (modulo) => {

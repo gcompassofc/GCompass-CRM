@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
+import { listarNumerosDaEquipe, type NumeroDaEquipe } from "@/lib/channels/numeros";
 import { inicioDoPeriodo } from "@/lib/opa/dados";
 import { tokenDeEntrada } from "@/lib/opa/segredos";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -40,14 +41,7 @@ export const metadata = { title: "Conexões" };
 
 const LIMITE_CONEXOES = 30;
 
-interface Sessao {
-  id: string;
-  display_name: string | null;
-  phone_number: string | null;
-  status: string;
-  waha_session_name: string | null;
-  provider: string;
-}
+type Sessao = NumeroDaEquipe;
 
 /** (12) 9••••-1170: o número aparece só pelo DDD e pelo final. */
 function mascarar(tel: string | null): string {
@@ -66,13 +60,8 @@ export default async function ConexoesPage() {
   const admin = createAdminClient();
   const desde = inicioDoPeriodo(7);
 
-  const [{ data: sessoesRaw }, { data: convRaw }, { data: orgRaw }, { data: leadsRaw }] = await Promise.all([
-    supabase
-      .from("channel_sessions")
-      .select("id, display_name, phone_number, status, waha_session_name, provider")
-      .eq("organization_id", org.orgId)
-      .is("archived_at", null)
-      .order("created_at"),
+  const [sessoes, { data: convRaw }, { data: orgRaw }, { data: leadsRaw }] = await Promise.all([
+    listarNumerosDaEquipe(supabase, org.orgId),
     supabase
       .from("conversations")
       .select("channel_session_id")
@@ -82,7 +71,6 @@ export default async function ConexoesPage() {
     supabase.from("crm_leads").select("source, created_at").eq("organization_id", org.orgId).gte("created_at", desde),
   ]);
 
-  const sessoes = (sessoesRaw ?? []) as Sessao[];
   const abertasPorSessao = new Map<string, number>();
   for (const c of (convRaw ?? []) as Array<{ channel_session_id: string }>) {
     abertasPorSessao.set(c.channel_session_id, (abertasPorSessao.get(c.channel_session_id) ?? 0) + 1);

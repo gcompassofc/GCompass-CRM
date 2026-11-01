@@ -29,6 +29,21 @@ done
 # tela nunca ligaria justamente em quem já está em dia. É idempotente.
 setup_update_agent_cron
 
+# Instalação com a imagem construída na PRÓPRIA VPS (APP_PULL_POLICY=never, o
+# caminho de um fork que não publica imagem): este script atualiza puxando a
+# imagem da tag no registry e devolve o pull para "always" — exatamente o que
+# trocou o CRM da OPA por uma imagem antiga e pública em 01/11/2026. Aqui a
+# atualização é outra (código novo + build local), então recusar sem tocar em
+# nada é o certo, inclusive quando quem chama é o botão da tela (agent.sh).
+if [ "${APP_PULL_POLICY:-}" = "never" ]; then
+  refuse "Esta instalação constrói a imagem do app na própria VPS (APP_PULL_POLICY=never).
+     Atualizar por aqui puxaria a imagem do registry no lugar da sua. Não mexi em nada.
+     Para atualizar: traga o código novo para esta pasta e rode
+       docker compose -f docker-compose.prod.yml -f docker-compose.build.yml build app
+       docker compose -f docker-compose.prod.yml up -d
+     (aplique antes as migrations novas do supabase/ no banco)."
+fi
+
 # ── 1. Tem atualização mesmo? ────────────────────────────────────────────────
 step "Procurando atualizações"
 git fetch --tags --quiet origin 2>/dev/null || c_ylw "⚠ não consegui falar com o GitHub — sigo com o código que já está aqui."

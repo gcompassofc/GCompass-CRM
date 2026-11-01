@@ -22,7 +22,7 @@ async function gestor() {
   const user = await requireAuth();
   const org = await resolveActiveOrg(user);
   if (!org || (org.role !== "manager" && org.role !== "admin")) {
-    throw new Error("Só gerente ou administrador muda as configurações.");
+    throw new Error("Só gestor ou administrador muda as configurações.");
   }
   const admin = createAdminClient();
   return { orgId: org.orgId, admin, config: await carregarConfig(admin, org.orgId) };

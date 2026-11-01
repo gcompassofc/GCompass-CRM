@@ -3,13 +3,18 @@ import { describe, expect, it } from "vitest";
 
 import { mesclarConfig, type RegraLembrete } from "./config";
 import {
+  aguardaPrimeiraResposta,
   avisoLigado,
   avisosDevidos,
+  avisosLigados,
   decidirRepasse,
+  destinoDoLembrete,
   limitesDeParado,
   minutosDaRegra,
   prazosDaTrilha,
+  repasseLiberado,
   repasseLigado,
+  roletaDaEquipe,
   type EntradaRepasse,
 } from "./repasse";
 
@@ -109,5 +114,73 @@ describe("repasse da roleta", () => {
 
   it("dono fora da roleta: começa do primeiro disponível", () => {
     expect(decidirRepasse({ ...base, donoId: "gerente" })).toEqual({ tipo: "passar", para: "a" });
+  });
+
+  it("quem saiu da equipe some da roleta e nunca recebe repasse (C1)", () => {
+    const equipe = new Set(["a", "b"]);
+    const roleta = roletaDaEquipe(["a", "b", "c"], equipe);
+    expect(roleta).toEqual(["a", "b"]);
+    // "c" saiu: o lead de "b" vai para "a", não para "c".
+    expect(decidirRepasse({ ...base, roleta })).toEqual({ tipo: "passar", para: "a" });
+    // só sobrou o dono: a gestão decide.
+    expect(decidirRepasse({ ...base, roleta: roletaDaEquipe(["b", "c"], equipe) })).toEqual({ tipo: "escalar" });
+  });
+});
+
+describe("primeira resposta (A2)", () => {
+  const criado = "2026-11-01T12:00:00.000Z";
+
+  it("lead que nunca teve resposta aguarda o primeiro atendimento", () => {
+    expect(aguardaPrimeiraResposta({ criadoEm: criado })).toBe(true);
+  });
+
+  it("mensagem do corretor depois que o lead entrou: já foi atendido", () => {
+    expect(aguardaPrimeiraResposta({ criadoEm: criado, ultimaSaidaEm: "2026-11-01T12:30:00.000Z" })).toBe(false);
+  });
+
+  it("mensagem do corretor de antes do lead existir (conversa antiga) não conta", () => {
+    expect(aguardaPrimeiraResposta({ criadoEm: criado, ultimaSaidaEm: "2026-10-20T09:00:00.000Z" })).toBe(true);
+  });
+
+  it("'Respondi' ou ligação: já foi atendido, mesmo que o cliente escreva de novo", () => {
+    expect(aguardaPrimeiraResposta({ criadoEm: criado, respondidoEm: "2026-11-01T12:10:00.000Z" })).toBe(false);
+  });
+});
+
+describe("repasse só depois de aviso entregue (C4)", () => {
+  it("sem aviso entregue, não passa adiante", () => {
+    expect(repasseLiberado({ avisoSaiu: false, avisosDaTrilha: 2 })).toBe(false);
+  });
+
+  it("com algum aviso entregue, passa", () => {
+    expect(repasseLiberado({ avisoSaiu: true, avisosDaTrilha: 2 })).toBe(true);
+  });
+
+  it("trilha sem aviso ligado não depende de aviso", () => {
+    expect(repasseLiberado({ avisoSaiu: false, avisosDaTrilha: 0 })).toBe(true);
+  });
+
+  it("conta só os avisos ligados da trilha", () => {
+    expect(avisosLigados(config, "pago")).toEqual(avisosDevidos(config, "pago", 10_000));
+  });
+});
+
+describe("lembrete agendado depois da tentativa (C3)", () => {
+  it("enviado confirma", () => {
+    expect(destinoDoLembrete("enviado", 1, true, 3)).toBe("enviado");
+  });
+
+  it("erro do WhatsApp é ambíguo: não reenvia", () => {
+    expect(destinoDoLembrete("erro", 1, true, 3)).toBe("falhou");
+  });
+
+  it("sem sessão ou sem número volta para a fila até o limite", () => {
+    expect(destinoDoLembrete("sem_sessao", 1, true, 3)).toBe("pendente");
+    expect(destinoDoLembrete("sem_numero", 2, true, 3)).toBe("pendente");
+    expect(destinoDoLembrete("sem_numero", 3, true, 3)).toBe("falhou");
+  });
+
+  it("sem destinatário, desiste", () => {
+    expect(destinoDoLembrete("sem_numero", 1, false, 3)).toBe("falhou");
   });
 });

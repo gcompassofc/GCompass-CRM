@@ -15,3 +15,13 @@ export function papeisQueConvida(quem: Role): ReadonlyArray<"viewer" | "agent" |
 export function podeConvidarComo(quem: Role, papel: string): boolean {
   return (papeisQueConvida(quem) as ReadonlyArray<string>).includes(papel);
 }
+
+/**
+ * Quem recebe de volta o link de aceite (pendência A7 de 01/11/2026). O link cria
+ * conta já confirmada para o e-mail do convite: em mãos de quem não é dono do
+ * e-mail, vira conta em nome de outra pessoa. Só o administrador o vê; para o
+ * gerente o convite chega só por e-mail.
+ */
+export function veLinkDoConvite(quem: Role): boolean {
+  return quem === "admin";
+}

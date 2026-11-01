@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { copyToClipboard } from "@/lib/clipboard";
 import { Check, Copy } from "@/lib/ui/icons";
 
 import { pegarTokenEntrada } from "./actions";
@@ -13,7 +14,13 @@ export function CopiarPorta({ porta, finalToken }: { porta: string; finalToken: 
   const [pendente, iniciar] = useTransition();
   const final = finalToken ? `••••${finalToken}` : "sem token";
 
-  const marcar = (o: "porta" | "token") => {
+  // Pelo copyToClipboard (lib/clipboard): fora de contexto seguro (http, IP
+  // direto) a API de área de transferência nem existe, e o clique quebrava sem aviso.
+  const copiar = async (texto: string, o: "porta" | "token") => {
+    if (!(await copyToClipboard(texto))) {
+      toast.error("Não consegui copiar. Selecione e copie à mão.");
+      return;
+    }
     setCopiado(o);
     setTimeout(() => setCopiado(null), 2000);
   };
@@ -23,10 +30,7 @@ export function CopiarPorta({ porta, finalToken }: { porta: string; finalToken: 
       <span className="rounded-full bg-white px-2.5 py-1 font-mono text-[12px] text-[#5b7284]">token {final}</span>
       <button
         type="button"
-        onClick={async () => {
-          await navigator.clipboard.writeText(`${window.location.origin}${porta}`);
-          marcar("porta");
-        }}
+        onClick={() => copiar(`${window.location.origin}${porta}`, "porta")}
         className="inline-flex h-8 items-center gap-1.5 rounded-full bg-white px-3 text-[12px] font-semibold text-[#0a2d40] hover:bg-[#e7f0f5]"
       >
         {copiado === "porta" ? <Check className="size-3.5" /> : <Copy className="size-3.5" />} Copiar endereço
@@ -42,8 +46,7 @@ export function CopiarPorta({ porta, finalToken }: { porta: string; finalToken: 
                 toast.error("Só gestor copia o token.");
                 return;
               }
-              await navigator.clipboard.writeText(t);
-              marcar("token");
+              await copiar(t, "token");
             })
           }
           className="inline-flex h-8 items-center gap-1.5 rounded-full bg-white px-3 text-[12px] font-semibold text-[#0a2d40] hover:bg-[#e7f0f5]"

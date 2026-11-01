@@ -214,10 +214,32 @@ async function lerCampo<T>(leadId: string, chave: string): Promise<T | undefined
   return ((data as unknown as { valor: T | null }).valor ?? undefined) as T | undefined;
 }
 
-/** "Respondi" da fila: o lead desce para o fim até escrever de novo. */
+/**
+ * "Respondi" da fila: o lead desce para o fim até escrever de novo. Fica gravado
+ * também como atividade (C2): o custom_fields.respondido_em guarda só o último
+ * toque, e a atividade guarda cada um, então a primeira resposta do Início não se
+ * perde com um segundo "Respondi".
+ */
 export async function marcarRespondido(formData: FormData) {
   const leadId = String(formData.get("leadId") ?? "");
-  await mudarCampos(leadId, { respondido_em: new Date().toISOString() });
+  const { user, org, supabase } = await contexto();
+  if (org.role === "viewer") throw new Error("Seu acesso é só de leitura.");
+  const { data: lead } = await supabase.from("crm_leads").select("contact_id").eq("organization_id", org.orgId).eq("id", leadId).maybeSingle();
+  if (!lead) throw new Error("Lead não encontrado.");
+  const agora = new Date().toISOString();
+  const { error } = await supabase.from("crm_lead_activities").insert({
+    organization_id: org.orgId,
+    lead_id: leadId,
+    contact_id: (lead as { contact_id: string | null }).contact_id,
+    source_module: "opa",
+    type: "respondido",
+    payload: {},
+    performed_at: agora,
+    performed_by_user_id: user.id,
+    actor_kind: "user",
+  });
+  if (error) throw new Error(erroParaTela(error));
+  await mudarCampos(leadId, { respondido_em: agora });
   revalidatePath("/app/fila");
   revalidatePath("/app/hoje");
   revalidatePath(`/app/leads/${leadId}`);

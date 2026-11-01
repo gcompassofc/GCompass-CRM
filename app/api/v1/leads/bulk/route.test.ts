@@ -84,3 +84,24 @@ describe("POST /api/v1/leads/bulk, action delete", () => {
     expect(res.status).not.toBe(403);
   });
 });
+
+describe("POST /api/v1/leads/bulk, etiquetas de regra (0121, A4)", () => {
+  it.each([
+    { add: ["proprio"] },
+    { add: ["Pago"] },
+    { remove: ["organico"] },
+    { add: ["quente", "proprio"] },
+  ])("corretor mexendo em %j leva 403 e o banco nem é consultado", async (params) => {
+    comoPapel("agent");
+    const res = await pedir({ action: "tag", lead_ids: [LEAD], params });
+    expect(res.status).toBe(403);
+    expect(tabelasTocadas).toEqual([]);
+  });
+
+  it("gerente marca lead próprio", async () => {
+    comoPapel("manager");
+    const res = await pedir({ action: "tag", lead_ids: [LEAD], params: { add: ["proprio"] } });
+    expect(res.status).not.toBe(403);
+    expect(tabelasTocadas).toContain("crm_leads");
+  });
+});
