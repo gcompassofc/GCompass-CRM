@@ -10,6 +10,31 @@ Roteiro único para tirar o CRM da OPA do computador e colocar em produção.
 Cada passo diz **quem faz**: 🙋 é do Allyson (conta, cartão, celular, decisão), 🤖 a IA executa.
 Nada aqui foi publicado ainda: banco, servidor e domínio de produção não existem.
 
+## Estado em 01/11/2026: CRM NO AR
+
+`https://crm.opailhabela.com.br` responde, com HTTPS e saúde ok (Supabase e Redis). VPS Hostinger KVM 2
+(`187.41.110.169`, Ubuntu 24.04, 2 vCPU, 8 GB), projeto Supabase `opa-crm` na organização G-Compass CRM (Pro, São Paulo).
+Código em `/opt/crm` (veio por `git archive`, sem push ao GitHub); a imagem do app foi construída na própria VPS
+(`docker compose -f docker-compose.prod.yml -f docker-compose.build.yml build app`, uns 6 min).
+Instalado: schema (0110 a 0120), administrador `growthcompassofc@gmail.com`, empresa OPA, 3 funis, token da porta de entrada,
+71 imóveis, cron do event-log-drain e do agente de atualização, firewall (só 22, 80, 443). Acesso por chave SSH `~/.ssh/opa_crm_ed25519`.
+
+**Falta (🙋 Allyson):**
+1. Supabase > Authentication > Sign In / Providers: desligar **Allow new users to sign up** (sem desligar o provedor Email),
+   senha mínima 12, URL Configuration (Site URL e redirects `/auth/confirm` e `/auth/callback`), conferir backup diário.
+2. Primeiro login em `/login` com o e-mail do administrador e cadastrar o segundo fator (aplicativo autenticador).
+3. Convidar a equipe (Membros); cada corretor liga o próprio WhatsApp em "Meu WhatsApp"; definir o dono dos números que já existirem.
+4. 🤖 Testar a IA com 30 conversas reais anonimizadas (I3) e conferir `cacheLido` no log na primeira leitura.
+
+**Lições da instalação (para a próxima VPS):**
+- Arquivo vindo do Windows chega com CRLF: rodar `sed -i 's/$//'` nos `.sh`, no `.env`, no Caddyfile e nos compose antes do instalador.
+- O `.env` gravado pelo PowerShell também sai em CRLF.
+- `dc pull` falha para imagem local (pull_policy never): na VPS, trocar por `dc pull --ignore-pull-failures || true`.
+- Em VPS nova o instalador parou em "Ativando as automações" (provável `crontab -l` sem tabela com pipefail);
+  as duas funções de cron rodam bem à mão (`setup_event_log_drain_cron`, `setup_update_agent_cron`).
+- O `.dockerignore` não pode excluir `tests`: o `next build` checa os tipos dos testes.
+- O `conferir-producao.mjs` depende do DNS do computador de quem roda; se der ENOTFOUND, `ipconfig /flushdns` ou esperar.
+
 ## Decisões de 01/11/2026
 
 - **D1 servidor:** VPS Hostinger **KVM 2** (2 vCPU, 8 GB). Primeiro uma de 1 mês; depois outra de 12 meses, repetindo o
