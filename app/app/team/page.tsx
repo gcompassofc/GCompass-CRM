@@ -24,7 +24,7 @@ export default async function TeamPage() {
             Gestão de membros, roles e atendimento do tenant.
           </p>
         </div>
-        {isAdmin ? (
+        {isManager ? (
           <Button asChild>
             <Link href="/app/team/invite">Convidar membros</Link>
           </Button>

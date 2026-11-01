@@ -1,6 +1,6 @@
 ---
 tags: [cliente/opa, tipo/roteiro]
-atualizado: 2026-10-31
+atualizado: 2026-11-01
 status: vigente
 ---
 
@@ -9,6 +9,17 @@ status: vigente
 Roteiro único para tirar o CRM da OPA do computador e colocar em produção.
 Cada passo diz **quem faz**: 🙋 é do Allyson (conta, cartão, celular, decisão), 🤖 a IA executa.
 Nada aqui foi publicado ainda: banco, servidor e domínio de produção não existem.
+
+## Decisões de 01/11/2026
+
+- **D1 servidor:** VPS Hostinger **KVM 2** (2 vCPU, 8 GB). Primeiro uma de 1 mês; depois outra de 12 meses, repetindo o
+  `install.sh` com o mesmo `.env` e apontando o DNS. Os dados ficam no Supabase, então a troca só pede ler o QR do WhatsApp de novo.
+- **D3 Supabase:** na conta da G-Compass (plano pago, São Paulo).
+- **D6 chave da IA:** da G-Compass, que tem créditos.
+- **Gerente convida corretores:** sim.
+- **Excluir lead:** só o administrador. O corretor pode apagar a conversa no WhatsApp dele, e o lead continua no sistema
+  com número, informações e histórico.
+- **Corretor liga o próprio WhatsApp:** sim, num fluxo simples e intuitivo.
 
 ## Onde paramos (31/10/2026)
 
@@ -21,8 +32,7 @@ de telas por permissão (Início do corretor, do gerente e do administrador, men
 
 **Para retomar, nesta ordem:**
 
-1. 🙋 Responder as decisões pendentes: D1 (servidor), D3 (conta do Supabase), D6 (chave da IA) e as 3 de permissão:
-   o gerente convida corretores? Excluir lead só com o administrador? O corretor liga o próprio WhatsApp?
+1. ✅ Decisões respondidas em 01/11/2026 (ver acima). Falta só contratar a VPS e criar o projeto no Supabase.
 2. 🤖 Bloco "antes da equipe usar" da [revisão de 31/10](REVISAO-COMPLETA-2026-10-31.md): F1 (lembretes, avisos e
    repasse rodando), F2 (configurações valendo), F3 (números do Início), E1 (gravação sem sobrescrever),
    U1 (busca no celular), U3 (retorno nas ações), V1 (ficha sem esperar a IA), I1 e I2 (saída estruturada e cache da IA).

@@ -16,6 +16,7 @@ import { env } from "@/lib/env";
 import { ok, fail } from "@/lib/api/wrappers";
 import { ApiError } from "@/lib/api/types";
 import { audit, isServiceRoleConfigured } from "@/lib/audit";
+import { podeConvidarComo } from "@/lib/auth/convite";
 import { requireRole } from "@/lib/auth/require-role";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { inviteMemberSchema, validateRequest } from "@/lib/schemas";
@@ -39,7 +40,8 @@ interface FailedItem {
 
 export async function POST(req: NextRequest): Promise<Response> {
   const requestId = randomUUID();
-  const authz = await requireRole("admin", { requestId, resource: "team" });
+  // Gerente convida (só corretores, conferido abaixo); administrador convida qualquer papel.
+  const authz = await requireRole("manager", { requestId, resource: "team" });
   if (!authz.ok) return authz.response;
   const { user: authUser, org: activeOrg } = authz;
 
@@ -54,6 +56,20 @@ export async function POST(req: NextRequest): Promise<Response> {
       });
     }
     throw err;
+  }
+
+  // O papel vem do corpo da requisição: a tela esconde as opções, mas a regra é daqui.
+  const negado = input.invitations.find((inv) => !podeConvidarComo(activeOrg.role, inv.role));
+  if (negado) {
+    await audit({
+      action: "authz.denied",
+      actorUserId: authUser.id,
+      organizationId: activeOrg.orgId,
+      resourceType: "team",
+      requestId,
+      metadata: { motivo: "papel_nao_convidavel", papel_pedido: negado.role, papel_de_quem_convida: activeOrg.role },
+    });
+    return fail("forbidden_role", "Seu papel só convida corretores.", 403, { requestId });
   }
 
   const sent: SentItem[] = [];

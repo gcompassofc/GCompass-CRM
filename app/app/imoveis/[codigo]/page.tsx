@@ -2,8 +2,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
-import { carregarEquipe, carregarImoveis, carregarLeads } from "@/lib/opa/dados";
-import { afinidade, AFINIDADE_MINIMA, fotoUrl, precoCheio, precoPrincipal } from "@/lib/opa/imoveis";
+import { carregarEquipe, carregarImoveis, carregarLeads, configDaOrg } from "@/lib/opa/dados";
+import { afinidade, fotoUrl, precoCheio, precoPrincipal } from "@/lib/opa/imoveis";
 import {
   ArrowLeft,
   ArrowSquareOut,
@@ -46,7 +46,12 @@ export default async function ImovelPage({ params }: { params: Promise<{ codigo:
   if (!org) redirect("/app");
 
   const { codigo } = await params;
-  const [imoveis, leads, equipe] = await Promise.all([carregarImoveis(org.orgId), carregarLeads(org.orgId), carregarEquipe(org.orgId)]);
+  const [imoveis, leads, equipe, config] = await Promise.all([
+    carregarImoveis(org.orgId),
+    carregarLeads(org.orgId),
+    carregarEquipe(org.orgId),
+    configDaOrg(org.orgId),
+  ]);
   const imovel = imoveis.find((i) => i.codigo === codigo);
   if (!imovel) notFound();
   const porCodigo = new Map(imoveis.map((i) => [i.codigo, i]));
@@ -54,8 +59,8 @@ export default async function ImovelPage({ params }: { params: Promise<{ codigo:
   const entraram = leads.filter((l) => l.imoveisInteresse.includes(imovel.codigo));
   const combinam = leads
     .filter((l) => !l.imoveisInteresse.includes(imovel.codigo))
-    .map((l) => ({ lead: l, a: afinidade(imovel, { ...l.campos, imovelEntrada: porCodigo.get(l.imovelCodigo ?? "") ?? null }) }))
-    .filter((x) => x.a.pontos >= AFINIDADE_MINIMA)
+    .map((l) => ({ lead: l, a: afinidade(imovel, { ...l.campos, imovelEntrada: porCodigo.get(l.imovelCodigo ?? "") ?? null }, config.cruzamento.pesos) }))
+    .filter((x) => x.a.pontos >= config.cruzamento.minimo)
     .sort((x, y) => y.a.pontos - x.a.pontos);
 
   const fotos = imovel.fotos
@@ -239,7 +244,7 @@ export default async function ImovelPage({ params }: { params: Promise<{ codigo:
                   ))}
                 </ul>
               ) : (
-                <Vazio titulo={`Ninguém acima de ${AFINIDADE_MINIMA}`} texto="Quando um lead novo combinar, ele aparece aqui." />
+                <Vazio titulo={`Ninguém acima de ${config.cruzamento.minimo}`} texto="Quando um lead novo combinar, ele aparece aqui." />
               )}
             </Cartao>
           </div>

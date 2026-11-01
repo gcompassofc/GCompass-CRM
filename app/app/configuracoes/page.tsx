@@ -272,9 +272,10 @@ function AbaRoleta({ config, equipe }: { config: ConfigOpa; equipe: Map<string, 
                 <Seletor nome="pago_min" valor={config.prazos.pago_min} opcoes={[[30, "30 min"], [60, "1 h"], [120, "2 h"]]} />
               </Regra>
               <Regra rotulo="Orgânico">
-                avisos aos 20 min, 1 h e 2 h, troca em
+                avisos aos {config.prazos.avisos_organico.join(", ")} min, troca em
                 <Seletor nome="organico_min" valor={config.prazos.organico_min} opcoes={[[120, "2 h"], [180, "3 h"], [240, "4 h"]]} />
               </Regra>
+              <Regra rotulo="Lead trazido pelo próprio corretor">fica com ele, não troca</Regra>
               <Regra rotulo="Roleta inteira sem resposta">escala para a gestão</Regra>
               <Regra rotulo="Fora do horário">o relógio para</Regra>
             </ul>

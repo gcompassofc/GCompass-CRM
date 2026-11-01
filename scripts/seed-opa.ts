@@ -348,6 +348,8 @@ async function main() {
           status: "WORKING",
           phone_number: n.tel,
           display_name: n.nome,
+          // O número de cada corretor é dele (o do OPA Lembretes não tem dono).
+          owner_user_id: usuarios[n.chave] ?? null,
           warmup_completed_at: ha(60 * 24 * 30),
           metadata: { demonstracao: true },
         })

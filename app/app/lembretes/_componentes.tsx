@@ -52,7 +52,7 @@ export function AgendarMensagem({ leads, leadInicial }: { leads: LeadSimples[]; 
           <DialogHeader>
             <DialogTitle>Agendar mensagem</DialogTitle>
             <DialogDescription>
-              Para o lead, sai do seu WhatsApp. Para você, chega pelo OPA Lembretes na hora marcada.
+              Na hora marcada, o OPA Lembretes avisa você no WhatsApp. Se for para o lead, o aviso traz a mensagem pronta e o link para mandar do seu número.
             </DialogDescription>
           </DialogHeader>
           <form
@@ -80,7 +80,7 @@ export function AgendarMensagem({ leads, leadInicial }: { leads: LeadSimples[]; 
                 onChange={(e) => setDestino(e.target.value)}
                 className="h-10 rounded-lg border border-border bg-surface-elevated px-2 font-normal outline-none focus:border-accent"
               >
-                <option value="para_lead">Para o lead, pelo meu WhatsApp</option>
+                <option value="para_lead">Para o lead (aviso com a mensagem pronta)</option>
                 <option value="para_corretor">Para mim, pelo OPA Lembretes</option>
               </select>
             </label>

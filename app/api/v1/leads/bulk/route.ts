@@ -54,6 +54,13 @@ export async function POST(req: NextRequest): Promise<Response> {
   // G3-04: assign é reatribuição de dono em lote → piso ≥manager (spec 04 §6.5,
   // INB-03). Gate por-action: move/tag/delete continuam agent+ (piso acima);
   // só o assign exige manager. Reusa o helper (nada de ROLE_RANK na mão).
+  // CRM da OPA (decisão de 01/11/2026): excluir lead é só do administrador. O corretor
+  // pede e o administrador apaga; a RLS (0120) repete a regra no banco.
+  if (input.action === "delete") {
+    const adm = await requireRole("admin", { requestId, resource: "crm_leads" });
+    if (!adm.ok) return adm.response;
+  }
+
   if (input.action === "assign") {
     const mgr = await requireRole("manager", { requestId, resource: "crm_leads" });
     if (!mgr.ok) return mgr.response;

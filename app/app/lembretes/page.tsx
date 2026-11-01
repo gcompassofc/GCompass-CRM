@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { carregarConfig, type RegraLembrete } from "@/lib/opa/config";
-import { carregarEquipe, carregarLeads } from "@/lib/opa/dados";
+import { carregarEquipe, carregarLeads, tempoCurto } from "@/lib/opa/dados";
 import { createClient } from "@/lib/supabase/server";
 import {
   Bell,
@@ -45,6 +45,11 @@ const ABAS: Array<[Aba, string, Icone]> = [
   ["desligados", "Desligados", BellSlash],
 ];
 
+/** Instante de sete dias atrás, em ISO. */
+function haSeteDias(): string {
+  return new Date(Date.now() - 7 * 86_400_000).toISOString();
+}
+
 function quandoCurto(iso: string): string {
   return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }).format(
     new Date(iso),
@@ -69,6 +74,8 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
       .select("id, lead_id, para_user_id, quando, mensagem, origem, status, crm_leads(title)")
       .eq("organization_id", org.orgId)
       .neq("status", "cancelado")
+      // Os que esperam, de qualquer data, e os enviados ou com falha da última semana.
+      .or(`status.eq.pendente,quando.gte.${haSeteDias()}`)
       .order("quando", { ascending: true })
       .limit(100),
     supabase
@@ -112,7 +119,8 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
       <CorpoOpa>
         <p className="flex items-center gap-2 text-[14px] text-[#5b7284]">
           <Info className="size-4 shrink-0 text-[#2a7ca8]" />
-          Os avisos saem do número OPA Lembretes; o corretor responde pelo WhatsApp e o card anda sozinho.
+          O OPA Lembretes avisa o corretor no WhatsApp dele: lembretes agendados, prazo de resposta (avisos e passagem para o próximo da fila) e negócio
+          parado. O resto da cadência é o guia do dia a dia, ainda sem aviso automático.
         </p>
 
         <div className="flex flex-wrap items-center gap-3">
@@ -144,10 +152,10 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
                   titulo={aba === "captacao" ? "Captação pelo OPA Radar" : aba === "organico" ? "Lead orgânico" : "Lead do tráfego pago"}
                   sub={
                     aba === "captacao"
-                      ? `${config.captacao.por_semana} imóveis por semana, devolutiva em ${config.captacao.devolutiva_dias} dias`
+                      ? `${config.captacao.por_semana} imóveis por semana, devolutiva em ${config.captacao.devolutiva_dias} dias. Os avisos começam quando o OPA Radar for ligado`
                       : aba === "organico"
-                        ? "Prazo de 3 h para o primeiro atendimento"
-                        : "Prazo de 1 h para o primeiro atendimento"
+                        ? `Prazo de ${tempoCurto(config.prazos.organico_min)} para o primeiro atendimento`
+                        : `Prazo de ${tempoCurto(config.prazos.pago_min)} para o primeiro atendimento`
                   }
                 />
                 <ul className="mt-5 flex flex-col gap-2">
@@ -215,7 +223,7 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
                             <p className="text-[15px] font-semibold text-[#0a2d40]">
                               {paraLead ? (lead ?? "Lead") : nome(a.para_user_id)}
                               <span className="font-normal text-[#5b7284]">
-                                {paraLead ? ` · pelo WhatsApp de ${nome(a.para_user_id).split(" ")[0]}` : ` · pelo OPA Lembretes${lead ? `, sobre ${lead}` : ""}`}
+                                {paraLead ? ` · aviso para ${nome(a.para_user_id).split(" ")[0]} com a mensagem pronta` : ` · pelo OPA Lembretes${lead ? `, sobre ${lead}` : ""}`}
                               </span>
                             </p>
                             <p className="mt-1 line-clamp-2 text-[13px] text-[#34566b]">{a.mensagem}</p>
@@ -226,6 +234,10 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
                               {a.status === "enviado" ? (
                                 <Chip icone={CheckCircle} tom="ok">
                                   enviada
+                                </Chip>
+                              ) : a.status === "falhou" ? (
+                                <Chip icone={XCircle} tom="alerta">
+                                  não saiu
                                 </Chip>
                               ) : (
                                 <Chip icone={CalendarBlank} tom="neutro">
@@ -251,7 +263,7 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
                   </ul>
                 )}
                 <p className="mt-4 flex items-start gap-2 text-[12px] text-[#5b7284]">
-                  <Info className="mt-0.5 size-3.5 shrink-0 text-[#2a7ca8]" /> Para o lead só sai com consentimento registrado.
+                  <Info className="mt-0.5 size-3.5 shrink-0 text-[#2a7ca8]" /> O CRM não escreve para o lead sozinho: o corretor recebe o aviso com a mensagem pronta e manda pelo WhatsApp dele.
                 </p>
               </Cartao>
             )}
@@ -502,7 +514,7 @@ function Celular({ captacao }: { captacao: boolean }) {
         </div>
       </div>
       <p className="flex items-start gap-2 text-[12px] text-white/65">
-        <Info className="mt-0.5 size-3.5 shrink-0" /> No WhatsApp não oficial as opções saem como enquete ou numeradas.
+        <Info className="mt-0.5 size-3.5 shrink-0" /> Desenho do aviso. Hoje ele chega com o link da ficha e o do WhatsApp do lead; responder pelo número ainda não move o card.
       </p>
     </Cartao>
   );

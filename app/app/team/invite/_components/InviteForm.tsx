@@ -13,7 +13,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ROLES, type Role } from "@/lib/schemas/team";
+import { useActiveOrg } from "@/hooks/auth/AuthProvider";
+import { papeisQueConvida } from "@/lib/auth/convite";
+import { ROTULO_DO_PAPEL } from "@/lib/auth/types";
+import type { Role } from "@/lib/schemas/team";
 
 interface ResultState {
   sent: Array<{ email: string; accept_url: string; email_dispatched: boolean; expires_at: string }>;
@@ -25,6 +28,8 @@ export function InviteForm() {
   const [role, setRole] = useState<Role>("agent");
   const [result, setResult] = useState<ResultState | null>(null);
   const invite = useInviteMembers();
+  // O gerente só enxerga "corretor"; a rota confere de novo no servidor.
+  const papeis = papeisQueConvida(useActiveOrg()?.role ?? "viewer");
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -69,15 +74,15 @@ export function InviteForm() {
           />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="role">Role</Label>
+          <Label htmlFor="role">Papel</Label>
           <Select value={role} onValueChange={(v) => setRole(v as Role)}>
             <SelectTrigger id="role">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {ROLES.map((r) => (
+              {papeis.map((r) => (
                 <SelectItem key={r} value={r}>
-                  {r}
+                  {ROTULO_DO_PAPEL[r]}
                 </SelectItem>
               ))}
             </SelectContent>

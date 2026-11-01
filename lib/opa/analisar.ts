@@ -1,9 +1,11 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
-import { generateText } from "ai";
+import { createClient as createSupabaseClient, type SupabaseClient } from "@supabase/supabase-js";
+import { generateText, Output } from "ai";
 
 import { resolveLanguageModel } from "@/lib/ai/gateway";
+import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 
+import { mesclarCampos } from "./campos";
 import { analisarComIA, analisarPorRegras, CAMPOS, type CampoCopiloto, type ContextoLeitura, type Leitura, type MensagemLida } from "./copiloto";
 import { ROTULO_ORIGEM } from "./dados";
 import { precoCurto } from "./imoveis";
@@ -120,7 +122,27 @@ export async function analisarLead(supabase: SupabaseClient, orgId: string, lead
       leitura = await analisarComIA(
         mensagens,
         modelo,
-        (args) => generateText({ model: args.model as never, system: args.system, prompt: args.prompt }),
+        async (args) => {
+          // I1: saída estruturada, o provedor devolve o formato do esquema.
+          // I2: as instruções (as mesmas em toda leitura, cerca de 2 mil tokens
+          // com os 52 bairros) levam ponto de cache; o que muda a cada lead
+          // (contexto e conversa) vem depois dele e não entra no cache.
+          const r = await generateText({
+            model: args.model as never,
+            output: Output.object({ schema: args.esquema }),
+            messages: [
+              { role: "system", content: args.instrucoes, providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } },
+              { role: "user", content: args.entrada },
+            ],
+          });
+          logger.info("copiloto: leitura da IA", {
+            leadId,
+            entrada: r.usage?.inputTokens,
+            cacheLido: r.usage?.inputTokenDetails?.cacheReadTokens,
+            cacheGravado: r.usage?.inputTokenDetails?.cacheWriteTokens,
+          });
+          return { output: r.output };
+        },
         contexto,
       );
     } catch (e) {
@@ -156,26 +178,62 @@ export async function analisarLead(supabase: SupabaseClient, orgId: string, lead
     if (error) logger.warn("copiloto: falha ao gravar sugestões", { leadId, erro: error.message });
   }
 
-  await supabase
-    .from("crm_leads")
-    .update({
-      custom_fields: {
-        ...cf,
-        copiloto: {
-          resumo: leitura.resumo,
-          proximoPasso: leitura.proximoPasso,
-          temperatura: leitura.temperatura,
-          motor: leitura.motor,
-          analisado_em: new Date().toISOString(),
-          // Rascunho vale só para a última mensagem do lead que ele respondeu.
-          mensagem: leitura.mensagem || undefined,
-          respondendo_a: [...mensagens].reverse().find((m) => m.direction === "inbound")?.sent_at,
-          objecoes: leitura.objecoes?.length ? leitura.objecoes : undefined,
-        },
+  // E1: grava só a chave `copiloto` (o objeto inteiro, no lugar do anterior);
+  // um "Respondi" ou uma ligação feitos enquanto a IA lia ficam como estão.
+  await mesclarCampos(
+    supabase,
+    leadId,
+    {
+      copiloto: {
+        resumo: leitura.resumo,
+        proximoPasso: leitura.proximoPasso,
+        temperatura: leitura.temperatura,
+        motor: leitura.motor,
+        analisado_em: new Date().toISOString(),
+        // Rascunho vale só para a última mensagem do lead que ele respondeu.
+        mensagem: leitura.mensagem || undefined,
+        respondendo_a: [...mensagens].reverse().find((m) => m.direction === "inbound")?.sent_at,
+        objecoes: leitura.objecoes?.length ? leitura.objecoes : undefined,
       },
-    })
-    .eq("organization_id", orgId)
-    .eq("id", leadId);
+    },
+    { orgId },
+  );
 
   return leitura;
+}
+
+// ---------------------------------------------------------------- leitura em segundo plano (V1)
+
+/** Espera mínima entre duas tentativas no mesmo lead, na mesma instância do app. */
+const ESPERA_ENTRE_LEITURAS_MS = 120_000;
+const ultimaTentativa = new Map<string, number>();
+
+/**
+ * A ficha abre na hora e a IA lê depois que a resposta saiu (`after()` do
+ * Next). `token` é o da sessão de quem abriu a ficha: a leitura segue as mesmas
+ * regras de RLS dessa pessoa, sem cliente admin. A trava em memória impede que
+ * várias aberturas seguidas da mesma ficha (ou uma leitura que falha) paguem a
+ * IA de novo dentro de 2 minutos.
+ */
+export function precisaLerAgora(leadId: string): boolean {
+  const antes = ultimaTentativa.get(leadId) ?? 0;
+  return Date.now() - antes > ESPERA_ENTRE_LEITURAS_MS;
+}
+
+export async function lerEmSegundoPlano(token: string | undefined, orgId: string, leadId: string): Promise<void> {
+  if (!token || !precisaLerAgora(leadId)) return;
+  ultimaTentativa.set(leadId, Date.now());
+  // A conta é um mapa na memória: tira as entradas velhas para não crescer.
+  if (ultimaTentativa.size > 500) {
+    for (const [k, t] of ultimaTentativa) if (Date.now() - t > ESPERA_ENTRE_LEITURAS_MS) ultimaTentativa.delete(k);
+  }
+  try {
+    const cliente = createSupabaseClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+      global: { headers: { Authorization: `Bearer ${token}` } },
+    });
+    await analisarLead(cliente, orgId, leadId);
+  } catch (e) {
+    logger.warn("copiloto: leitura em segundo plano falhou", { leadId, erro: String(e) });
+  }
 }

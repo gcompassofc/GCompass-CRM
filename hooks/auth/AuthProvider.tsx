@@ -93,10 +93,13 @@ const ACTION_MIN_ROLE: Record<string, Role> = {
   "contact.create": "agent",
   "contact.update": "agent",
   "contact.delete": "manager",
+  // OPA: excluir lead só o administrador (a rota e a RLS repetem a regra).
+  "lead.delete": "admin",
   "pipeline.view": "viewer",
   "pipeline.create": "manager",
   "pipeline.move_card": "agent",
-  "team.invite": "admin",
+  // OPA: o gerente convida corretores; a rota recusa qualquer outro papel vindo dele.
+  "team.invite": "manager",
   "team.change_role": "admin",
   "settings.write": "admin",
   "lgpd.execute_redact": "admin",

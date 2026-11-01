@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export default async function TeamInvitePage() {
   const user = await requireAuth();
   const activeOrg = await resolveActiveOrg(user);
-  if (!activeOrg || ROLE_RANK[activeOrg.role] < ROLE_RANK.admin) {
+  if (!activeOrg || ROLE_RANK[activeOrg.role] < ROLE_RANK.manager) {
     redirect("/403");
   }
 
@@ -18,7 +18,7 @@ export default async function TeamInvitePage() {
       <header>
         <h1 className="text-2xl font-semibold tracking-tight">Convidar membros</h1>
         <p className="text-sm text-muted-foreground">
-          Cole até 20 emails (um por linha) e escolha a role compartilhada.
+          Cole até 20 emails (um por linha) e escolha o papel de todos. O gerente convida só corretores.
         </p>
       </header>
       <InviteForm />

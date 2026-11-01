@@ -31,7 +31,7 @@ const MATRIZ: Array<[string, string, string, string]> = [
   ["Marcar conversa como particular (sai do CRM para todos)", "sim", "sim", "só as suas"],
   ["Criar pipeline, etapas e campos obrigatórios", "sim", "sim", "nao"],
   ["Editar regras de lembrete e cadência", "sim", "sim", "nao"],
-  ["Conectar WhatsApp", "sim", "nao", "só o seu"],
+  ["Conectar WhatsApp", "sim", "só o seu", "só o seu"],
   ["Convidar membros", "sim", "só corretores", "nao"],
   ["Excluir lead (o pedido vem do corretor)", "sim", "nao", "nao"],
   ["Repassar oportunidade de captação", "sim", "sim", "devolve as suas"],
@@ -72,18 +72,21 @@ async function carregarMembros(orgId: string): Promise<Membro[]> {
   // Uma chamada ao auth para a equipe toda, em vez de uma por pessoa.
   const [{ data: membros }, { data: sessoes }, { data: lista }] = await Promise.all([
     admin.from("user_organizations").select("user_id, role").eq("organization_id", orgId).is("revoked_at", null),
-    admin.from("channel_sessions").select("display_name, status").eq("organization_id", orgId).is("archived_at", null),
+    admin.from("channel_sessions").select("display_name, status, owner_user_id").eq("organization_id", orgId).is("archived_at", null),
     admin.auth.admin.listUsers({ perPage: 1000 }),
   ]);
-  const numeros = (sessoes ?? []) as Array<{ display_name: string | null; status: string }>;
+  const numeros = (sessoes ?? []) as Array<{ display_name: string | null; status: string; owner_user_id: string | null }>;
   const porId = new Map((lista?.users ?? []).map((u) => [u.id, u]));
 
   return ((membros ?? []) as Array<{ user_id: string; role: string }>)
     .map((m) => {
       const u = porId.get(m.user_id);
       const nome = (u?.user_metadata?.full_name as string | undefined) ?? u?.email?.split("@")[0] ?? "Pessoa";
-      // O WhatsApp do corretor é a sessão com o nome dele (ex. "Luana Machado").
-      const sessao = numeros.find((s) => s.display_name && semAcento(s.display_name) === semAcento(nome));
+      // O WhatsApp do corretor é a sessão de que ele é dono; sessões antigas, sem dono,
+      // seguem achadas pelo nome (ex. "Luana Machado").
+      const sessao =
+        numeros.find((s) => s.owner_user_id === m.user_id) ??
+        numeros.find((s) => !s.owner_user_id && s.display_name && semAcento(s.display_name) === semAcento(nome));
       return {
         id: m.user_id,
         nome,

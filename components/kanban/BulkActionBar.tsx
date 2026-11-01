@@ -19,7 +19,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { useUser } from "@/hooks/auth/AuthProvider";
+import { usePermission, useUser } from "@/hooks/auth/AuthProvider";
 import { useBulkAction } from "@/hooks/kanban/useBulkAction";
 import type { Stage } from "@/lib/kanban/types";
 
@@ -37,6 +37,7 @@ export function BulkActionBar({
   onClear,
 }: BulkActionBarProps) {
   const user = useUser();
+  const podeExcluir = usePermission("lead.delete");
   const bulk = useBulkAction(pipelineId);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [tagInput, setTagInput] = useState("");
@@ -176,14 +177,16 @@ export function BulkActionBar({
           </DropdownMenuContent>
         </DropdownMenu>
 
-        <Button
-          size="sm"
-          variant="destructive"
-          onClick={() => setConfirmDelete(true)}
-          disabled={bulk.isPending}
-        >
-          Excluir
-        </Button>
+        {podeExcluir && (
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => setConfirmDelete(true)}
+            disabled={bulk.isPending}
+          >
+            Excluir
+          </Button>
+        )}
 
         <Button size="sm" variant="ghost" onClick={onClear}>
           Cancelar

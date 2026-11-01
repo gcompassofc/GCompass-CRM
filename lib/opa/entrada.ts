@@ -13,6 +13,10 @@
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { mesclarCampos } from "./campos";
+import { carregarConfig } from "./config";
+
+/** Padrão da janela; a empresa muda em Configurações (config.volta_dias). */
 export const JANELA_VOLTA_DIAS = 90;
 
 export interface Entrada {
@@ -123,18 +127,14 @@ export async function registrarEntrada(admin: SupabaseClient, orgId: string, e: 
       const vez = (((cf.voltou as { vez?: number }) ?? {}).vez ?? 1) + 1;
       const tags = new Set(aberto.tags ?? []);
       if (im?.off_market) tags.add("off-market-comprador");
-      await admin
-        .from("crm_leads")
-        .update({
-          custom_fields: {
-            ...cf,
-            imoveis_interesse: [...interesse],
-            voltou: { em, vez, origem, imovel_codigo: im?.codigo ?? null },
-          },
-          tags: [...tags],
-          last_activity_at: em,
-        })
-        .eq("id", aberto.id);
+      // Só as chaves que mudam: o que o corretor gravou no meio (E1) não se perde.
+      await mesclarCampos(
+        admin,
+        aberto.id,
+        { imoveis_interesse: [...interesse], voltou: { em, vez, origem, imovel_codigo: im?.codigo ?? null } },
+        { atividade: em, orgId },
+      );
+      await admin.from("crm_leads").update({ tags: [...tags] }).eq("id", aberto.id);
       await admin.from("crm_lead_activities").insert({
         organization_id: orgId,
         lead_id: aberto.id,
@@ -149,7 +149,8 @@ export async function registrarEntrada(admin: SupabaseClient, orgId: string, e: 
       return { tipo: "voltou", leadId: aberto.id, donoId: aberto.owner_user_id!, vez };
     }
 
-    const limite = Date.now() - JANELA_VOLTA_DIAS * 86_400_000;
+    const { volta_dias } = await carregarConfig(admin, orgId);
+    const limite = Date.now() - volta_dias * 86_400_000;
     const recente = lista.find(
       (l) => l.status !== "open" && l.owner_user_id && l.closed_at && Date.parse(l.closed_at) >= limite,
     );

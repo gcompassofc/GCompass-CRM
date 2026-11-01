@@ -2,8 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
-import { carregarImoveis, carregarLeads } from "@/lib/opa/dados";
-import { afinidade, AFINIDADE_MINIMA, precoPrincipal } from "@/lib/opa/imoveis";
+import { carregarImoveis, carregarLeads, configDaOrg } from "@/lib/opa/dados";
+import { afinidade, precoPrincipal } from "@/lib/opa/imoveis";
 import { Bed, Buildings, Globe, HouseLine, Lock, MagnifyingGlass, MapPin, Ruler, Sparkle, Sun, Trophy, UserPlus, XCircle } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
 
@@ -32,7 +32,7 @@ export default async function ImoveisPage({
   if (!org) redirect("/app");
 
   const { regiao, q } = await searchParams;
-  const [imoveis, leads] = await Promise.all([carregarImoveis(org.orgId), carregarLeads(org.orgId)]);
+  const [imoveis, leads, config] = await Promise.all([carregarImoveis(org.orgId), carregarLeads(org.orgId), configDaOrg(org.orgId)]);
 
   const busca = (q ?? "").trim().toLowerCase();
   const daBusca = imoveis.filter(
@@ -49,8 +49,8 @@ export default async function ImoveisPage({
     let n = 0;
     for (const l of leads) {
       if (l.imoveisInteresse.includes(i.codigo)) continue;
-      const a = afinidade(i, { ...l.campos, imovelEntrada: porCodigo.get(l.imovelCodigo ?? "") ?? null });
-      if (a.pontos >= AFINIDADE_MINIMA) n++;
+      const a = afinidade(i, { ...l.campos, imovelEntrada: porCodigo.get(l.imovelCodigo ?? "") ?? null }, config.cruzamento.pesos);
+      if (a.pontos >= config.cruzamento.minimo) n++;
     }
     combinam.set(i.codigo, n);
   }

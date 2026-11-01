@@ -31,6 +31,8 @@ const config: VercelConfig = {
     { path: "/api/v1/cron/event-log-drain", schedule: "*/1 * * * *" },
     // CRM da OPA: copiloto relê as conversas com mensagem nova (lib/opa/analisar.ts).
     { path: "/api/v1/cron/opa-copiloto", schedule: "*/1 * * * *" },
+    // CRM da OPA: lembretes agendados, avisos de prazo, repasse da roleta (lib/opa/rotina-lembretes.ts).
+    { path: "/api/v1/cron/opa-lembretes", schedule: "*/1 * * * *" },
     // Cifra dos dados pessoais, fase 2 (lib/crypto/cifrar-pendentes.ts).
     { path: "/api/v1/cron/cifrar-dados", schedule: "*/1 * * * *" },
   ],

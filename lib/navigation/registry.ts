@@ -38,6 +38,7 @@ import {
   Signpost,
   Storefront,
   UserCircle,
+  WhatsappLogo,
   Users,
   UsersThree,
   WebhooksLogo,
@@ -225,6 +226,15 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     icon: PaperPlaneTilt,
     group: "atendimento",
     sidebar: true,
+    perfil: "imobiliaria",
+  },
+  {
+    href: "/app/meu-whatsapp",
+    label: "Meu WhatsApp",
+    description: "Conecte o seu número lendo um QR e veja se ele está no ar.",
+    icon: WhatsappLogo,
+    group: "atendimento",
+    minRole: "agent",
     perfil: "imobiliaria",
   },
   {
@@ -646,7 +656,7 @@ export function searchable(isPlatformAdmin: boolean, role: Role | null): NavDest
  * papel mínimo continuam vindo de NAV_DESTINATIONS.
  */
 export const MENU_IMOBILIARIA = {
-  principal: ["/app/hoje", "/app/fila", "/app/pipeline", "/app/leads", "/app/imoveis", "/app/lembretes", "/app/kit"],
+  principal: ["/app/hoje", "/app/fila", "/app/pipeline", "/app/leads", "/app/imoveis", "/app/lembretes", "/app/kit", "/app/meu-whatsapp"],
   configuracao: ["/app/conexoes", "/app/membros", "/app/integracoes", "/app/configuracoes"],
 };
 
@@ -654,7 +664,7 @@ export const MENU_IMOBILIARIA = {
  * Menu por papel (protótipo "Telas por permissão", 31/10/2026): o corretor vê só
  * o dia dele, sem Funis (move a etapa pela ficha); o gestor vê a equipe toda.
  */
-const MENU_CORRETOR = ["/app/hoje", "/app/fila", "/app/lembretes", "/app/leads", "/app/imoveis", "/app/kit"];
+const MENU_CORRETOR = ["/app/hoje", "/app/fila", "/app/lembretes", "/app/leads", "/app/imoveis", "/app/kit", "/app/meu-whatsapp"];
 const ROTULO_CORRETOR: Record<string, string> = { "/app/lembretes": "Agenda", "/app/leads": "Meus leads", "/app/fila": "Fila" };
 const ROTULO_GESTOR: Record<string, string> = {
   "/app/fila": "Fila da equipe",

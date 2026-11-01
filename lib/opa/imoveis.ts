@@ -7,7 +7,18 @@
 
 export const MEDIA_BASE = "https://media.opailhabela.com.br";
 export const SITE_BASE = "https://opailhabela.com.br";
+/** Mínimo padrão para o imóvel aparecer; a empresa muda em Integrações > Cruzamento (config.cruzamento.minimo). */
 export const AFINIDADE_MINIMA = 60;
+
+export interface PesosAfinidade {
+  bairro: number;
+  preco: number;
+  suites: number;
+  atributos: number;
+  demanda: number;
+}
+
+export const PESOS_PADRAO: PesosAfinidade = { bairro: 30, preco: 25, suites: 20, atributos: 15, demanda: 10 };
 
 export interface Imovel {
   id: string;
@@ -101,22 +112,27 @@ export interface Afinidade {
   motivos: string[];
 }
 
-export function afinidade(imovel: Imovel, perfil: PerfilLead): Afinidade {
+/**
+ * Afinidade de 0 a 100. Cada critério vale, por padrão, o peso do protótipo;
+ * com `pesos` (Integrações > Cruzamento) o ponto de cada critério é
+ * reescalado para o peso que a empresa definiu.
+ */
+export function afinidade(imovel: Imovel, perfil: PerfilLead, pesos: PesosAfinidade = PESOS_PADRAO): Afinidade {
   const motivos: string[] = [];
-  let pontos = 0;
+  const bruto: PesosAfinidade = { bairro: 0, preco: 0, suites: 0, atributos: 0, demanda: 0 };
 
   // Bairro e região (30)
   const regiaoLead = perfil.regiao ? semAcento(perfil.regiao) : "";
   const bairro = imovel.bairro ? semAcento(imovel.bairro) : "";
   const regiao = imovel.regiao ? semAcento(imovel.regiao) : "";
   if (bairro && regiaoLead.includes(bairro.split(" ")[0]!)) {
-    pontos += 30;
+    bruto.bairro = 30;
     motivos.push(`no bairro que pediu (${imovel.bairro})`);
   } else if (regiao && regiaoLead && (regiaoLead.includes(regiao.split(" ")[0]!) || regiao.includes(regiaoLead.split(" ")[0]!))) {
-    pontos += 22;
+    bruto.bairro = 22;
     motivos.push(`na região ${imovel.regiao}`);
   } else if (!regiaoLead && perfil.imovelEntrada?.regiao === imovel.regiao) {
-    pontos += 18;
+    bruto.bairro = 18;
     motivos.push("mesma região do imóvel de entrada");
   }
 
@@ -125,10 +141,10 @@ export function afinidade(imovel: Imovel, perfil: PerfilLead): Afinidade {
   const preco = imovel.preco_venda_cents;
   if (teto && preco) {
     if (preco <= teto && preco >= teto * 0.55) {
-      pontos += 25;
+      bruto.preco = 25;
       motivos.push("dentro da faixa");
     } else if (preco <= teto * 1.12 && preco >= teto * 0.4) {
-      pontos += 14;
+      bruto.preco = 14;
       motivos.push("perto da faixa");
     }
   }
@@ -137,13 +153,13 @@ export function afinidade(imovel: Imovel, perfil: PerfilLead): Afinidade {
   const minSuites = Number((perfil.suites ?? "").match(/\d+/)?.[0] ?? perfil.imovelEntrada?.suites ?? 0);
   if (minSuites && imovel.suites != null) {
     if (imovel.suites >= minSuites) {
-      pontos += 20;
+      bruto.suites = 20;
       motivos.push(`${imovel.suites} suítes`);
     } else if (imovel.suites === minSuites - 1) {
-      pontos += 8;
+      bruto.suites = 8;
     }
   } else if (!minSuites) {
-    pontos += 10;
+    bruto.suites = 10;
   }
 
   // Atributos (15): estilo de vida e inegociável contra as características.
@@ -163,11 +179,15 @@ export function afinidade(imovel: Imovel, perfil: PerfilLead): Afinidade {
       motivos.push(rotulo);
     }
   }
-  pontos += Math.min(15, atributos);
+  bruto.atributos = Math.min(15, atributos);
 
   // Demanda (10): imóvel ativo e no site conta como pronto para mandar.
-  if (imovel.status === "ativo") pontos += 10;
+  if (imovel.status === "ativo") bruto.demanda = 10;
 
+  const pontos = (Object.keys(bruto) as Array<keyof PesosAfinidade>).reduce(
+    (soma, k) => soma + (bruto[k] * (Number.isFinite(pesos[k]) ? Math.max(0, pesos[k]) : PESOS_PADRAO[k])) / PESOS_PADRAO[k],
+    0,
+  );
   return { pontos: Math.min(100, Math.round(pontos)), motivos };
 }
 

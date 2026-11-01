@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
+import { mesclarCampos } from "@/lib/opa/campos";
 import { carregarConfig, salvarConfig, type RegraLembrete, type Trilha } from "@/lib/opa/config";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -145,18 +146,8 @@ export async function cancelarAgendada(formData: FormData) {
 export async function religarLembretes(formData: FormData) {
   const leadId = String(formData.get("leadId") ?? "");
   const { org, supabase } = await contexto();
-  const { data } = await supabase
-    .from("crm_leads")
-    .select("custom_fields")
-    .eq("organization_id", org.orgId)
-    .eq("id", leadId)
-    .maybeSingle();
-  if (!data) return;
-  const cf = ((data as { custom_fields: Record<string, unknown> | null }).custom_fields ?? {}) as Record<string, unknown>;
-  const resto = { ...cf };
-  delete resto.lembretes_desligados;
-  delete resto.lembretes_desligados_em;
-  await supabase.from("crm_leads").update({ custom_fields: resto }).eq("id", leadId);
+  // Só as duas chaves saem; o resto do lead não é relido nem regravado (E1).
+  await mesclarCampos(supabase, leadId, {}, { remover: ["lembretes_desligados", "lembretes_desligados_em"], orgId: org.orgId });
   revalidatePath("/app/lembretes");
   revalidatePath(`/app/leads/${leadId}`);
 }

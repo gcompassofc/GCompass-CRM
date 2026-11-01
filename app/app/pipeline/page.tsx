@@ -132,7 +132,7 @@ export default async function PipelinePage({
       cartoes: daqui.map((l): CartaoQuadro => {
         const im = porCodigo.get(l.imovelCodigo ?? "");
         const parecidos = acervo.filter(
-          (i) => !l.imoveisInteresse.includes(i.codigo) && afinidade(i, { ...l.campos, imovelEntrada: im ?? null }).pontos >= config.cruzamento.minimo,
+          (i) => !l.imoveisInteresse.includes(i.codigo) && afinidade(i, { ...l.campos, imovelEntrada: im ?? null }, config.cruzamento.pesos).pontos >= config.cruzamento.minimo,
         ).length;
         return {
           id: l.id,

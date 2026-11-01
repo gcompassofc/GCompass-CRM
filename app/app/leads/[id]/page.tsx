@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { after } from "next/server";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
-import { analisarLead } from "@/lib/opa/analisar";
+import { lerEmSegundoPlano } from "@/lib/opa/analisar";
 import { carregarConfig } from "@/lib/opa/config";
 import { CAMPOS, ORDEM_CAMPOS } from "@/lib/opa/copiloto";
 import {
@@ -10,7 +11,6 @@ import {
   carregarEquipe,
   carregarImoveis,
   carregarLeads,
-  carregarLeadsSemCache,
   diagnosticoCompleto,
   primeiroNome,
   ROTULO_ORIGEM,
@@ -19,6 +19,7 @@ import {
 } from "@/lib/opa/dados";
 import { contarEtiquetas, etiquetasDoLead } from "@/lib/opa/etiquetas";
 import { afinidade, precoCheio, precoPrincipal } from "@/lib/opa/imoveis";
+import { SeloLendo } from "./_lendo";
 import { MontarSelecao } from "./_selecao";
 import { RegistrarLigacao } from "./_ligacao";
 import { proximaMensagem } from "@/lib/opa/mensagens";
@@ -66,6 +67,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { CabecalhoOpa, CorpoOpa } from "../../_opa/cabecalho";
+import { BotaoEnvio, FormComRetorno } from "../../_opa/form-com-retorno";
 import { FotoImovel } from "../../_opa/componentes";
 import { IlustraAgenda, IlustraCasa, IlustraConversa } from "../../_opa/ilustracoes";
 import { AbasPilula, Cartao, Chip, IconeRedondo, TituloBloco, Vazio, type Icone } from "../../_opa/ui";
@@ -196,16 +198,19 @@ export default async function LeadPage({
   const { aba = "resumo" } = await searchParams;
   const supabase = await createClient();
 
-  let [lead] = await carregarLeads(org.orgId, { leadId: id });
+  const [lead] = await carregarLeads(org.orgId, { leadId: id });
   if (!lead) notFound();
 
-  // A IA relê sozinha quando chegou mensagem depois da última leitura.
+  // A IA relê sozinha quando chegou mensagem depois da última leitura, mas a
+  // ficha não espera por ela (V1): abre na hora com a leitura anterior e o selo
+  // "Lendo a conversa", e a leitura roda depois que a resposta saiu.
   const ultimaMsg = lead.conversa?.ultimaEm ? Date.parse(lead.conversa.ultimaEm) : 0;
   const lidoEm = lead.copiloto.analisado_em ? Date.parse(lead.copiloto.analisado_em) : 0;
-  if (lead.conversa?.id && ultimaMsg > lidoEm) {
-    await analisarLead(supabase, org.orgId, id);
-    [lead] = await carregarLeadsSemCache(org.orgId, { leadId: id });
-    if (!lead) notFound();
+  const lendo = Boolean(lead.conversa?.id) && ultimaMsg > lidoEm;
+  if (lendo) {
+    const { data: sessao } = await supabase.auth.getSession();
+    const token = sessao.session?.access_token;
+    after(() => lerEmSegundoPlano(token, org.orgId, id));
   }
 
   const [
@@ -275,7 +280,7 @@ export default async function LeadPage({
   const perfil = { ...lead.campos, imovelEntrada: entrada };
   const combinam = disponiveis
     .filter((i) => !lead.imoveisInteresse.includes(i.codigo))
-    .map((i) => ({ i, a: afinidade(i, perfil) }))
+    .map((i) => ({ i, a: afinidade(i, perfil, config.cruzamento.pesos) }))
     .filter((x) => x.a.pontos >= config.cruzamento.minimo)
     .sort((x, y) => y.a.pontos - x.a.pontos);
 
@@ -503,7 +508,14 @@ export default async function LeadPage({
                     </form>
                   }
                 />
-                <p className="mt-5 text-[17px] leading-relaxed text-white/90">{lead.copiloto.resumo ?? "Ainda não li esta conversa."}</p>
+                {lendo && (
+                  <div className="mt-4">
+                    <SeloLendo />
+                  </div>
+                )}
+                <p className="mt-5 text-[17px] leading-relaxed text-white/90">
+                  {lead.copiloto.resumo ?? (lendo ? "Lendo a conversa agora. Este resumo aparece em instantes." : "Ainda não li esta conversa.")}
+                </p>
                 {lead.copiloto.proximoPasso && aberto && (
                   <p className="mt-4 flex items-start gap-2.5 rounded-[18px] bg-white/10 px-4 py-3 text-[14px] text-white">
                     <ArrowRight className="mt-0.5 size-4 shrink-0 text-[#8fc4dd]" weight="bold" /> {lead.copiloto.proximoPasso}
@@ -530,7 +542,7 @@ export default async function LeadPage({
                         const I = ICONE_CAMPO[s.campo] ?? Tag;
                         return (
                           <li key={s.id} className="rounded-[20px] bg-white/[0.07] p-4">
-                            <form action={confirmarSugestao} className="flex flex-col gap-2.5">
+                            <FormComRetorno action={confirmarSugestao} sucesso="Anotado no lead." className="flex flex-col gap-2.5">
                               <input type="hidden" name="id" value={s.id} />
                               <div className="flex items-center justify-between gap-2">
                                 <span className="flex items-center gap-1.5 text-[12px] font-medium text-white/60">
@@ -545,30 +557,31 @@ export default async function LeadPage({
                                   aria-label={CAMPOS[s.campo]?.rotulo ?? s.campo}
                                   className="h-11 min-w-0 flex-1 rounded-[14px] border border-transparent bg-white/10 px-3.5 text-[15px] font-medium text-white outline-none focus:border-[#8fc4dd]"
                                 />
-                                <button
-                                  type="submit"
+                                <BotaoEnvio
                                   title="Confirmar"
                                   aria-label="Confirmar anotação"
+                                  tamanhoIcone="size-5"
                                   className="flex size-11 shrink-0 items-center justify-center rounded-full bg-[#2a7ca8] text-white hover:bg-[#3a8cb8]"
                                 >
                                   <Check className="size-5" weight="bold" />
-                                </button>
-                                <button
-                                  type="submit"
-                                  formAction={descartarSugestao}
+                                </BotaoEnvio>
+                                <BotaoEnvio
+                                  acao={descartarSugestao}
+                                  sucesso="Anotação descartada."
                                   title="Descartar"
                                   aria-label="Descartar anotação"
+                                  tamanhoIcone="size-5"
                                   className="flex size-11 shrink-0 items-center justify-center rounded-full bg-white/10 text-white/80 hover:bg-white/15"
                                 >
                                   <X className="size-5" />
-                                </button>
+                                </BotaoEnvio>
                               </div>
                               {s.evidencia && (
                                 <p className="flex items-start gap-1.5 text-[12px] italic text-white/55">
                                   <ChatText className="mt-0.5 size-3.5 shrink-0 not-italic" /> “{s.evidencia}”
                                 </p>
                               )}
-                            </form>
+                            </FormComRetorno>
                           </li>
                         );
                       })}
@@ -714,12 +727,12 @@ export default async function LeadPage({
                     {lead.lembretesDesligados ? <BellSlash className="size-5 text-[#5b7284]" /> : <Bell className="size-5 text-[#2a7ca8]" />}
                     {lead.lembretesDesligados ? "Avisos desligados" : "OPA Lembretes avisa nos prazos"}
                   </p>
-                  <form action={alternarLembretes}>
+                  <FormComRetorno action={alternarLembretes} sucesso={lead.lembretesDesligados ? "Avisos ligados." : "Avisos desligados."}>
                     <input type="hidden" name="leadId" value={lead.id} />
-                    <button type="submit" className="h-9 rounded-full bg-[#eef3f6] px-4 text-[13px] font-semibold text-[#0a2d40] hover:bg-[#e7f0f5]">
+                    <BotaoEnvio className="inline-flex h-9 items-center gap-1.5 rounded-full bg-[#eef3f6] px-4 text-[13px] font-semibold text-[#0a2d40] hover:bg-[#e7f0f5]">
                       {lead.lembretesDesligados ? "Ligar" : "Desligar"}
-                    </button>
-                  </form>
+                    </BotaoEnvio>
+                  </FormComRetorno>
                 </div>
               </Cartao>
             </div>
@@ -752,12 +765,11 @@ export default async function LeadPage({
                           {opcoes.map((o) => {
                             const m = marcadas.find((x) => x.valor === o);
                             return (
-                              <form key={o} action={alternarEtiqueta}>
+                              <FormComRetorno key={o} action={alternarEtiqueta} sucesso={m ? `Etiqueta ${o} tirada.` : `Etiqueta ${o} marcada.`}>
                                 <input type="hidden" name="leadId" value={lead.id} />
                                 <input type="hidden" name="grupo" value={g.chave} />
                                 <input type="hidden" name="valor" value={o} />
-                                <button
-                                  type="submit"
+                                <BotaoEnvio
                                   disabled={m?.auto}
                                   aria-pressed={Boolean(m)}
                                   title={m?.auto ? "Veio do imóvel ou da conversa" : m ? "Desmarcar" : "Marcar"}
@@ -770,8 +782,8 @@ export default async function LeadPage({
                                   {m?.auto && <Sparkle className="size-3.5 text-[#8fc4dd]" weight="fill" />}
                                   {m && !m.auto && <Check className="size-3.5" weight="bold" />}
                                   {o}
-                                </button>
-                              </form>
+                                </BotaoEnvio>
+                              </FormComRetorno>
                             );
                           })}
                         </div>
@@ -793,7 +805,7 @@ export default async function LeadPage({
                 titulo={compradores ? "Campos do corretor" : "Proprietário"}
                 sub="O que não é imóvel e vale lembrar"
               />
-              <form action={salvarCamposCorretor} className="mt-5 flex flex-col gap-4">
+              <FormComRetorno action={salvarCamposCorretor} sucesso="Campos salvos." className="mt-5 flex flex-col gap-4">
                 <input type="hidden" name="leadId" value={lead.id} />
                 {(compradores ? config.campos_lead : config.campos_proprietario).map((c) => {
                   const cls =
@@ -822,13 +834,13 @@ export default async function LeadPage({
                     </label>
                   );
                 })}
-                <button
-                  type="submit"
+                <BotaoEnvio
+                  enviando="Salvando"
                   className="mt-1 inline-flex h-11 items-center gap-2 self-start rounded-full bg-[#0a2d40] px-5 text-[14px] font-semibold text-white hover:bg-[#12455f]"
                 >
                   <Check className="size-4" weight="bold" /> Salvar campos
-                </button>
-              </form>
+                </BotaoEnvio>
+              </FormComRetorno>
             </Cartao>
           </div>
         )}
@@ -1075,7 +1087,7 @@ function Diagnostico({
           {(Object.keys(CAMPOS) as Array<keyof typeof CAMPOS>).map((k) => {
             const I = ICONE_CAMPO[k] ?? Tag;
             return (
-              <form key={k} action={editarCampo} className="flex items-center gap-2.5">
+              <FormComRetorno key={k} action={editarCampo} sucesso={`${CAMPOS[k].rotulo} salvo.`} className="flex items-center gap-2.5">
                 <input type="hidden" name="leadId" value={leadId} />
                 <input type="hidden" name="campo" value={k} />
                 <span
@@ -1100,15 +1112,14 @@ function Diagnostico({
                     className="mt-0.5 h-10 w-full rounded-[12px] border border-transparent bg-[#f2f6f9] px-3 text-[14px] text-[#0a2d40] outline-none focus:border-[#8fc4dd] focus:bg-white"
                   />
                 </label>
-                <button
-                  type="submit"
+                <BotaoEnvio
                   title="Salvar"
                   aria-label={`Salvar ${CAMPOS[k].rotulo}`}
                   className="mt-4 flex size-10 shrink-0 items-center justify-center rounded-full bg-[#eef3f6] text-[#0a2d40] hover:bg-[#0a2d40] hover:text-white"
                 >
                   <Check className="size-4" weight="bold" />
-                </button>
-              </form>
+                </BotaoEnvio>
+              </FormComRetorno>
             );
           })}
         </div>
@@ -1139,7 +1150,7 @@ function Diagnostico({
                       <Sparkle className="size-3.5" weight="fill" /> A IA anotou: confirme no copiloto
                     </p>
                   ) : (
-                    <form action={editarCampo} className="flex items-center gap-1.5">
+                    <FormComRetorno action={editarCampo} sucesso={`${CAMPOS[k].rotulo} salvo.`} className="flex items-center gap-1.5">
                       <input type="hidden" name="leadId" value={leadId} />
                       <input type="hidden" name="campo" value={k} />
                       <input
@@ -1149,15 +1160,14 @@ function Diagnostico({
                         aria-label={CAMPOS[k].rotulo}
                         className="h-9 min-w-0 flex-1 rounded-[10px] bg-[#f2f6f9] px-2.5 text-[13px] outline-none focus:bg-white focus:ring-1 focus:ring-[#8fc4dd]"
                       />
-                      <button
-                        type="submit"
+                      <BotaoEnvio
                         title="Salvar"
                         aria-label={`Salvar ${CAMPOS[k].rotulo}`}
                         className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#0a2d40] text-white"
                       >
                         <Check className="size-4" weight="bold" />
-                      </button>
-                    </form>
+                      </BotaoEnvio>
+                    </FormComRetorno>
                   )}
                 </div>
               );

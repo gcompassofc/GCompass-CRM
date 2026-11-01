@@ -11,7 +11,6 @@ import Link from "next/link";
 import { carregarConfig } from "@/lib/opa/config";
 import { CAMPOS, type CampoCopiloto } from "@/lib/opa/copiloto";
 import {
-  carregarPrimeiraResposta,
   COMISSAO_OPA,
   diagnosticoCompleto,
   prazoDoLead,
@@ -23,7 +22,8 @@ import {
   type Venda,
 } from "@/lib/opa/dados";
 import { precoCompacto, precoPrincipal, type Imovel } from "@/lib/opa/imoveis";
-import { diaSP, inicioDoDia, noIntervalo, somarDias, type Periodo } from "@/lib/opa/periodo";
+import { carregarNumerosDoInicio } from "@/lib/opa/inicio";
+import { diaSP, inicioDoDia, somarDias, type Periodo } from "@/lib/opa/periodo";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
 import {
@@ -52,6 +52,7 @@ import {
   X,
 } from "@/lib/ui/icons";
 
+import { BotaoEnvio, FormComRetorno } from "../_opa/form-com-retorno";
 import { confirmarSugestao, descartarSugestao } from "../leads/actions";
 import { FotoImovel } from "../_opa/componentes";
 import { IlustraAgenda, IlustraCalma } from "../_opa/ilustracoes";
@@ -164,10 +165,11 @@ export async function VisaoCorretor({
   const hoje = diaSP(agora);
   const inicio = new Date(inicioDoDia(hoje)).toISOString();
   const fim = new Date(inicioDoDia(somarDias(hoje, 1))).toISOString();
-  const semana = agora - 7 * DIA_MS;
-  const daSemana = leads.filter((l) => Date.parse(l.criadoEm) >= semana);
+  // "No prazo na semana": os sete dias até hoje, contando o prazo e o horário de atendimento de Configurações.
+  const deSemana = inicioDoDia(somarDias(hoje, -6));
+  const ateSemana = inicioDoDia(somarDias(hoje, 1));
 
-  const [{ data: visitasRaw }, { count: lembretes }, { data: sugRaw }, respostas] = await Promise.all([
+  const [{ data: visitasRaw }, { count: lembretes }, { data: sugRaw }, config] = await Promise.all([
     supabase
       .from("visitas")
       .select("id, quando, imovel_codigo, lead_id")
@@ -190,17 +192,17 @@ export async function VisaoCorretor({
       .eq("status", "pendente")
       .order("created_at", { ascending: false })
       .limit(4),
-    carregarPrimeiraResposta(orgId, daSemana.map((l) => l.contatoId)),
+    carregarConfig(supabase, orgId),
   ]);
+  const { avaliados, noPrazo } = await carregarNumerosDoInicio(
+    orgId,
+    { de: deSemana, ate: ateSemana, anterior: { de: deSemana - (ateSemana - deSemana), ate: deSemana } },
+    config,
+    { corretor: userId },
+  );
   const visitas = (visitasRaw ?? []) as Array<{ id: string; quando: string; imovel_codigo: string | null; lead_id: string }>;
   const porId = new Map(leads.map((l) => [l.id, l]));
   const sugestoes = ((sugRaw ?? []) as Array<{ id: string; lead_id: string; campo: string; valor: string }>).filter((s) => porId.has(s.lead_id));
-
-  const avaliados = daSemana.filter((l) => respostas.get(l.contatoId) != null || foraDoPrazo(l) || !l.conversa?.id);
-  const noPrazo = avaliados.filter((l) => {
-    const m = respostas.get(l.contatoId);
-    return m != null && m <= prazoDoLead(l);
-  }).length;
 
   // Fila de hoje: quem espera (menos o do destaque) e os novos ainda sem conversa.
   const novo = (l: LeadOpa) => l.etapa.slug === "lead-recebido" || agora - Date.parse(l.criadoEm) < DIA_MS;
@@ -233,7 +235,7 @@ export async function VisaoCorretor({
         <Atalho
           href="/app/fila"
           icone={Target}
-          valor={avaliados.length ? `${noPrazo} de ${avaliados.length}` : "0"}
+          valor={avaliados ? `${noPrazo} de ${avaliados}` : "0"}
           rotulo="No prazo na semana"
           contexto={`meta: ${META_RESPOSTA}%`}
         />
@@ -336,26 +338,25 @@ export async function VisaoCorretor({
                       <span className="text-[#5b7284]"> · {CAMPOS[s.campo as CampoCopiloto]?.rotulo ?? s.campo}: </span>
                       {s.valor}
                     </Link>
-                    <form action={confirmarSugestao}>
+                    <FormComRetorno action={confirmarSugestao} sucesso="Anotado no lead.">
                       <input type="hidden" name="id" value={s.id} />
-                      <button
-                        type="submit"
+                      <BotaoEnvio
                         aria-label={`Confirmar: ${s.valor}`}
+                        tamanhoIcone="size-4"
                         className="flex size-11 items-center justify-center rounded-full bg-[#12455f] text-white hover:bg-[#0a2d40]"
                       >
                         <Check className="size-4" weight="bold" />
-                      </button>
-                    </form>
-                    <form action={descartarSugestao}>
+                      </BotaoEnvio>
+                    </FormComRetorno>
+                    <FormComRetorno action={descartarSugestao} sucesso="Anotação descartada.">
                       <input type="hidden" name="id" value={s.id} />
-                      <button
-                        type="submit"
+                      <BotaoEnvio
                         aria-label={`Descartar: ${s.valor}`}
                         className="flex size-11 items-center justify-center rounded-full bg-white text-[#5b7284] hover:bg-[#e3eff6]"
                       >
                         <X className="size-4" weight="bold" />
-                      </button>
-                    </form>
+                      </BotaoEnvio>
+                    </FormComRetorno>
                   </li>
                 ))}
               </ul>
@@ -563,6 +564,7 @@ export async function VisaoGestor({
   veReceita,
   admin,
   orgId,
+  corretor,
 }: {
   leads: LeadOpa[];
   equipe: Map<string, Pessoa>;
@@ -571,21 +573,22 @@ export async function VisaoGestor({
   veReceita: boolean;
   admin: boolean;
   orgId: string;
+  /** "?corretor=": gestor vendo a operação de uma pessoa. */
+  corretor?: string | null;
 }) {
   const supabase = await createClient();
   const fila = esperando(leads);
   const atrasados = fila.filter(foraDoPrazo);
   const semDono = leads.filter((l) => !l.donoId);
-  const novos = leads.filter((l) => noIntervalo(l.criadoEm, periodo));
-  const novosAntes = leads.filter((l) => noIntervalo(l.criadoEm, periodo.anterior)).length;
 
   const hoje = diaSP(new Date().getTime());
   const inicioHoje = new Date(inicioDoDia(hoje)).toISOString();
   const fimHoje = new Date(inicioDoDia(somarDias(hoje, 1))).toISOString();
 
-  const [respostas, config, { data: sessoesRaw }, { count: visitasAgendadas }, { count: visitasHoje }] = await Promise.all([
-    carregarPrimeiraResposta(orgId, novos.map((l) => l.contatoId)),
-    carregarConfig(supabase, orgId),
+  const config = await carregarConfig(supabase, orgId);
+  const [numeros, { data: sessoesRaw }, { count: visitasAgendadas }, { count: visitasHoje }] = await Promise.all([
+    // Leads novos de todos os status e a primeira resposta por lead (lib/opa/inicio.ts).
+    carregarNumerosDoInicio(orgId, periodo, config, { corretor }),
     supabase.from("channel_sessions").select("display_name, status").eq("organization_id", orgId).is("archived_at", null),
     supabase.from("visitas").select("id", { count: "exact", head: true }).eq("organization_id", orgId).eq("status", "agendada").gte("quando", inicioHoje),
     supabase
@@ -597,14 +600,9 @@ export async function VisaoGestor({
       .lt("quando", fimHoje),
   ]);
 
-  // Lead sem conversa conta como não respondido (antes inflava o percentual).
-  const avaliados = novos.filter((l) => respostas.get(l.contatoId) != null || foraDoPrazo(l) || !l.conversa?.id);
-  const noPrazo = avaliados.filter((l) => {
-    const m = respostas.get(l.contatoId);
-    return m != null && m <= prazoDoLead(l);
-  }).length;
-  const pctPrazo = avaliados.length ? Math.round((noPrazo / avaliados.length) * 100) : 0;
-  const variacao = novos.length - novosAntes;
+  const { novos, novosAntes, avaliados, noPrazo } = numeros;
+  const pctPrazo = avaliados ? Math.round((noPrazo / avaliados) * 100) : 0;
+  const variacao = novos - novosAntes;
   const comissao = vendas.reduce((s, v) => s + v.comissaoCents, 0);
   const vgvVendido = vendas.reduce((s, v) => s + v.vgvCents, 0);
   const carteira = leads.filter((l) => l.imovelCodigo).reduce((s, l) => s + (l.valorCents ?? 0), 0);
@@ -686,7 +684,7 @@ export async function VisaoGestor({
         <CartaoNumero
           icone={UserPlus}
           rotulo={`Leads novos · ${["7d", "30d", "90d"].includes(periodo.chave) ? `${periodo.dias} dias` : periodo.rotulo.toLowerCase()}`}
-          valor={novos.length}
+          valor={novos}
           contexto={`${variacao >= 0 ? "+" : ""}${variacao} contra o período anterior`}
           href="/app/leads"
         />
@@ -694,8 +692,8 @@ export async function VisaoGestor({
           icone={Target}
           rotulo="Respondidos no prazo"
           valor={`${pctPrazo}%`}
-          alerta={avaliados.length > 0 && pctPrazo < META_RESPOSTA}
-          contexto={`meta ${META_RESPOSTA}% · ${noPrazo} de ${avaliados.length}`}
+          alerta={avaliados > 0 && pctPrazo < META_RESPOSTA}
+          contexto={`meta ${META_RESPOSTA}% · ${noPrazo} de ${avaliados}`}
         />
         {admin ? (
           <CartaoNumero

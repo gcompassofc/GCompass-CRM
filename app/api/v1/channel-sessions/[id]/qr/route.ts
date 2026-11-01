@@ -17,12 +17,17 @@
  * irmãs (conectar oficial, reconectar, retomar o onboarding) decidem, esta
  * faltava.
  *
+ * O QR religa um número, então ele só abre para o DONO da sessão (o corretor que
+ * a conectou) e para o administrador. Qualquer outro membro recebe 403, mesmo
+ * conhecendo o id: sem isso um corretor escanearia o QR do colega.
+ *
  * Canal OFICIAL também não passa daqui: ele não tem sessão no transporte (nem QR
  * a mostrar), e o `null` seguia para a URL como se fosse nome de sessão.
  */
 import { NextResponse } from "next/server";
 
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
+import { podeAbrirQr } from "@/lib/channels/dono";
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "@/lib/channels/archived";
 import { createClient } from "@/lib/supabase/server";
 
@@ -51,14 +56,18 @@ export async function GET(
   // arquivado, e exigir a coluna aqui apagaria o QR de quem está pareando agora
   // — o passo mais frágil da primeira instalação.
   const { data: sessionRaw } = await queryTolerantToMissingArchived(
-    () => buscar(`waha_session_name, ${ARCHIVED_AT}`),
-    () => buscar("waha_session_name"),
+    () => buscar(`waha_session_name, owner_user_id, ${ARCHIVED_AT}`),
+    () => buscar("waha_session_name, owner_user_id"),
   );
   const session = sessionRaw as {
     waha_session_name: string | null;
+    owner_user_id: string | null;
     archived_at?: string | null;
   } | null;
   if (!session) return new NextResponse(null, { status: 404 });
+  if (!podeAbrirQr({ papel: activeOrg.role, souPlatformAdmin: user.is_platform_admin, userId: user.id, donoDaSessao: session.owner_user_id })) {
+    return new NextResponse(null, { status: 403, headers: { "x-channel-state": "not-owner" } });
+  }
   // 409, não 404: o canal ESTÁ na organização — foi excluído. O corpo é vazio
   // porque quem consome isto é um <img>; o cabeçalho é para quem depura.
   if (session.archived_at) {

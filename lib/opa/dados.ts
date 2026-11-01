@@ -3,6 +3,8 @@ import { cache } from "react";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
+import { esperaDesde, esperaEmMinutos } from "./atendimento";
+import { carregarConfig } from "./config";
 import type { Imovel } from "./imoveis";
 import { emLotes, todasAsPaginas } from "./lotes";
 
@@ -15,7 +17,7 @@ import { emLotes, todasAsPaginas } from "./lotes";
  * (lib/opa/lotes.ts); erro de consulta derruba a tela em vez de virar lista vazia.
  */
 
-/** Prazo de primeira resposta, em minutos (regra da OPA: pago 1 h, orgânico 3 h). */
+/** Prazo de primeira resposta padrão, em minutos (regra da OPA: pago 1 h, orgânico 3 h). A empresa muda em Configurações > Prazos. */
 export const PRAZO_PAGO_MIN = 60;
 export const PRAZO_ORGANICO_MIN = 180;
 
@@ -96,11 +98,13 @@ export interface LeadOpa {
   lembretesDesligados: boolean;
   proprio: boolean;
   criadoEm: string;
+  /** Prazo de primeira resposta deste lead, em minutos (Configurações > Prazos, pago ou orgânico). */
+  prazoMin: number;
   conversa: {
     id: string;
     ultimaEm: string | null;
     previa: string | null;
-    /** Minutos desde a mensagem do lead que ainda não teve resposta; null = não está esperando. */
+    /** Minutos de atendimento (só o horário de atendimento conta) desde a mensagem do lead sem resposta; null = não está esperando. */
     esperandoMin: number | null;
   } | null;
   pendentes: number;
@@ -128,12 +132,13 @@ type LinhaLead = {
   custom_fields: Record<string, unknown> | null;
   contact_id: string;
   created_at: string;
+  assigned_at: string | null;
   contacts: { name: string | null; phone_number: string | null } | null;
   crm_stages: { name: string; slug: string; color: string | null; position: number } | null;
 };
 
-export function prazoDoLead(l: Pick<LeadOpa, "pago">): number {
-  return l.pago ? PRAZO_PAGO_MIN : PRAZO_ORGANICO_MIN;
+export function prazoDoLead(l: Pick<LeadOpa, "prazoMin">): number {
+  return l.prazoMin;
 }
 
 /**
@@ -166,7 +171,7 @@ export async function carregarLeadsSemCache(
     let c = supabase
       .from("crm_leads")
       .select(
-        "id, title, status, stage_id, pipeline_id, owner_user_id, value_cents, source, tags, custom_fields, contact_id, created_at, contacts(name, phone_number), crm_stages(name, slug, color, position)",
+        "id, title, status, stage_id, pipeline_id, owner_user_id, value_cents, source, tags, custom_fields, contact_id, created_at, assigned_at, contacts(name, phone_number), crm_stages(name, slug, color, position)",
       )
       .eq("organization_id", orgId);
     // A ficha abre também negócio ganho ou perdido; as listas só mostram os abertos.
@@ -186,7 +191,8 @@ export async function carregarLeadsSemCache(
   if (leads.length === 0) return [];
 
   const contatos = [...new Set(leads.map((l) => l.contact_id))];
-  const [conversas, pend] = await Promise.all([
+  const [config, conversas, pend] = await Promise.all([
+    carregarConfig(supabase, orgId),
     emLotes(contatos, (lote) =>
       supabase
         .from("conversations")
@@ -206,26 +212,16 @@ export async function carregarLeadsSemCache(
     pendPorLead.set(p.lead_id, (pendPorLead.get(p.lead_id) ?? 0) + 1);
   }
 
-  const convPorContato = new Map<string, LeadOpa["conversa"]>();
-  const agora = Date.now();
-  for (const c of (conversas ?? []) as Array<{
+  type ConversaBruta = {
     id: string;
-    contact_id: string;
     last_message_at: string | null;
     last_message_preview: string | null;
     last_inbound_at: string | null;
     last_outbound_at: string | null;
-  }>) {
-    const entrou = c.last_inbound_at ? Date.parse(c.last_inbound_at) : null;
-    const saiu = c.last_outbound_at ? Date.parse(c.last_outbound_at) : null;
-    const esperando = entrou !== null && (saiu === null || entrou > saiu);
-    convPorContato.set(c.contact_id, {
-      id: c.id,
-      ultimaEm: c.last_message_at,
-      previa: c.last_message_preview,
-      esperandoMin: esperando ? Math.round((agora - entrou) / 60_000) : null,
-    });
-  }
+  };
+  const convPorContato = new Map<string, ConversaBruta>();
+  const agora = Date.now();
+  for (const c of (conversas ?? []) as Array<ConversaBruta & { contact_id: string }>) convPorContato.set(c.contact_id, c);
 
   return leads.map((l) => {
     const cf = (l.custom_fields ?? {}) as Record<string, unknown>;
@@ -234,34 +230,34 @@ export async function carregarLeadsSemCache(
     const voltou = (cf.voltou as VoltouInfo | undefined) ?? null;
     const interesse = new Set<string>((cf.imoveis_interesse as string[] | undefined) ?? []);
     if (cf.imovel_codigo) interesse.add(cf.imovel_codigo as string);
-    let conversa = convPorContato.get(l.contact_id) ?? null;
-    // Lead que voltou por formulário espera resposta desde a volta, mesmo
-    // que a última mensagem da conversa tenha sido do corretor.
-    if (voltou?.em) {
-      const voltouMin = Math.round((agora - Date.parse(voltou.em)) / 60_000);
-      const ultimaSaida = conversa?.ultimaEm ? Date.parse(conversa.ultimaEm) : 0;
-      if (Date.parse(voltou.em) > ultimaSaida || conversa?.esperandoMin != null) {
-        conversa = {
-          id: conversa?.id ?? "",
-          ultimaEm: conversa?.ultimaEm ?? voltou.em,
-          previa: conversa?.previa ?? "Voltou por outro formulário",
-          esperandoMin: Math.max(conversa?.esperandoMin ?? 0, voltouMin),
-        };
-      }
-    }
-    // "Respondi" na fila: o lead desce para o fim até escrever de novo.
-    const respondidoEm = cf.respondido_em ? Date.parse(cf.respondido_em as string) : 0;
-    if (conversa?.esperandoMin != null && respondidoEm >= agora - conversa.esperandoMin * 60_000) {
-      conversa = { ...conversa, esperandoMin: null };
-    }
-    // Lead que entrou pelo site ou formulário e ainda não tem conversa espera o
-    // primeiro contato desde que entrou.
-    if (!conversa && l.status === "open" && !respondidoEm) {
+    const pago = l.source === "meta" || tags.includes("pago");
+    const bruta = convPorContato.get(l.contact_id) ?? null;
+    // Desde quando espera resposta: mensagem do lead sem resposta, volta por
+    // formulário, "Respondi" ou ligação (tiram da fila), lead novo sem conversa
+    // e relógio novo quando o lead muda de corretor. Os minutos contam só o
+    // horário de atendimento (lib/opa/atendimento.ts).
+    const desde = esperaDesde({
+      status: l.status,
+      criadoEm: l.created_at,
+      atribuidoEm: l.assigned_at,
+      voltouEm: voltou?.em,
+      respondidoEm: cf.respondido_em as string | undefined,
+      temConversa: bruta !== null,
+      ultimaMensagemEm: bruta?.last_message_at,
+      ultimaEntradaEm: bruta?.last_inbound_at,
+      ultimaSaidaEm: bruta?.last_outbound_at,
+    });
+    const esperandoMin = desde !== null ? esperaEmMinutos(desde, agora, config.horario) : null;
+    let conversa: LeadOpa["conversa"] = bruta
+      ? { id: bruta.id, ultimaEm: bruta.last_message_at, previa: bruta.last_message_preview, esperandoMin }
+      : null;
+    if (!conversa && desde !== null) {
+      // Lead que entrou pelo site ou formulário e ainda não tem conversa.
       conversa = {
         id: "",
-        ultimaEm: l.created_at,
-        previa: "Lead novo, ainda sem conversa",
-        esperandoMin: Math.round((agora - Date.parse(l.created_at)) / 60_000),
+        ultimaEm: voltou?.em ?? l.created_at,
+        previa: voltou ? "Voltou por outro formulário" : "Lead novo, ainda sem conversa",
+        esperandoMin,
       };
     }
     return {
@@ -281,7 +277,8 @@ export async function carregarLeadsSemCache(
       pipelineId: l.pipeline_id,
       donoId: l.owner_user_id,
       valorCents: l.value_cents,
-      pago: l.source === "meta" || (l.tags ?? []).includes("pago"),
+      pago,
+      prazoMin: pago ? config.prazos.pago_min : config.prazos.organico_min,
       origem: (cf.origem as OrigemLead) ?? { canal: l.source ?? undefined },
       campos: (cf.opa as CamposOpa) ?? {},
       etiquetas: (cf.etiquetas as Record<string, string[]>) ?? {},

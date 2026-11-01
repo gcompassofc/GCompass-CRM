@@ -163,6 +163,8 @@ checa(!signup.erro && [302, 303, 307, 308].includes(signup.status) && /\/login/.
 
 const semSegredo = await buscar(`${APP}/api/v1/cron/cifrar-dados`);
 checa(semSegredo.status === 403, "rotina recusa quem não tem o segredo", `status ${semSegredo.status ?? semSegredo.erro}`);
+const lembretesSemSegredo = await buscar(`${APP}/api/v1/cron/opa-lembretes`);
+checa(lembretesSemSegredo.status === 403, "rotina de lembretes recusa quem não tem o segredo", `status ${lembretesSemSegredo.status ?? lembretesSemSegredo.erro}`);
 const cifra = await buscar(`${APP}/api/v1/cron/cifrar-dados`, { headers: { authorization: `Bearer ${env.INTERNAL_CRON_SECRET || env.INTERNAL_SECRET}` } });
 const cifraCorpo = cifra.erro || !cifra.ok ? {} : await cifra.json();
 checa(cifraCorpo?.data?.configurada === true, "app com as chaves da cifra", `resposta ${cifra.status ?? cifra.erro}: confira PII_* no .env do servidor`);

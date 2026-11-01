@@ -1,0 +1,30 @@
+import { redirect } from "next/navigation";
+
+import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
+import { WhatsappLogo } from "@/lib/ui/icons";
+
+import { CabecalhoOpa, CorpoOpa } from "../_opa/cabecalho";
+import { estadoMeuWhatsapp } from "./actions";
+import { MeuWhatsappCliente } from "./_cliente";
+
+export const dynamic = "force-dynamic";
+export const metadata = { title: "Meu WhatsApp" };
+
+export default async function MeuWhatsappPage() {
+  const user = await requireAuth();
+  const org = await resolveActiveOrg(user);
+  if (!org) redirect("/app");
+  // Leitura não atende cliente.
+  if (org.role === "viewer") redirect("/app/hoje");
+
+  const inicial = await estadoMeuWhatsapp();
+
+  return (
+    <>
+      <CabecalhoOpa secao="Seu espaço" titulo="Meu WhatsApp" subtitulo="Conecte o seu número e veja se ele está no ar" icone={WhatsappLogo} equipe={false} ferramentas={false} />
+      <CorpoOpa>
+        <MeuWhatsappCliente inicial={inicial} />
+      </CorpoOpa>
+    </>
+  );
+}

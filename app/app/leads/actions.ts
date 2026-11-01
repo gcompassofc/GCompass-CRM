@@ -4,9 +4,11 @@ import { revalidatePath } from "next/cache";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { analisarLead } from "@/lib/opa/analisar";
+import { mesclarCampos, type OpcoesMescla } from "@/lib/opa/campos";
 import { carregarConfig } from "@/lib/opa/config";
 import { CAMPOS } from "@/lib/opa/copiloto";
 import { CAMPOS_DIAGNOSTICO } from "@/lib/opa/dados";
+import { faltaNaFicha } from "@/lib/opa/visita";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -24,20 +26,8 @@ async function contexto() {
 
 async function gravarCampo(leadId: string, campo: string, valor: string) {
   const { org, supabase } = await contexto();
-  const { data: lead } = await supabase
-    .from("crm_leads")
-    .select("custom_fields")
-    .eq("organization_id", org.orgId)
-    .eq("id", leadId)
-    .maybeSingle();
-  if (!lead) throw new Error("Lead não encontrado.");
-  const cf = ((lead as { custom_fields: Record<string, unknown> | null }).custom_fields ?? {}) as Record<string, unknown>;
-  const opa = { ...((cf.opa as Record<string, string>) ?? {}), [campo]: valor };
-  const { error } = await supabase
-    .from("crm_leads")
-    .update({ custom_fields: { ...cf, opa }, last_activity_at: new Date().toISOString() })
-    .eq("id", leadId);
-  if (error) throw new Error(error.message);
+  // Só a chave `opa.<campo>` é gravada; o resto do lead não é relido nem regravado.
+  await mesclarCampos(supabase, leadId, { opa: { [campo]: valor } }, { mesclar: ["opa"], atividade: new Date().toISOString(), orgId: org.orgId });
 }
 
 /** Confirma a anotação da IA, com o valor que ela sugeriu ou com o que o corretor corrigiu. */
@@ -202,28 +192,32 @@ export async function ganharNegocio(formData: FormData): Promise<ResultadoEtapa>
 
 // ---------------------------------------------------------------- fila, etiquetas, campos, visitas
 
-/** Lê custom_fields do lead (RLS da sessão) e grava o resultado de `muda`. */
-async function mudarCampos(leadId: string, muda: (cf: Record<string, unknown>) => Record<string, unknown>) {
+/**
+ * Grava só as chaves de `patch` em custom_fields (mescla no banco, E1): o que
+ * outra ação gravou no meio do caminho não é apagado.
+ */
+async function mudarCampos(leadId: string, patch: Record<string, unknown>, opcoes: OpcoesMescla = {}) {
+  const { org, supabase } = await contexto();
+  await mesclarCampos(supabase, leadId, patch, { atividade: new Date().toISOString(), orgId: org.orgId, ...opcoes });
+}
+
+/** Lê uma chave de custom_fields (RLS da sessão), para as ações que alternam um valor. */
+async function lerCampo<T>(leadId: string, chave: string): Promise<T | undefined> {
   const { org, supabase } = await contexto();
   const { data } = await supabase
     .from("crm_leads")
-    .select("custom_fields")
+    .select("valor:custom_fields->" + chave)
     .eq("organization_id", org.orgId)
     .eq("id", leadId)
     .maybeSingle();
   if (!data) throw new Error("Lead não encontrado.");
-  const cf = ((data as { custom_fields: Record<string, unknown> | null }).custom_fields ?? {}) as Record<string, unknown>;
-  const { error } = await supabase
-    .from("crm_leads")
-    .update({ custom_fields: muda(cf), last_activity_at: new Date().toISOString() })
-    .eq("id", leadId);
-  if (error) throw new Error(error.message);
+  return ((data as unknown as { valor: T | null }).valor ?? undefined) as T | undefined;
 }
 
 /** "Respondi" da fila: o lead desce para o fim até escrever de novo. */
 export async function marcarRespondido(formData: FormData) {
   const leadId = String(formData.get("leadId") ?? "");
-  await mudarCampos(leadId, (cf) => ({ ...cf, respondido_em: new Date().toISOString() }));
+  await mudarCampos(leadId, { respondido_em: new Date().toISOString() });
   revalidatePath("/app/fila");
   revalidatePath("/app/hoje");
   revalidatePath(`/app/leads/${leadId}`);
@@ -235,14 +229,11 @@ export async function alternarEtiqueta(formData: FormData) {
   const valor = String(formData.get("valor") ?? "");
   if (!grupo || !valor) return;
   const { org, supabase } = await contexto();
-  await mudarCampos(leadId, (cf) => {
-    const etiquetas = { ...((cf.etiquetas as Record<string, string[]>) ?? {}) };
-    const lista = new Set(etiquetas[grupo] ?? []);
-    if (lista.has(valor)) lista.delete(valor);
-    else lista.add(valor);
-    etiquetas[grupo] = [...lista];
-    return { ...cf, etiquetas };
-  });
+  const atuais = (await lerCampo<Record<string, string[]>>(leadId, "etiquetas")) ?? {};
+  const lista = new Set(atuais[grupo] ?? []);
+  if (lista.has(valor)) lista.delete(valor);
+  else lista.add(valor);
+  await mudarCampos(leadId, { etiquetas: { [grupo]: [...lista] } }, { mesclar: ["etiquetas"] });
   // Off market também é etiqueta de regra (tags do lead): selo, fila e kit.
   if (grupo === "offmarket") {
     const tag = valor.startsWith("Proprietário") ? "off-market-proprietario" : "off-market-comprador";
@@ -261,16 +252,14 @@ export async function salvarCamposCorretor(formData: FormData) {
   for (const [k, v] of formData.entries()) {
     if (k.startsWith("campo:")) campos[k.slice(6)] = String(v).trim();
   }
-  await mudarCampos(leadId, (cf) => ({ ...cf, campos_corretor: { ...((cf.campos_corretor as object) ?? {}), ...campos } }));
+  await mudarCampos(leadId, { campos_corretor: campos }, { mesclar: ["campos_corretor"] });
   revalidatePath(`/app/leads/${leadId}`);
 }
 
 export async function alternarLembretes(formData: FormData) {
   const leadId = String(formData.get("leadId") ?? "");
-  await mudarCampos(leadId, (cf) => {
-    const desligar = cf.lembretes_desligados !== true;
-    return { ...cf, lembretes_desligados: desligar, lembretes_desligados_em: desligar ? new Date().toISOString() : null };
-  });
+  const desligar = (await lerCampo<boolean>(leadId, "lembretes_desligados")) !== true;
+  await mudarCampos(leadId, { lembretes_desligados: desligar, lembretes_desligados_em: desligar ? new Date().toISOString() : null });
   revalidatePath(`/app/leads/${leadId}`);
   revalidatePath("/app/lembretes");
 }
@@ -301,10 +290,10 @@ export async function registrarVisita(formData: FormData): Promise<ResultadoEtap
     /(?:\+?\d[\s().-]?){10,}/.test(String(formData.get(k) ?? "")),
   );
   if (comTelefone) return { ok: false, erro: "Tire o telefone do texto: o contato do cliente já fica no lead." };
-  if (status === "feita" && (!interesse || !gostou || !naoGostou)) {
-    return { ok: false, erro: "Visita feita pede o interesse, o que gostou e o que não gostou." };
-  }
   const { user, org, supabase } = await contexto();
+  // Os campos obrigatórios são os de Configurações > Ficha de visita (antes só o navegador cobrava).
+  const faltou = faltaNaFicha((await carregarConfig(supabase, org.orgId)).ficha_visita, (k) => String(formData.get(k) ?? ""), status);
+  if (faltou) return { ok: false, erro: faltou };
   const { data: lead } = await supabase
     .from("crm_leads")
     .select("id, pipeline_id")
@@ -479,12 +468,12 @@ export async function registrarLigacao(leadId: string, resultado: ResultadoLigac
   });
   if (error) return { ok: false, erro: erroParaTela(error) };
 
-  await mudarCampos(leadId, (cf) => ({
-    ...cf,
+  const tentativas = resultado === "nao_atendeu" ? (Number(await lerCampo<number>(leadId, "tentativas_ligacao")) || 0) + 1 : 0;
+  await mudarCampos(leadId, {
     respondido_em: agora,
     ultima_ligacao: { em: agora, resultado },
-    tentativas_ligacao: resultado === "nao_atendeu" ? (Number(cf.tentativas_ligacao) || 0) + 1 : 0,
-  }));
+    tentativas_ligacao: tentativas,
+  });
   revalidatePath("/app/fila");
   revalidatePath("/app/hoje");
   revalidatePath(`/app/leads/${leadId}`);

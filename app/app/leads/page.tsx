@@ -83,17 +83,19 @@ export default async function LeadsPage({
   const compradores = ((funis ?? []) as Array<{ id: string; slug: string }>).find((f) => f.slug === "compradores")?.id ?? "";
   const porCodigo = new Map(imoveis.map((i) => [i.codigo, i]));
 
-  const busca = (q ?? "").trim().toLowerCase();
+  // Sem acento nem maiúscula: "joao" acha "João".
+  const sem = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  const busca = sem((q ?? "").trim());
   const digitos = busca.replace(/\D/g, "");
   const base = filtrarCorretor(todos, corretor)
     .filter((l) => {
       if (!busca) return true;
       const im = porCodigo.get(l.imovelCodigo ?? "");
       return (
-        l.nome.toLowerCase().includes(busca) ||
+        sem(l.nome).includes(busca) ||
         (digitos.length >= 4 && (l.telefone ?? "").replace(/\D/g, "").includes(digitos)) ||
-        l.imoveisInteresse.some((c) => c.toLowerCase().includes(busca)) ||
-        (im?.titulo.toLowerCase().includes(busca) ?? false)
+        l.imoveisInteresse.some((c) => sem(c).includes(busca)) ||
+        (im ? sem(im.titulo).includes(busca) : false)
       );
     })
     .sort((a, b) => Date.parse(b.criadoEm) - Date.parse(a.criadoEm));
@@ -119,6 +121,28 @@ export default async function LeadsPage({
     <>
       <CabecalhoOpa titulo="Leads" subtitulo="Toda a base, com origem e imóvel de interesse" icone={UserPlus} />
       <CorpoOpa>
+        {/* A busca do topo some abaixo de 1024 px: esta fica na própria tela, em todo tamanho. */}
+        <form action="/app/leads" method="get" role="search" className="flex items-center gap-2">
+          {filtro[0] !== "todos" && <input type="hidden" name="aba" value={filtro[0]} />}
+          {corretor && <input type="hidden" name="corretor" value={corretor} />}
+          <label className="relative min-w-0 flex-1">
+            <span className="sr-only">Buscar lead por nome, telefone ou imóvel</span>
+            <MagnifyingGlass className="pointer-events-none absolute left-4 top-1/2 size-5 -translate-y-1/2 text-[#5b7284]" aria-hidden />
+            <input
+              type="search"
+              name="q"
+              defaultValue={q ?? ""}
+              placeholder="Buscar por nome, telefone ou imóvel"
+              enterKeyHint="search"
+              autoComplete="off"
+              className="h-12 w-full rounded-full border border-[#d5e2ea] bg-white pl-12 pr-4 text-[16px] text-[#0a2d40] placeholder:text-[#8aa3b3] focus:border-[#2a7ca8] focus:outline-none focus:ring-2 focus:ring-[#2a7ca8]/30"
+            />
+          </label>
+          <button type="submit" className="inline-flex h-12 shrink-0 items-center rounded-full bg-[#0a2d40] px-5 text-[15px] font-semibold text-white hover:bg-[#12455f]">
+            Buscar
+          </button>
+        </form>
+
         {/* No celular a lista vem primeiro; o resumo aparece a partir do tablet. */}
         <div className="hidden gap-5 sm:grid sm:grid-cols-3">
           <CartaoNumero icone={UsersThree} rotulo="Na base" valor={base.length} contexto="leads abertos, todos os funis" />

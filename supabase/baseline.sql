@@ -10420,3 +10420,283 @@ revoke all on function public.fn_opa_primeira_resposta(uuid, uuid[]) from public
 grant execute on function public.fn_opa_primeira_resposta(uuid, uuid[]) to authenticated, service_role;
 
 notify pgrst, 'reload schema';
+
+-- ============================================================================
+-- APÊNDICE 0118_opa_mesclar_campos (CRM da OPA) — espelho exato da migration 20261031000000.
+-- ============================================================================
+set search_path = public, extensions;
+
+-- 0118: gravação segura em crm_leads.custom_fields (revisão de 31/10/2026, ponto E1).
+--
+-- Antes, cada ação lia o objeto inteiro de custom_fields, trocava uma chave no
+-- servidor e gravava o objeto de volta. Duas ações no mesmo lead (o corretor toca
+-- "Respondi" enquanto o copiloto termina de ler, ou uma ligação registrada no
+-- meio de um salvar de campos) faziam a segunda apagar o que a primeira gravou.
+--
+-- fn_opa_mesclar_campos faz a mescla DENTRO de um único UPDATE: o Postgres trava
+-- a linha, relê a versão mais nova e aplica só as chaves do patch. Nenhuma outra
+-- chave é tocada.
+--
+--   p_patch    chaves a gravar; o valor novo substitui o antigo
+--   p_mesclar  chaves cujo valor é objeto e deve ser mesclado um nível abaixo
+--              (ex.: "opa" recebe {finalidade: ...} sem apagar "regiao")
+--   p_remover  chaves a tirar do objeto
+--   p_atividade, quando informado, atualiza last_activity_at
+--   p_org      quando informado, exige que o lead seja dessa org (uso do cliente
+--              admin, que não passa pelas regras de RLS)
+--
+-- security invoker: quem chama só mexe no lead que as regras de RLS deixam. Devolve
+-- o custom_fields novo, ou null se o lead não existe ou não está visível.
+
+create or replace function public.fn_opa_mesclar_campos(
+  p_lead uuid,
+  p_patch jsonb,
+  p_mesclar text[] default '{}',
+  p_remover text[] default '{}',
+  p_atividade timestamptz default null,
+  p_org uuid default null
+) returns jsonb
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_novo jsonb;
+begin
+  if p_patch is null or jsonb_typeof(p_patch) <> 'object' then
+    raise exception 'patch precisa ser um objeto' using errcode = '22023';
+  end if;
+
+  update public.crm_leads l
+     set custom_fields = (coalesce(l.custom_fields, '{}'::jsonb) - coalesce(p_remover, '{}'::text[]))
+           || coalesce((
+                select jsonb_object_agg(
+                         e.key,
+                         case
+                           when e.key = any (coalesce(p_mesclar, '{}'::text[]))
+                                and jsonb_typeof(e.value) = 'object'
+                                and jsonb_typeof(l.custom_fields -> e.key) = 'object'
+                           then (l.custom_fields -> e.key) || e.value
+                           else e.value
+                         end)
+                  from jsonb_each(p_patch) e
+              ), '{}'::jsonb),
+         last_activity_at = coalesce(p_atividade, l.last_activity_at)
+   where l.id = p_lead
+     and (p_org is null or l.organization_id = p_org)
+  returning l.custom_fields into v_novo;
+
+  return v_novo;
+end;
+$$;
+
+revoke all on function public.fn_opa_mesclar_campos(uuid, jsonb, text[], text[], timestamptz, uuid) from public, anon;
+grant execute on function public.fn_opa_mesclar_campos(uuid, jsonb, text[], text[], timestamptz, uuid) to authenticated, service_role;
+
+notify pgrst, 'reload schema';
+
+-- ============================================================================
+-- APÊNDICE 0119_opa_rotina_lembretes (CRM da OPA) — espelho exato da migration 20261031010000.
+-- ============================================================================
+set search_path = public, extensions;
+
+-- 0119 · CRM da OPA: rotina de lembretes, avisos de prazo e repasse da roleta.
+--
+-- Revisão de 31/10/2026 (F1, F3). Até aqui os lembretes e os avisos apareciam
+-- nas telas, mas nenhuma rotina os executava.
+--
+-- 1. lembretes_agendados ganha tentativas, erro e hora do envio, e o status
+--    'falhou'. Quem envia reserva as linhas vencidas com fn_opa_reservar_lembretes
+--    (FOR UPDATE SKIP LOCKED): dois ciclos da rotina nunca mandam o mesmo lembrete.
+-- 2. opa_avisos: o que a rotina já mandou por lead (aviso aos 20 min, repasse,
+--    escalada, negócio parado). A chave única é o que impede repetir o aviso a
+--    cada minuto: o primeiro INSERT vence, os seguintes não fazem nada.
+-- 3. fn_opa_resposta_do_lead: desde quando cada lead espera e quando o corretor
+--    respondeu (mensagem, ligação ou "Respondi"), para o "respondidos no prazo"
+--    do Início contar por lead, e não por contato.
+
+-- ---------------------------------------------------------------------------
+-- 1. lembretes_agendados
+-- ---------------------------------------------------------------------------
+alter table public.lembretes_agendados add column if not exists tentativas smallint not null default 0;
+alter table public.lembretes_agendados add column if not exists erro text;
+alter table public.lembretes_agendados add column if not exists enviado_em timestamptz;
+
+alter table public.lembretes_agendados drop constraint if exists lembretes_status_check;
+alter table public.lembretes_agendados add constraint lembretes_status_check
+  check (status in ('pendente', 'enviado', 'cancelado', 'falhou'));
+
+create or replace function public.fn_opa_reservar_lembretes(p_limite int default 50)
+returns setof public.lembretes_agendados
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  -- Passou de dois dias parado (rotina fora do ar): não manda lembrete velho.
+  update public.lembretes_agendados
+     set status = 'falhou', erro = 'Passou de 2 dias sem envio.'
+   where status = 'pendente' and quando < now() - interval '2 days';
+
+  return query
+  update public.lembretes_agendados l
+     set status = 'enviado', enviado_em = now(), tentativas = l.tentativas + 1
+   where l.id in (
+     select id from public.lembretes_agendados
+      where status = 'pendente' and quando <= now()
+      order by quando
+      limit greatest(1, least(coalesce(p_limite, 50), 200))
+      for update skip locked
+   )
+  returning l.*;
+end;
+$$;
+
+revoke all on function public.fn_opa_reservar_lembretes(int) from public, anon, authenticated;
+grant execute on function public.fn_opa_reservar_lembretes(int) to service_role;
+
+-- ---------------------------------------------------------------------------
+-- 2. opa_avisos
+-- ---------------------------------------------------------------------------
+create table if not exists public.opa_avisos (
+  id uuid primary key default gen_random_uuid(),
+  organization_id uuid not null references public.organizations(id) on delete cascade,
+  lead_id uuid not null references public.crm_leads(id) on delete cascade,
+  -- Quem recebeu o aviso (corretor ou gestor).
+  user_id uuid references auth.users(id) on delete set null,
+  -- aviso_<minutos>, repasse, repasse_perdeu, escala, parado
+  tipo text not null,
+  -- Identifica a espera ou a etapa: o aviso não repete dentro dela e volta
+  -- quando uma espera nova começa (cliente escreveu de novo, lead repassado).
+  marca text not null,
+  status text not null default 'enviado',
+  dados jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  constraint opa_avisos_status_check check (status in ('enviado', 'falhou', 'sem_numero'))
+);
+
+create unique index if not exists opa_avisos_uma_vez_uq
+  on public.opa_avisos (lead_id, tipo, marca, coalesce(user_id, '00000000-0000-0000-0000-000000000000'::uuid));
+create index if not exists opa_avisos_lead_idx on public.opa_avisos (lead_id, tipo, created_at desc);
+create index if not exists opa_avisos_org_idx on public.opa_avisos (organization_id, created_at desc);
+
+-- Só a rotina (service_role) escreve e lê: sem política para o app.
+alter table public.opa_avisos enable row level security;
+revoke all on public.opa_avisos from anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- 3. Início e primeira resposta por lead
+-- ---------------------------------------------------------------------------
+-- Início da espera: a criação do lead, ou a primeira mensagem do cliente se ela
+-- chegou até um dia antes (conversa do WhatsApp que virou lead depois).
+-- Resposta: a primeira mensagem do corretor, a primeira ligação registrada ou o
+-- "Respondi" (custom_fields.respondido_em) depois do início. Roda com as regras
+-- de quem chama: cada um só conta os leads que pode ver.
+create or replace function public.fn_opa_resposta_do_lead(p_org uuid, p_leads uuid[])
+returns jsonb
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  with base as (
+    select l.id, l.contact_id, l.created_at,
+           case when l.custom_fields ->> 'respondido_em' ~ '^\d{4}-\d{2}-\d{2}T'
+                then (l.custom_fields ->> 'respondido_em')::timestamptz end as respondido_em
+    from public.crm_leads l
+    where l.organization_id = p_org and l.id = any(p_leads)
+  ),
+  ini as (
+    select b.*,
+           least(b.created_at, coalesce((
+             select min(m.sent_at) from public.messages m
+             where m.organization_id = p_org and m.contact_id = b.contact_id
+               and m.direction = 'inbound' and m.sent_at >= b.created_at - interval '1 day'
+           ), b.created_at)) as inicio
+    from base b
+  )
+  select coalesce(jsonb_object_agg(i.id, jsonb_build_object(
+    'inicio', i.inicio,
+    'resposta', (
+      select min(t) from (
+        select min(m.sent_at) as t from public.messages m
+         where m.organization_id = p_org and m.contact_id = i.contact_id
+           and m.direction = 'outbound' and m.sent_at > i.inicio
+        union all
+        select min(a.performed_at) from public.crm_lead_activities a
+         where a.organization_id = p_org and a.lead_id = i.id
+           and a.type = 'ligacao' and a.performed_at > i.inicio
+        union all
+        select i.respondido_em where i.respondido_em > i.inicio
+      ) x
+    )
+  )), '{}'::jsonb)
+  from ini i;
+$$;
+
+revoke all on function public.fn_opa_resposta_do_lead(uuid, uuid[]) from public, anon;
+grant execute on function public.fn_opa_resposta_do_lead(uuid, uuid[]) to authenticated, service_role;
+
+create index if not exists crm_lead_activities_ligacao_idx
+  on public.crm_lead_activities (lead_id, performed_at) where type = 'ligacao';
+
+notify pgrst, 'reload schema';
+
+-- ============================================================================
+-- APÊNDICE 0120_exclusao_so_administrador (CRM da OPA) — espelho exato da migration 20261031020000.
+-- ============================================================================
+set search_path = public, extensions;
+
+-- 0120: (1) lead, contato e conversa só se apagam pelo administrador e (2) cada
+-- número de WhatsApp tem dono (decisão do Allyson, 01/11/2026).
+--
+-- Parte 1, exclusão.
+--
+-- Antes: gerente apagava lead e contato; qualquer corretor apagava conversa (e
+-- as mensagens vão junto, por cascata). Agora o corretor e o gerente não apagam
+-- nada pelo PostgREST: o lead se perde com motivo e fica o histórico.
+--
+-- O que o corretor faz no celular dele (apagar a conversa no WhatsApp) não chega
+-- aqui: o CRM não escuta evento de conversa apagada, então o lead, o número e as
+-- informações continuam. Esta regra fecha a outra porta, a do banco.
+--
+-- Service role e rotinas do servidor (LGPD, limpeza) não passam pela RLS e seguem
+-- iguais. O administrador continua apagando pela tela.
+
+drop policy if exists crm_leads_delete on public.crm_leads;
+create policy crm_leads_delete on public.crm_leads for delete to authenticated
+  using (
+    public.fn_is_platform_admin()
+    or (organization_id in (select public.fn_user_org_ids()) and public.fn_role_at_least(organization_id, 'admin'))
+  );
+
+drop policy if exists contacts_delete on public.contacts;
+create policy contacts_delete on public.contacts for delete to authenticated
+  using (
+    public.fn_is_platform_admin()
+    or (organization_id in (select public.fn_user_org_ids()) and public.fn_role_at_least(organization_id, 'admin'))
+  );
+
+drop policy if exists conversations_agent_delete on public.conversations;
+drop policy if exists conversations_admin_delete on public.conversations;
+create policy conversations_admin_delete on public.conversations for delete to authenticated
+  using (
+    public.fn_is_platform_admin()
+    or (organization_id in (select public.fn_user_org_ids()) and public.fn_role_at_least(organization_id, 'admin'))
+  );
+
+-- ---------------------------------------------------------------------------
+-- Parte 2: o corretor liga o próprio WhatsApp
+-- ---------------------------------------------------------------------------
+-- Até aqui o número do corretor era achado pelo nome de exibição (frágil). Agora a
+-- sessão guarda de quem é. O QR e a reconexão só abrem para o dono (ou o
+-- administrador), e o índice garante um número ativo por pessoa: dois cliques ou
+-- duas abas não criam duas sessões.
+alter table public.channel_sessions
+  add column if not exists owner_user_id uuid references auth.users(id) on delete set null;
+
+create unique index if not exists channel_sessions_um_ativo_por_dono
+  on public.channel_sessions (organization_id, owner_user_id)
+  where owner_user_id is not null and archived_at is null;
+
+notify pgrst, 'reload schema';

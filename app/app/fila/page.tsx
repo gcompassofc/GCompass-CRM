@@ -35,6 +35,7 @@ import { CabecalhoOpa, CorpoOpa } from "../_opa/cabecalho";
 import { FotoImovel } from "../_opa/componentes";
 import { IlustraCalma } from "../_opa/ilustracoes";
 import { AbasPilula, Avatar, BarraHachurada, Cartao, Chip, IconeRedondo, Vazio, iniciaisDe } from "../_opa/ui";
+import { BotaoEnvio, FormComRetorno } from "../_opa/form-com-retorno";
 import { marcarRespondido } from "../leads/actions";
 
 export const dynamic = "force-dynamic";
@@ -57,19 +58,19 @@ type Prazos = { pago_min: number; organico_min: number; avisos_pago: number[]; a
 /** Botão redondo "Respondi": o lead desce para o fim até escrever de novo. */
 function Respondi({ leadId, escuro }: { leadId: string; escuro?: boolean }) {
   return (
-    <form action={marcarRespondido}>
+    <FormComRetorno action={marcarRespondido} sucesso="Marcado como respondido. O lead desceu na fila.">
       <input type="hidden" name="leadId" value={leadId} />
-      <button
-        type="submit"
+      <BotaoEnvio
         title="Respondi"
+        enviando="Salvando"
         className={cn(
           "inline-flex h-11 items-center gap-2 rounded-full px-4 text-[14px] font-semibold transition-colors",
           escuro ? "bg-white text-[#0a2d40] hover:bg-[#e7f0f5]" : "bg-[#e5f3ea] text-[#1d6b43] hover:bg-[#cdebd9]",
         )}
       >
         <Check className="size-4" weight="bold" /> Respondi
-      </button>
-    </form>
+      </BotaoEnvio>
+    </FormComRetorno>
   );
 }
 

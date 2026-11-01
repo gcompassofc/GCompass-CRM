@@ -73,6 +73,7 @@ export default async function InicioPage({
             veReceita={veReceita}
             admin={org.role === "admin"}
             orgId={org.orgId}
+            corretor={corretor}
           />
         ) : (
           <VisaoCorretor leads={leads} porCodigo={porCodigo} orgId={org.orgId} userId={user.id} filtro={filtroFila} />

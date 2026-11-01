@@ -15,6 +15,8 @@
  * pelo tsx, fora do Next.
  */
 
+import { z } from "zod";
+
 import { BAIRROS as BAIRROS_OPA } from "./config";
 
 export type CampoCopiloto =
@@ -368,8 +370,7 @@ const LISTA_BAIRROS = Object.entries(BAIRROS_OPA)
  */
 export const PROMPT_COPILOTO = `Você é o copiloto dos corretores da OPA, imobiliária de Ilhabela (SP). O corretor atende pelo WhatsApp dele; você lê a conversa, anota o que o cliente contou e rascunha a próxima resposta. Quem decide e manda é sempre o corretor.
 
-Devolva SOMENTE um JSON, sem texto em volta:
-{"sugestoes":[{"campo":"...","valor":"...","evidencia":"...","confianca":0.0}],"resumo":"...","proximoPasso":"...","temperatura":"quente|morno|frio","mensagem":"...","objecoes":["..."]}
+O formato da resposta é fixo (sugestoes, resumo, proximoPasso, temperatura, mensagem, objecoes). Preencha todos os campos: lista vazia ou "" quando não houver o que dizer. confianca vai de 0 a 1.
 
 ENTRADA
 - <contexto> traz dados do CRM: data de hoje, etapa, origem do lead, o que o corretor já confirmou e a ficha do imóvel pelo qual o cliente chegou. É a única fonte sobre o imóvel.
@@ -464,46 +465,77 @@ export function montarEntradaIA(mensagens: MensagemLida[], contexto: ContextoLei
 }
 
 /**
- * Lê com o Claude. Devolve null quando não há IA configurada ou a resposta não
- * é JSON válido; o chamador cai nas regras.
+ * Formato da resposta da IA (revisão de 31/10, I1). Vai para o provedor como
+ * esquema da saída estruturada: o modelo é obrigado a devolver este formato, e
+ * `campo` e `temperatura` só aceitam os valores da lista. Sem limites de número
+ * ou de tamanho no esquema (nem todo provedor aceita); `analisarComIA` corta e
+ * limpa depois.
+ */
+export const EsquemaLeitura = z.object({
+  sugestoes: z.array(
+    z.object({
+      campo: z.enum(ORDEM_CAMPOS as [CampoCopiloto, ...CampoCopiloto[]]),
+      valor: z.string(),
+      evidencia: z.string(),
+      confianca: z.number(),
+    }),
+  ),
+  resumo: z.string(),
+  proximoPasso: z.string(),
+  temperatura: z.enum(["quente", "morno", "frio"]),
+  mensagem: z.string(),
+  objecoes: z.array(z.string()),
+});
+
+/**
+ * Chamada à IA, injetada por quem usa (o app passa o AI SDK; os testes, um
+ * dublê). `instrucoes` é a parte fixa, igual em toda leitura (vale guardar em
+ * cache); `entrada` é o que muda a cada lead.
+ */
+export type GerarLeitura = (args: {
+  model: unknown;
+  instrucoes: string;
+  entrada: string;
+  esquema: typeof EsquemaLeitura;
+}) => Promise<{ output: unknown }>;
+
+/**
+ * Lê com o Claude. Devolve null quando não há IA configurada ou a saída não é
+ * um objeto; o chamador cai nas regras. Erro da chamada sobe para o chamador.
  */
 export async function analisarComIA(
   mensagens: MensagemLida[],
   modelo: unknown,
-  gerarTexto: (args: { model: unknown; system: string; prompt: string }) => Promise<{ text: string }>,
+  gerar: GerarLeitura,
   contexto: ContextoLeitura = { hoje: "" },
 ): Promise<Leitura | null> {
   if (!modelo) return null;
   // A conversa é dado, não instrução (prompt injection vinda do lead). Corta o
   // tamanho para o custo não crescer com conversa enorme.
-  const { text } = await gerarTexto({ model: modelo, system: PROMPT_COPILOTO, prompt: montarEntradaIA(mensagens, contexto) });
-  const json = text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1);
-  try {
-    const bruto = JSON.parse(json) as Partial<Leitura> & { sugestoes?: Sugestao[] };
-    // A saída da IA também não é confiável: campo só da lista (Object.hasOwn,
-    // não `in`, que aceita "constructor"), tamanhos curtos e números no lugar.
-    const sugestoes = (Array.isArray(bruto.sugestoes) ? bruto.sugestoes : [])
-      .filter((s): s is Sugestao => typeof s?.valor === "string" && typeof s?.campo === "string" && Object.hasOwn(CAMPOS, s.campo))
-      .slice(0, ORDEM_CAMPOS.length)
-      .map((s) => ({
-        campo: s.campo,
-        valor: s.valor.slice(0, 120),
-        evidencia: String(s.evidencia ?? "").slice(0, 140),
-        confianca: Math.min(1, Math.max(0, Number(s.confianca) || 0)),
-      }));
-    return {
-      sugestoes,
-      resumo: limparSaidaIA(String(bruto.resumo ?? "")).slice(0, 400),
-      proximoPasso: limparSaidaIA(String(bruto.proximoPasso ?? "")).slice(0, 200),
-      temperatura: bruto.temperatura === "quente" || bruto.temperatura === "frio" ? bruto.temperatura : "morno",
-      motor: "ia",
-      mensagem: limparSaidaIA(String(bruto.mensagem ?? "")).trim().slice(0, 700),
-      objecoes: (Array.isArray(bruto.objecoes) ? bruto.objecoes : [])
-        .filter((o): o is string => typeof o === "string" && o.trim().length > 0)
-        .slice(0, 4)
-        .map((o) => limparSaidaIA(o).trim().slice(0, 80)),
-    };
-  } catch {
-    return null;
-  }
+  const { output } = await gerar({ model: modelo, instrucoes: PROMPT_COPILOTO, entrada: montarEntradaIA(mensagens, contexto), esquema: EsquemaLeitura });
+  if (!output || typeof output !== "object" || Array.isArray(output)) return null;
+  const bruto = output as Partial<Leitura> & { sugestoes?: Sugestao[] };
+  // A saída da IA também não é confiável: campo só da lista (Object.hasOwn,
+  // não `in`, que aceita "constructor"), tamanhos curtos e números no lugar.
+  const sugestoes = (Array.isArray(bruto.sugestoes) ? bruto.sugestoes : [])
+    .filter((s): s is Sugestao => typeof s?.valor === "string" && typeof s?.campo === "string" && Object.hasOwn(CAMPOS, s.campo))
+    .slice(0, ORDEM_CAMPOS.length)
+    .map((s) => ({
+      campo: s.campo,
+      valor: s.valor.slice(0, 120),
+      evidencia: String(s.evidencia ?? "").slice(0, 140),
+      confianca: Math.min(1, Math.max(0, Number(s.confianca) || 0)),
+    }));
+  return {
+    sugestoes,
+    resumo: limparSaidaIA(String(bruto.resumo ?? "")).slice(0, 400),
+    proximoPasso: limparSaidaIA(String(bruto.proximoPasso ?? "")).slice(0, 200),
+    temperatura: bruto.temperatura === "quente" || bruto.temperatura === "frio" ? bruto.temperatura : "morno",
+    motor: "ia",
+    mensagem: limparSaidaIA(String(bruto.mensagem ?? "")).trim().slice(0, 700),
+    objecoes: (Array.isArray(bruto.objecoes) ? bruto.objecoes : [])
+      .filter((o): o is string => typeof o === "string" && o.trim().length > 0)
+      .slice(0, 4)
+      .map((o) => limparSaidaIA(o).trim().slice(0, 80)),
+  };
 }

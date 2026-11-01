@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import { analisarComIA, analisarPorRegras, montarEntradaIA, type ContextoLeitura, type MensagemLida } from "./copiloto";
+import { analisarComIA, analisarPorRegras, EsquemaLeitura, montarEntradaIA, PROMPT_COPILOTO, type ContextoLeitura, type MensagemLida } from "./copiloto";
 
 const lead = (body: string, sent_at = "2026-10-30T17:05:00Z"): MensagemLida => ({ direction: "inbound", body, sent_at });
 const corretor = (body: string, sent_at = "2026-10-30T17:00:00Z"): MensagemLida => ({ direction: "outbound", body, sent_at });
@@ -144,7 +144,7 @@ describe("o que vai para a IA", () => {
 });
 
 describe("resposta da IA", () => {
-  const responder = (json: unknown) => async () => ({ text: `aqui está: ${JSON.stringify(json)}` });
+  const responder = (json: unknown) => async () => ({ output: json });
 
   it("lê rascunho e objeções e limpa link e PIX", async () => {
     const l = await analisarComIA(
@@ -170,8 +170,33 @@ describe("resposta da IA", () => {
     expect(l?.sugestoes).toHaveLength(0);
   });
 
-  it("resposta que não é JSON volta null (o CRM cai nas regras)", async () => {
-    const l = await analisarComIA([lead("oi")], "modelo", async () => ({ text: "não sei" }));
+  it("saída que não é objeto volta null (o CRM cai nas regras)", async () => {
+    expect(await analisarComIA([lead("oi")], "modelo", async () => ({ output: undefined }))).toBeNull();
+    expect(await analisarComIA([lead("oi")], "modelo", async () => ({ output: "não sei" }))).toBeNull();
+    expect(await analisarComIA([lead("oi")], "modelo", async () => ({ output: [] }))).toBeNull();
+  });
+
+  it("sem modelo configurado não chama a IA", async () => {
+    let chamou = false;
+    const l = await analisarComIA([lead("oi")], null, async () => {
+      chamou = true;
+      return { output: {} };
+    });
     expect(l).toBeNull();
+    expect(chamou).toBe(false);
+  });
+
+  it("manda a parte fixa separada da entrada e o esquema com os campos da lista", async () => {
+    let visto: { instrucoes: string; entrada: string; esquema: unknown } | undefined;
+    await analisarComIA([lead("oi")], "modelo", async (args) => {
+      visto = args;
+      return { output: { sugestoes: [], resumo: "", proximoPasso: "", temperatura: "morno", mensagem: "", objecoes: [] } };
+    });
+    expect(visto?.instrucoes).toBe(PROMPT_COPILOTO);
+    expect(visto?.entrada).toContain("<conversa>");
+    expect(visto?.instrucoes).not.toContain("LEAD:");
+    expect(EsquemaLeitura.safeParse({ sugestoes: [{ campo: "constructor", valor: "x", evidencia: "", confianca: 1 }], resumo: "", proximoPasso: "", temperatura: "morno", mensagem: "", objecoes: [] }).success).toBe(false);
+    expect(EsquemaLeitura.safeParse({ sugestoes: [{ campo: "regiao", valor: "Sul", evidencia: "", confianca: 1 }], resumo: "", proximoPasso: "", temperatura: "quente", mensagem: "", objecoes: [] }).success).toBe(true);
+    expect(EsquemaLeitura.safeParse({ sugestoes: [], resumo: "", proximoPasso: "", temperatura: "fervendo", mensagem: "", objecoes: [] }).success).toBe(false);
   });
 });
