@@ -11,6 +11,20 @@ independente do código que entrou em 01/11 (`a099d8cf7..93f19408f`). Os dois ac
 foram conferidos à mão. Hoje só existe o administrador: nada aqui foi explorado, mas os itens **antes da equipe**
 precisam estar corrigidos antes de convidar corretores.
 
+## Situação no fim de 01/11/2026
+
+**Resolvido e publicado** (commits `c8a7f42bc`, `bd367afe7` e `e769d56a8`, migrations 0121 e 0122 no Supabase):
+A1 a A7, S1 (cadastro fechado no Supabase), S2 (SSH só por chave e fail2ban), S3 (segredo do cron trocado),
+S5 (instalador corrigido), C1 a C9. Teste completo por papel: 66/66 telas, 36/36 brechas recusadas
+(`docs/TESTE-COMPLETO-2026-11-01.md`). IA corrigida e testada (`docs/TESTE-IA-2026-11-01.md`).
+
+**Ainda aberto:**
+- S4: o repositório `gcompassofc/GCompass-CRM` é público (fork). Nunca enviar o ramo `opa/crm-local` para ele;
+  backup só num repositório privado novo.
+- S6: CAPTCHA no login, segundo fator exigido no banco e teste de restauração do backup.
+- Decisões do Allyson: "Abrir conversa" dentro da ficha (recomendado) e aviso de lead novo no celular (U2).
+- Se o erro `insertBefore` da ficha voltar em produção, anotar navegador e extensões do corretor.
+
 ## Antes de convidar a equipe
 
 | # | Onde | Problema | Correção |
