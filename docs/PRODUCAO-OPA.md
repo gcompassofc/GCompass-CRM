@@ -17,7 +17,8 @@ Nada aqui foi publicado ainda: banco, servidor e domínio de produção não exi
 Código em `/opt/crm` (veio por `git archive`, sem push ao GitHub); a imagem do app foi construída na própria VPS
 (`docker compose -f docker-compose.prod.yml -f docker-compose.build.yml build app`, uns 6 min).
 Instalado: schema (0110 a 0120), administrador `growthcompassofc@gmail.com`, empresa OPA, 3 funis, token da porta de entrada,
-71 imóveis, cron do event-log-drain e do agente de atualização, firewall (só 22, 80, 443). Acesso por chave SSH `~/.ssh/opa_crm_ed25519`.
+71 imóveis, cron do event-log-drain e do agente de atualização, firewall (só 22, 80, 443). Conferência: 31 ok;
+falta só fechar o cadastro no Supabase. Rotinas da OPA (lembretes, copiloto, cifra) respondendo 200. Acesso por chave SSH `~/.ssh/opa_crm_ed25519`.
 
 **Falta (🙋 Allyson):**
 1. Supabase > Authentication > Sign In / Providers: desligar **Allow new users to sign up** (sem desligar o provedor Email),
@@ -27,12 +28,20 @@ Instalado: schema (0110 a 0120), administrador `growthcompassofc@gmail.com`, emp
 4. 🤖 Testar a IA com 30 conversas reais anonimizadas (I3) e conferir `cacheLido` no log na primeira leitura.
 
 **Lições da instalação (para a próxima VPS):**
-- Arquivo vindo do Windows chega com CRLF: rodar `sed -i 's/$//'` nos `.sh`, no `.env`, no Caddyfile e nos compose antes do instalador.
+- Arquivo vindo do Windows chega com CRLF: rodar `sed -i 's/
+$//'` nos `.sh`, no `.env`, no Caddyfile e nos compose antes do instalador.
 - O `.env` gravado pelo PowerShell também sai em CRLF.
 - `dc pull` falha para imagem local (pull_policy never): na VPS, trocar por `dc pull --ignore-pull-failures || true`.
 - Em VPS nova o instalador parou em "Ativando as automações" (provável `crontab -l` sem tabela com pipefail);
   as duas funções de cron rodam bem à mão (`setup_event_log_drain_cron`, `setup_update_agent_cron`).
 - O `.dockerignore` não pode excluir `tests`: o `next build` checa os tipos dos testes.
+- ⚠️ **O instalador reescreve o `.env` e descarta o que não conhece**: perdeu `PII_*`, `INVITE_TOKEN_SECRET`, `APP_PROFILE`,
+  `APP_PALETTE`, `CADASTRO_ABERTO` e outras 7. Sem `APP_PROFILE` o menu abre genérico. Depois do instalador, comparar os
+  nomes das variáveis (local x VPS) e devolver as que faltarem. Backup do que ele escreveu: `/opt/crm/.env.bak-instalador`.
+- ⚠️ **O instalador volta `APP_PULL_POLICY` para `always` e liga `SENTRY_DSN` da comunidade.** Com isso o `pull` trocou a nossa
+  imagem por uma antiga e pública do GHCR (sem nada da OPA). Na VPS: `APP_PULL_POLICY='never'`, `SENTRY_DSN='off'`,
+  reconstruir a imagem e `docker compose -f docker-compose.prod.yml up -d`. Conferir com
+  `ls .next/server/app/api/v1/cron` dentro do contêiner (tem que ter `opa-lembretes`).
 - O `conferir-producao.mjs` depende do DNS do computador de quem roda; se der ENOTFOUND, `ipconfig /flushdns` ou esperar.
 
 ## Decisões de 01/11/2026
