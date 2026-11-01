@@ -48,6 +48,7 @@ import {
   MapPin,
   Notepad,
   PaperPlaneTilt,
+  Phone,
   Prohibit,
   SealCheck,
   Smiley,
@@ -419,13 +420,13 @@ export default async function LeadPage({
 
         {aberto && (
           <>
-            <Cartao className="flex flex-col gap-3 p-5">
+            <Cartao tour="ficha-etapa" className="flex flex-col gap-3 p-5">
               <p className="flex items-center gap-2 px-1 text-[13px] font-medium text-[#5b7284]">
                 <Target className="size-4" /> Etapa do negócio · toque para mover
               </p>
               <EtapasClicaveis leadId={lead.id} atual={lead.etapa.id} etapas={etapas} />
             </Cartao>
-            <div className="flex flex-wrap items-center gap-2">
+            <div data-tour="ficha-acoes" className="flex flex-wrap items-center gap-2">
               {lead.conversa?.id ? (
                 <Link
                   href={`/app/inbox/${lead.conversa.id}`}
@@ -441,6 +442,17 @@ export default async function LeadPage({
                   className="inline-flex h-11 items-center gap-2 rounded-full bg-[#2a7ca8] px-5 text-[14px] font-semibold text-white hover:bg-[#1f6a93]"
                 >
                   <WhatsappLogo weight="fill" className="size-5" /> Abrir conversa
+                </a>
+              ) : null}
+              {lead.telefone ? (
+                // Discar em um toque (no Hoje já existia; na ficha o corretor tinha de copiar o número).
+                <a
+                  href={`tel:+${lead.telefone.replace(/\D/g, "")}`}
+                  data-tour="ficha-ligar"
+                  aria-label={`Ligar para ${lead.nome}`}
+                  className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-5 text-[14px] font-semibold text-[#0a2d40] shadow-[0_1px_2px_rgba(9,44,62,0.06)] hover:bg-[#e7f0f5]"
+                >
+                  <Phone className="size-4" /> Ligar
                 </a>
               ) : null}
               <RegistrarLigacao leadId={lead.id} tentativas={lead.tentativasLigacao} />
@@ -517,7 +529,7 @@ export default async function LeadPage({
           <div className="grid gap-5 lg:grid-cols-12">
             <div className="flex min-w-0 flex-col gap-5 lg:col-span-7">
               {/* O único cartão escuro da tela: o que a IA leu e o que falta confirmar. */}
-              <Cartao escuro bloco>
+              <Cartao escuro bloco tour="ficha-copiloto">
                 <TituloBloco
                   claro
                   icone={Sparkle}
@@ -528,7 +540,7 @@ export default async function LeadPage({
                       <input type="hidden" name="leadId" value={lead.id} />
                       <button
                         type="submit"
-                        className="inline-flex h-11 items-center gap-1.5 rounded-full bg-white/10 px-3.5 text-[13px] font-medium text-white hover:bg-white/15"
+                        className="inline-flex h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-white/10 px-3.5 text-[13px] font-medium text-white hover:bg-white/15"
                       >
                         <ArrowsClockwise className="size-4" /> Ler de novo
                       </button>
@@ -560,7 +572,7 @@ export default async function LeadPage({
                 )}
 
                 {sugestoes.length > 0 && (
-                  <div className="mt-6">
+                  <div data-tour="ficha-sugestoes" className="mt-6">
                     <p className="flex items-center gap-2 text-[13px] text-white/65">
                       <Lightbulb className="size-4" /> A IA anotou da conversa. Nada entra no lead sem você.
                     </p>
@@ -692,7 +704,7 @@ export default async function LeadPage({
               <Diagnostico leadId={lead.id} campos={lead.campos} feitos={feitos} pendentes={sugestoes.map((s) => s.campo)} outros={outrosCampos} />
 
               {aberto && (
-                <Cartao>
+                <Cartao tour="ficha-mensagem">
                   <TituloBloco icone={PaperPlaneTilt} titulo="Próxima mensagem" sub={mensagem.motivo} />
                   <div className="mt-4">
                     <MensagemPronta texto={mensagem.texto} telefone={lead.telefone} />
@@ -996,7 +1008,7 @@ export default async function LeadPage({
               </ul>
               {interesse.length === 0 && <Vazio ilustracao={<IlustraCasa />} titulo="Sem imóvel de entrada" texto="Escolha um para o CRM cruzar com o acervo." />}
             </Cartao>
-            <Cartao bloco className="lg:col-span-7">
+            <Cartao bloco tour="ficha-selecao" className="lg:col-span-7">
               <TituloBloco
                 icone={Sparkle}
                 titulo="Do acervo, combina com ele"
@@ -1114,9 +1126,10 @@ function Diagnostico({
           {(Object.keys(CAMPOS) as Array<keyof typeof CAMPOS>).map((k) => {
             const I = ICONE_CAMPO[k] ?? Tag;
             return (
-              <FormComRetorno key={k} action={editarCampo} sucesso={`${CAMPOS[k].rotulo} salvo.`} className="flex items-center gap-2.5">
+              <FormComRetorno key={k} action={editarCampo} sucesso={`Salvo: ${CAMPOS[k].rotulo}.`} className="flex items-center gap-2.5">
                 <input type="hidden" name="leadId" value={leadId} />
                 <input type="hidden" name="campo" value={k} />
+                <input type="hidden" name="antes" value={campos[k] ?? ""} />
                 <span
                   className={cn(
                     "flex size-10 shrink-0 items-center justify-center rounded-full",
@@ -1177,7 +1190,7 @@ function Diagnostico({
                       <Sparkle className="size-3.5" weight="fill" /> A IA anotou: confirme no copiloto
                     </p>
                   ) : (
-                    <FormComRetorno action={editarCampo} sucesso={`${CAMPOS[k].rotulo} salvo.`} className="flex items-center gap-1.5">
+                    <FormComRetorno action={editarCampo} sucesso={`Salvo: ${CAMPOS[k].rotulo}.`} className="flex items-center gap-1.5">
                       <input type="hidden" name="leadId" value={leadId} />
                       <input type="hidden" name="campo" value={k} />
                       <input

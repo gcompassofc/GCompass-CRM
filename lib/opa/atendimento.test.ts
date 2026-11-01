@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 
-import { diasDaSemana, esperaDesde, esperaEmMinutos, minutosUteis } from "./atendimento";
+import { diasDaSemana, esperaDesde, esperaEmMinutos, minutosUteis, quandoVolta, situacaoDoRelogio } from "./atendimento";
 import { PADRAO } from "./config";
 
 const H = PADRAO.horario; // seg a sex 08 às 19, sáb 09 às 14, domingo fechado
@@ -14,6 +14,35 @@ describe("dias da semana do horário", () => {
     expect([...diasDaSemana("Domingo e feriado")]).toEqual([0]);
     expect([...diasDaSemana("Sexta a segunda")].sort()).toEqual([0, 1, 5, 6]);
     expect([...diasDaSemana("terça-feira e quinta-feira")].sort()).toEqual([2, 4]);
+  });
+});
+
+describe("o relógio está contando agora?", () => {
+  it("dentro do expediente conta", () => {
+    expect(situacaoDoRelogio(sp("2026-11-02T10:00"), H)).toEqual({ aberto: true });
+  });
+
+  it("segunda antes das 8h volta às 8h do mesmo dia", () => {
+    expect(situacaoDoRelogio(sp("2026-11-02T06:30"), H)).toEqual({ aberto: false, voltaMs: sp("2026-11-02T08:00") });
+  });
+
+  it("segunda às 19h em ponto já está fora e volta terça às 8h", () => {
+    expect(situacaoDoRelogio(sp("2026-11-02T19:00"), H)).toEqual({ aberto: false, voltaMs: sp("2026-11-03T08:00") });
+  });
+
+  it("sábado depois das 14h e domingo voltam na segunda às 8h", () => {
+    expect(situacaoDoRelogio(sp("2026-11-07T15:00"), H)).toEqual({ aberto: false, voltaMs: sp("2026-11-09T08:00") });
+    expect(situacaoDoRelogio(sp("2026-11-08T11:00"), H)).toEqual({ aberto: false, voltaMs: sp("2026-11-09T08:00") });
+  });
+
+  it("diz quando volta em palavras", () => {
+    expect(quandoVolta(sp("2026-11-02T08:00"), sp("2026-11-02T06:30"))).toBe("hoje às 08:00");
+    expect(quandoVolta(sp("2026-11-03T08:00"), sp("2026-11-02T19:30"))).toBe("amanhã às 08:00");
+    expect(quandoVolta(sp("2026-11-09T08:00"), sp("2026-11-07T15:00"))).toBe("segunda às 08:00");
+  });
+
+  it("sem nenhum dia aberto o relógio conta sempre", () => {
+    expect(situacaoDoRelogio(sp("2026-11-08T11:00"), H.map((d) => ({ ...d, aberto: false })))).toEqual({ aberto: true });
   });
 });
 

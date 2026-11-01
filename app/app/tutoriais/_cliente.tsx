@@ -10,7 +10,8 @@ import {
   type Topico,
   type VersaoTutorial,
 } from "@/lib/opa/tutorial";
-import { ArrowRight, CaretDown, Handshake, MagnifyingGlass, Question, UsersThree, X } from "@/lib/ui/icons";
+import { linkDoTour, tourDaTela, toursPermitidos } from "@/lib/opa/tour";
+import { ArrowRight, CaretDown, CheckCircle, Handshake, MagnifyingGlass, Question, Sparkle, UsersThree, X } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
 
 import { PassoAPasso, useMarcarVisto } from "../_opa/tutorial";
@@ -25,16 +26,22 @@ export function TutoriaisCliente({
   versoes,
   minha,
   abrir,
+  feitos,
 }: {
   versoes: VersaoTutorial[];
   minha: VersaoTutorial | null;
   /** Vindo de `?passo=`: abre direto ao carregar. */
   abrir: { versao: VersaoTutorial; indice: number } | null;
+  /** Tours de tela que a pessoa já terminou. */
+  feitos: string[];
 }) {
   const [termo, setTermo] = useState("");
   const [aberto, setAberto] = useState(abrir);
   const marcar = useMarcarVisto();
   const conferindo = versoes.length > 1;
+  // Admin e gestor escolhem de que lado fazem o tour: o do corretor roda com `como=corretor`.
+  const [como, setComo] = useState<VersaoTutorial>(minha ?? versoes[0] ?? "corretor");
+  const toursDoLado = useMemo(() => new Set(toursPermitidos(como).map((t) => t.id)), [como]);
   const achados = useMemo(() => buscarTutoriais(termo, versoes), [termo, versoes]);
   const buscando = termo.trim().length > 0;
 
@@ -74,7 +81,7 @@ export function TutoriaisCliente({
           type="search"
           value={termo}
           onChange={(e) => setTermo(e.target.value)}
-          placeholder="Busque uma dúvida, por exemplo: roleta"
+          placeholder="Busque: roleta, prazo, WhatsApp"
           className="h-14 w-full rounded-full bg-white pl-[3.25rem] pr-12 text-[15px] text-[#0a2d40] shadow-[0_1px_2px_rgba(9,44,62,0.04)] outline-none placeholder:text-[#8aa3b3] focus:ring-2 focus:ring-[#2a7ca8]/40"
         />
         {buscando && (
@@ -107,7 +114,8 @@ export function TutoriaisCliente({
         </Cartao>
       ) : (
         <>
-          <div className={cn("grid gap-5", versoes.length > 1 && "md:grid-cols-2")}>
+          {/* min-w-0: sem ele o subtítulo com reticências alarga o cartão além da tela no celular. */}
+          <div className={cn("grid gap-5 [&>*]:min-w-0", versoes.length > 1 && "md:grid-cols-2")}>
             {versoes.map((v) => {
               const info = VERSAO[v];
               return (
@@ -133,14 +141,54 @@ export function TutoriaisCliente({
           </div>
 
           <Cartao bloco>
-            <TituloBloco icone={MagnifyingGlass} titulo="Por tela" sub="Toque num tópico para abrir só aquele passo" />
+            <TituloBloco
+              icone={MagnifyingGlass}
+              titulo="Por tela"
+              sub="Toque num tópico para abrir só aquele passo, ou faça o tour na tela de verdade"
+            />
+            {conferindo && (
+              <div className="mt-5 flex flex-wrap items-center gap-2 px-1" role="radiogroup" aria-label="Fazer os tours como">
+                <span className="text-[13px] text-[#5b7284]">Tours como</span>
+                {versoes.map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    role="radio"
+                    aria-checked={como === v}
+                    onClick={() => setComo(v)}
+                    className={cn(
+                      "h-9 rounded-full px-4 text-[13px] font-semibold transition-colors",
+                      como === v ? "bg-[#0a2d40] text-white" : "bg-[#eef3f6] text-[#0a2d40] hover:bg-[#e2ecf2]",
+                    )}
+                  >
+                    {v === "gestor" ? "Gestor" : "Corretor"}
+                  </button>
+                ))}
+              </div>
+            )}
             <div className="mt-5 flex flex-col gap-5">
-              {agruparPorTela(achados.topicos).map(({ tela, topicos }) => (
-                <div key={tela.id}>
-                  <h3 className="px-4 text-[13px] font-semibold uppercase tracking-[0.12em] text-[#8aa3b3]">{tela.nome}</h3>
-                  <ul className="mt-1 flex flex-col gap-0.5">{topicos.map(topico)}</ul>
-                </div>
-              ))}
+              {agruparPorTela(achados.topicos).map(({ tela, topicos }) => {
+                const tour = tourDaTela(tela.id);
+                const podeTour = tour !== null && toursDoLado.has(tour.id);
+                const feito = tour !== null && feitos.includes(tour.id);
+                return (
+                  <div key={tela.id}>
+                    <div className="flex items-center justify-between gap-3 px-4">
+                      <h3 className="text-[13px] font-semibold uppercase tracking-[0.12em] text-[#8aa3b3]">{tela.nome}</h3>
+                      {podeTour && (
+                        <Link
+                          href={linkDoTour(tour.id, como)}
+                          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-[#eef3f6] px-3.5 text-[13px] font-semibold text-[#0a2d40] hover:bg-[#e2ecf2]"
+                        >
+                          {feito ? <CheckCircle className="size-4 text-[#1d6b43]" weight="fill" /> : <Sparkle className="size-4 text-[#2a7ca8]" weight="fill" />}
+                          {feito ? "Fazer de novo" : "Fazer o tour"}
+                        </Link>
+                      )}
+                    </div>
+                    <ul className="mt-1 flex flex-col gap-0.5">{topicos.map(topico)}</ul>
+                  </div>
+                );
+              })}
             </div>
           </Cartao>
 

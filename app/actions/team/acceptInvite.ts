@@ -99,5 +99,5 @@ export async function acceptInviteAction(token: string): Promise<AcceptInviteRes
     });
   }
 
-  redirect("/app/inbox");
+  redirect("/app");
 }

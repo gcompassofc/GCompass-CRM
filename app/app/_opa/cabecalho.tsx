@@ -74,15 +74,19 @@ export async function CabecalhoOpa({
           {children}
           {equipe && gestor && (
             // useSearchParams pede Suspense; sem ele a página inteira cai para render no cliente.
-            <Suspense fallback={null}>
-              <FiltroEquipe pessoas={lista} />
-            </Suspense>
+            <div data-tour="cab-equipe" className="flex">
+              <Suspense fallback={null}>
+                <FiltroEquipe pessoas={lista} />
+              </Suspense>
+            </div>
           )}
           {mostrarFerramentas && (
             <>
               <BuscaGlobal />
               {atende && config && <FichaVisitaRapida imoveis={paraVisita} campos={config.ficha_visita} />}
-              <NovoLead gestor={gestor} pessoas={lista} imoveis={acervo} />
+              <div data-tour="cab-novo-lead" className="flex">
+                <NovoLead gestor={gestor} pessoas={lista} imoveis={acervo} />
+              </div>
             </>
           )}
         </div>

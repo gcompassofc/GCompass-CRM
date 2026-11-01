@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { perfilAtivo } from "@/lib/navigation/registry";
-import { lerDeepLink, versaoDoPapel, versoesPermitidas } from "@/lib/opa/tutorial";
+import { lerDeepLink, toursFeitos, versaoDoPapel, versoesPermitidas } from "@/lib/opa/tutorial";
 import { BookOpen } from "@/lib/ui/icons";
 
 import { CabecalhoOpa, CorpoOpa } from "../_opa/cabecalho";
@@ -31,7 +31,7 @@ export default async function TutoriaisPage({ searchParams }: { searchParams: Pr
     <>
       <CabecalhoOpa secao="Seu espaço" titulo="Tutoriais" subtitulo="O passo a passo e as dúvidas do dia a dia" icone={BookOpen} equipe={false} ferramentas={false} />
       <CorpoOpa largura="max-w-[960px]">
-        <TutoriaisCliente versoes={versoes} minha={minha} abrir={abrir} />
+        <TutoriaisCliente versoes={versoes} minha={minha} abrir={abrir} feitos={toursFeitos({ tutorial_opa: user.tutorial_opa })} />
       </CorpoOpa>
     </>
   );

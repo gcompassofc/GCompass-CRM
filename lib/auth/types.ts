@@ -71,6 +71,8 @@ export interface AuthUser {
   avatar_url: string | null;
   is_platform_admin: boolean;
   organizations: UserOrgMembership[];
+  /** `user_metadata.tutorial_opa`: quais versões do tutorial a pessoa já viu (perfil imobiliária). */
+  tutorial_opa?: unknown;
 }
 
 export interface ActiveOrg {

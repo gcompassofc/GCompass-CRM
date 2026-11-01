@@ -1,11 +1,10 @@
 "use client";
 import * as Dialog from "@radix-ui/react-dialog";
-import type { Session } from "@supabase/supabase-js";
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState, useTransition } from "react";
+import { usePathname } from "next/navigation";
+import { Suspense, useCallback, useEffect, useRef, useState, useTransition } from "react";
 
 import { useAuth } from "@/hooks/auth/AuthProvider";
-import { createClient } from "@/lib/supabase/browser";
 import {
   ArrowLeft,
   ArrowRight,
@@ -25,9 +24,11 @@ import {
   X,
 } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
+import { tourDaRota } from "@/lib/opa/tour";
 import { deveAbrirSozinho, PASSOS, type IconePasso, type VersaoTutorial } from "@/lib/opa/tutorial";
 
 import { marcarTutorialVisto } from "../tutoriais/actions";
+import { iniciarTour, TourHost } from "./tour";
 import type { Icone } from "./ui";
 
 /**
@@ -262,6 +263,7 @@ export function useMarcarVisto() {
 export function BoasVindasOpa() {
   const { user, activeOrg } = useAuth();
   const [versao, setVersao] = useState<VersaoTutorial | null>(null);
+  const [oferta, setOferta] = useState<VersaoTutorial | null>(null);
   const marcar = useMarcarVisto();
   const checado = useRef(false);
 
@@ -269,34 +271,69 @@ export function BoasVindasOpa() {
     if (checado.current || !activeOrg) return;
     checado.current = true;
     if (lerArmazenado("session", CHAVE_DEPOIS)) return;
-    let vivo = true;
-    createClient()
-      .auth.getSession()
-      .then(({ data }: { data: { session: Session | null } }) => {
-        if (!vivo || !data.session) return;
-        const v = deveAbrirSozinho(activeOrg.role, user.is_platform_admin, data.session.user.user_metadata);
-        if (v && !lerArmazenado("local", chaveVistoLocal(user.id, v))) setVersao(v);
-      })
-      .catch(() => {});
-    return () => {
-      vivo = false;
-    };
-  }, [activeOrg, user.id, user.is_platform_admin]);
+    // A marca vem do servidor (loadAuthUser): o cookie de sessão é HttpOnly e o
+    // getSession() do navegador volta vazio, o que deixava o tutorial sem abrir
+    // nunca no primeiro acesso (teste completo de 01/11/2026).
+    const v = deveAbrirSozinho(activeOrg.role, user.is_platform_admin, { tutorial_opa: user.tutorial_opa });
+    if (v && !lerArmazenado("local", chaveVistoLocal(user.id, v))) setVersao(v);
+  }, [activeOrg, user.id, user.is_platform_admin, user.tutorial_opa]);
 
-  if (!versao) return null;
   return (
-    <PassoAPasso
-      versao={versao}
-      aberto
-      primeiroAcesso
-      onFechar={() => {
-        gravarArmazenado("session", CHAVE_DEPOIS);
-        setVersao(null);
-      }}
-      onConcluir={() => {
-        marcar(versao);
-        setVersao(null);
-      }}
-    />
+    <>
+      {versao && (
+        <PassoAPasso
+          versao={versao}
+          aberto
+          primeiroAcesso
+          onFechar={() => {
+            gravarArmazenado("session", CHAVE_DEPOIS);
+            setVersao(null);
+          }}
+          onConcluir={() => {
+            marcar(versao);
+            setVersao(null);
+            setOferta(versao);
+          }}
+        />
+      )}
+      {oferta && <ConviteTour versao={oferta} onFechar={() => setOferta(null)} />}
+      {/* useSearchParams pede Suspense; sem ele a tela inteira cai para render no cliente. */}
+      <Suspense fallback={null}>
+        <TourHost />
+      </Suspense>
+    </>
+  );
+}
+
+/** Depois dos cartões: "agora na tela de verdade". Leva ao tour da tela atual, ou ao do Hoje. */
+function ConviteTour({ versao, onFechar }: { versao: VersaoTutorial; onFechar: () => void }) {
+  const pathname = usePathname();
+  return (
+    <div
+      role="dialog"
+      aria-labelledby="opa-convite-tour"
+      className="fixed inset-x-3 bottom-[calc(var(--m-nav-clearance,0px)+12px)] z-50 rounded-[28px] bg-[#0a2d40] p-5 text-white shadow-[0_24px_60px_rgba(9,44,62,0.3)] md:inset-x-auto md:bottom-6 md:right-6 md:w-[360px]"
+    >
+      <p id="opa-convite-tour" className="text-[17px] font-semibold tracking-[-0.02em]">
+        Agora na tela de verdade?
+      </p>
+      <p className="mt-1 text-[14px] leading-relaxed text-white/75">Um tour rápido aponta cada parte desta tela e diz o que ela faz.</p>
+      <div className="mt-4 flex items-center justify-end gap-2">
+        <button type="button" onClick={onFechar} className="h-11 rounded-full px-4 text-[14px] font-semibold text-white/80 hover:bg-white/10">
+          Agora não
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            onFechar();
+            iniciarTour(tourDaRota(pathname) ?? "hoje", versao);
+          }}
+          className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-5 text-[14px] font-semibold text-[#0a2d40] hover:bg-[#e7f0f5]"
+        >
+          Fazer o tour desta tela
+          <ArrowRight className="size-4" weight="bold" />
+        </button>
+      </div>
+    </div>
   );
 }

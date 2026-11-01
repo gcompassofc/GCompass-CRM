@@ -137,7 +137,7 @@ export function QuadroOpa({ colunas: inicial }: { colunas: ColunaQuadro[] }) {
     <DragDropContext onDragEnd={soltar}>
       <div className="-mx-5 flex gap-4 overflow-x-auto px-5 pb-4 md:-mx-10 md:px-10">
         {colunas.map((col) => (
-          <section key={col.id} className="flex w-[296px] shrink-0 flex-col rounded-[28px] bg-[#f2f6f9] p-3">
+          <section key={col.id} data-tour="funil-etapa" className="flex w-[296px] shrink-0 flex-col rounded-[28px] bg-[#f2f6f9] p-3">
             <header className="px-2 pb-3 pt-1.5">
               <div className="flex items-center justify-between gap-2">
                 <p className="flex min-w-0 items-center gap-2 text-[15px] font-semibold text-[#0a2d40]">
@@ -170,6 +170,7 @@ export function QuadroOpa({ colunas: inicial }: { colunas: ColunaQuadro[] }) {
                         {(p, s) => (
                           <article
                             ref={p.innerRef}
+                            data-tour="funil-cartao"
                             {...p.draggableProps}
                             {...p.dragHandleProps}
                             className={cn(
@@ -259,7 +260,7 @@ export function QuadroOpa({ colunas: inicial }: { colunas: ColunaQuadro[] }) {
                               )}
                               <div className="flex shrink-0 gap-1.5">
                                 {toque && (
-                                  <label className="relative inline-flex h-11 items-center rounded-full bg-[#eef3f6] px-3 text-[13px] font-semibold text-[#0a2d40]">
+                                  <label data-tour="funil-mover" className="relative inline-flex h-11 items-center rounded-full bg-[#eef3f6] px-3 text-[13px] font-semibold text-[#0a2d40]">
                                     Mover
                                     <select
                                       aria-label={`Mover ${c.nome} para outra etapa`}

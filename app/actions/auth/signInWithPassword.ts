@@ -54,7 +54,7 @@ export async function signInWithPassword(
   // ANTES do teto de tentativas porque na vitrine não há o que proteger — e
   // DEPOIS de nada mais, para que o caminho real continue passando pelo teto.
   if (IS_DEMO_MODE) {
-    redirect(next || "/app/inbox");
+    redirect(next || "/app");
   }
 
   // Antes de falar com o GoTrue: sem isto, tentar senha é de graça e ilimitado
@@ -119,5 +119,5 @@ export async function signInWithPassword(
   });
 
   // Server-side redirect ensures fresh session cookie is sent to browser.
-  redirect(next || "/app/inbox");
+  redirect(next || "/app");
 }

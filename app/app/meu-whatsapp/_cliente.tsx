@@ -85,10 +85,10 @@ export function MeuWhatsappCliente({ inicial }: { inicial: MeuWhatsapp }) {
     rodar(() => reconectarMeuWhatsapp(novoQr), novoQr ? "Código novo a caminho." : "Reconectando o seu número.");
 
   return (
-    <Cartao bloco className="mx-auto w-full max-w-3xl">
+    <Cartao bloco tour="whats-cartao" className="mx-auto w-full max-w-3xl">
       <TituloBloco icone={WhatsappLogo} titulo="O seu número de WhatsApp" sub="Só você vê e mexe nele" />
 
-      <div className="mt-6 flex flex-wrap items-center gap-2" aria-live="polite">
+      <div data-tour="whats-estado" className="mt-6 flex flex-wrap items-center gap-2" aria-live="polite">
         {e.estado === "conectado" && (
           <Chip icone={WifiHigh} tom="ok">
             Conectado{e.telefone ? `, ${e.telefone}` : ""}
@@ -122,7 +122,7 @@ export function MeuWhatsappCliente({ inicial }: { inicial: MeuWhatsapp }) {
             Conecte o seu WhatsApp para atender os leads por aqui. Leva menos de um minuto e você não precisa instalar nada.
           </p>
           <Passos />
-          <div>
+          <div data-tour="whats-acao">
             <button type="button" onClick={conectar} disabled={pendente} className={cn(BOTAO, "bg-[#0a2d40] text-white hover:bg-[#12455f]")}>
               {pendente ? <CircleNotch className="size-5 animate-spin" aria-hidden /> : <WhatsappLogo className="size-5" aria-hidden />}
               {pendente ? "Preparando o código" : "Conectar meu WhatsApp"}
@@ -143,6 +143,7 @@ export function MeuWhatsappCliente({ inicial }: { inicial: MeuWhatsapp }) {
           {/* O QR muda a cada ~20 s: trocar só o src evita o flash de remontar o elemento. */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
+            data-tour="whats-acao"
             src={`/api/v1/channel-sessions/${e.sessaoId}/qr?t=${tick}`}
             alt="Código para conectar o WhatsApp"
             className="mx-auto size-64 rounded-[24px] border border-[#d5e2ea] bg-white p-3"
@@ -180,7 +181,7 @@ export function MeuWhatsappCliente({ inicial }: { inicial: MeuWhatsapp }) {
           <p className="text-[15px] leading-relaxed text-[#34566b]">
             O seu WhatsApp saiu do ar. Pode ter sido a internet do celular ou o aparelho ter sido desconectado nas configurações do WhatsApp.
           </p>
-          <div className="flex flex-wrap gap-3">
+          <div data-tour="whats-acao" className="flex flex-wrap gap-3">
             <button type="button" onClick={() => reconectar(false)} disabled={pendente} className={cn(BOTAO, "bg-[#0a2d40] text-white hover:bg-[#12455f]")}>
               {pendente ? <CircleNotch className="size-5 animate-spin" aria-hidden /> : <ArrowsClockwise className="size-5" aria-hidden />}
               Reconectar

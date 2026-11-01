@@ -252,7 +252,7 @@ export async function VisaoCorretor({
             </Cartao>
           )}
 
-          <Cartao bloco>
+          <Cartao bloco tour="hoje-fila">
             <TituloBloco
               icone={UsersThree}
               titulo="Sua fila de hoje"
@@ -328,7 +328,7 @@ export async function VisaoCorretor({
         <div className="flex flex-col gap-5 lg:col-span-4">
           <VisitasDeHoje visitas={visitas} porId={porId} porCodigo={porCodigo} />
 
-          <Cartao bloco>
+          <Cartao bloco tour="hoje-ia">
             <TituloBloco icone={Sparkle} titulo="A IA anotou" sub="Confirme para salvar na ficha" />
             {sugestoes.length > 0 ? (
               <ul className="mt-4 flex flex-col gap-2">
@@ -509,7 +509,7 @@ function VisitasDeHoje({
       : null;
 
   return (
-    <Cartao bloco>
+    <Cartao bloco tour="hoje-visitas">
       <TituloBloco icone={CalendarBlank} titulo="Visitas de hoje" />
       {visitas.length > 0 ? (
         <>
@@ -611,7 +611,16 @@ export async function VisaoGestor({
   const pctDiagnostico = leads.length ? Math.round((leads.filter((l) => diagnosticoCompleto(l.campos) === 4).length / leads.length) * 100) : 0;
 
   const semAcento = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-  const whatsCaiu = (nome: string) => sessoes.some((s) => s.display_name && semAcento(s.display_name) === semAcento(nome) && s.status !== "WORKING");
+  // O número é de quem é dono dele (owner_user_id); o nome só vale para número antigo sem dono.
+  const whatsCaiu = (p: Pessoa) =>
+    sessoes.some(
+      (s) =>
+        s.status !== "WORKING" &&
+        (s.owner_user_id ? s.owner_user_id === p.id : Boolean(s.display_name) && semAcento(s.display_name!) === semAcento(p.nome)),
+    );
+  // Avisos de prazo, repasse e escalada saem todos pelo OPA Lembretes: se ele cai, nada chega.
+  const lembretes = sessoes.find((s) => s.waha_session_name === "opa-lembretes");
+  const lembretesFora = !lembretes || lembretes.status !== "WORKING";
 
   const ativosRoleta = config.roleta.filter((id) => !config.roleta_pausados.includes(id));
   const roletaParada = ativosRoleta.length === 0;
@@ -625,7 +634,7 @@ export async function VisaoGestor({
         esperando: meus.filter((l) => l.conversa?.esperandoMin != null).length,
         atrasados: meus.filter(foraDoPrazo).length,
         diagnostico: meus.length ? Math.round((meus.filter((l) => diagnosticoCompleto(l.campos) === 4).length / meus.length) * 100) : 0,
-        caiu: whatsCaiu(p.nome),
+        caiu: whatsCaiu(p),
       };
     })
     .filter((c) => c.total > 0 || c.caiu)
@@ -637,6 +646,31 @@ export async function VisaoGestor({
 
   return (
     <>
+      {lembretesFora && (
+        <div
+          role="alert"
+          className="flex flex-col gap-3 rounded-[24px] bg-[#fdf0e6] p-5 text-[#7a3209] sm:flex-row sm:items-center sm:justify-between"
+        >
+          <p className="flex items-start gap-2.5 text-[14px] leading-relaxed">
+            <WifiSlash className="mt-0.5 size-5 shrink-0 text-[#c4561a]" />
+            <span>
+              <strong className="font-semibold">O número OPA Lembretes {lembretes ? "está desconectado" : "ainda não foi ligado"}.</strong> Os avisos de
+              prazo, os repasses e as escaladas não estão chegando no WhatsApp da equipe. Acompanhe a Fila por aqui até ele voltar.
+            </span>
+          </p>
+          {admin ? (
+            <Link
+              href="/app/conexoes"
+              className="inline-flex h-11 shrink-0 items-center justify-center rounded-full bg-[#7a3209] px-5 text-[14px] font-semibold text-white hover:bg-[#5e2607]"
+            >
+              Reconectar
+            </Link>
+          ) : (
+            <span className="shrink-0 text-[13px] font-medium">Peça ao administrador para reconectar.</span>
+          )}
+        </div>
+      )}
+
       {admin && <SaudeDoSistema orgId={orgId} sessoes={sessoes} />}
 
       {precisa > 0 && (
@@ -680,7 +714,7 @@ export async function VisaoGestor({
         </Cartao>
       )}
 
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+      <div data-tour="hoje-numeros" className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
         <CartaoNumero
           icone={UserPlus}
           rotulo={`Leads novos · ${["7d", "30d", "90d"].includes(periodo.chave) ? `${periodo.dias} dias` : periodo.rotulo.toLowerCase()}`}

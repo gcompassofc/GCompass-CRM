@@ -39,9 +39,19 @@ const plexMono = IBM_Plex_Mono({
  */
 export function generateMetadata(): Metadata {
   const { name } = branding();
+  // Ícone da aba e da tela inicial do celular: só a instalação com a paleta da OPA tem
+  // os arquivos (o "O" do logo). Sem isso o navegador pedia /favicon.ico e dava 404.
+  const icones: Metadata["icons"] =
+    process.env.APP_PALETTE?.trim() === "opa"
+      ? { icon: [{ url: "/opa/icone.svg", type: "image/svg+xml" }], apple: [{ url: "/opa/icone-180.png", sizes: "180x180" }] }
+      : undefined;
   return {
+    icons: icones,
+    // O texto é todo em português: tradução automática do navegador não ajuda e,
+    // pior, troca nós de texto por <font> e quebra o React (`insertBefore`).
+    other: { google: "notranslate" },
     title: {
-      default: `${name} — atendimento e vendas por WhatsApp com agentes de IA`,
+      default: `${name} · atendimento e vendas por WhatsApp`,
       template: `%s · ${name}`,
     },
     description:
@@ -95,6 +105,9 @@ export default function RootLayout({
   return (
     <html
       lang="pt-BR"
+      // Tradutor do navegador e extensões que reescrevem texto mexem no DOM por fora
+      // do React e derrubam a tela com `insertBefore`. Ver generateMetadata.
+      translate="no"
       data-theme={temaPadrao}
       data-tema-padrao={temaPadrao}
       data-marca={marca}

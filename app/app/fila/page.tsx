@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
+import { quandoVolta, situacaoDoRelogio } from "@/lib/opa/atendimento";
 import { carregarConfig } from "@/lib/opa/config";
 import {
   carregarEquipe,
@@ -100,7 +101,7 @@ function Selos({ l }: { l: LeadOpa }) {
 function Proximo({ l, im, dono, prazos }: { l: LeadOpa; im?: Imovel; dono?: string; prazos: Prazos }) {
   const prox = proximoNaFila(l, prazos);
   return (
-    <Cartao escuro bloco className="grid gap-6 md:grid-cols-[minmax(0,1fr)_280px] md:items-center">
+    <Cartao escuro bloco tour="fila-proximo" className="grid gap-6 md:grid-cols-[minmax(0,1fr)_280px] md:items-center">
       <div className="flex min-w-0 items-center gap-5">
         <FotoImovel imovel={im} className="size-[88px] shrink-0 rounded-[22px]" />
         <div className="min-w-0">
@@ -113,7 +114,7 @@ function Proximo({ l, im, dono, prazos }: { l: LeadOpa; im?: Imovel; dono?: stri
           {l.conversa?.previa && <p className="mt-2 line-clamp-1 text-[15px] text-white/85">“{l.conversa.previa}”</p>}
         </div>
       </div>
-      <div className="flex flex-col gap-3">
+      <div data-tour="fila-prazo" className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-2">
           <Chip icone={Clock} tom={prox.estourou ? "alerta" : "acao"}>
             {tempoCurto(l.conversa?.esperandoMin ?? 0)}
@@ -123,7 +124,7 @@ function Proximo({ l, im, dono, prazos }: { l: LeadOpa; im?: Imovel; dono?: stri
         <div className="h-2.5 overflow-hidden rounded-full bg-white/10">
           <div className={cn("h-full rounded-full", prox.estourou ? "bg-[#ff8a80]" : "bg-[#8fc4dd]")} style={{ width: `${Math.max(3, prox.pct)}%` }} />
         </div>
-        <div className="flex gap-2">
+        <div data-tour="fila-acoes" className="flex gap-2">
           <Link
             href={`/app/leads/${l.id}`}
             className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-full bg-[#2a7ca8] text-[14px] font-semibold text-white hover:bg-[#1f6a93]"
@@ -141,7 +142,7 @@ function CartaoFila({ l, i, im, dono, prazos }: { l: LeadOpa; i: number; im?: Im
   const espera = l.conversa?.esperandoMin;
   const prox = espera != null ? proximoNaFila(l, prazos) : null;
   return (
-    <Cartao className="grid gap-5 p-5 md:grid-cols-[minmax(0,1fr)_240px_auto] md:items-center">
+    <Cartao tour="fila-item" className="grid gap-5 p-5 md:grid-cols-[minmax(0,1fr)_240px_auto] md:items-center">
       <Link href={`/app/leads/${l.id}`} className="flex min-w-0 items-center gap-4">
         <div className="relative shrink-0">
           {im ? <FotoImovel imovel={im} className="size-[60px] rounded-[18px]" /> : <Avatar texto={iniciaisDe(l.nome)} className="size-[60px] text-[15px]" />}
@@ -245,6 +246,9 @@ export default async function FilaPage({
   const escondidos = resto.length - restoVisivel.length + respondidos.length - respondidosVisiveis.length;
   const pz = config.prazos;
   const nomeDono = (l: LeadOpa) => equipe.get(l.donoId ?? "")?.nome.split(" ")[0];
+  // Fora do horário o relógio para; sem dizer isso, o corretor acha que a fila travou.
+  const agora = new Date().getTime();
+  const relogio = situacaoDoRelogio(agora, config.horario);
 
   const link = (a: Aba, comTudo = false) => {
     const p = new URLSearchParams();
@@ -287,6 +291,18 @@ export default async function FilaPage({
             </div>
           </details>
         </div>
+
+        {!relogio.aberto && (
+          <p
+            role="status"
+            className="flex items-start gap-2.5 rounded-[20px] bg-[#e7f0f5] px-4 py-3 text-[14px] leading-relaxed text-[#12455f]"
+          >
+            <Clock className="mt-0.5 size-4 shrink-0 text-[#2a7ca8]" />
+            <span>
+              Fora do horário de atendimento. O relógio está parado e volta a contar {quandoVolta(relogio.voltaMs, agora)}.
+            </span>
+          </p>
+        )}
 
         {primeiro ? (
           <Proximo l={primeiro} im={porCodigo.get(primeiro.imovelCodigo ?? "")} dono={nomeDono(primeiro)} prazos={pz} />

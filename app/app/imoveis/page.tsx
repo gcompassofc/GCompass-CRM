@@ -89,7 +89,7 @@ export default async function ImoveisPage({
           <CartaoNumero icone={Lock} rotulo="Off market" valor={offMarket} contexto="só por link reservado" />
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div data-tour="imoveis-regioes" className="flex flex-wrap items-center justify-between gap-3">
           <AbasPilula
             itens={REGIOES.map(([r, rotulo, icone]) => ({
               href: link(r),
@@ -99,7 +99,7 @@ export default async function ImoveisPage({
               ativo: (regiao ?? undefined) === r,
             }))}
           />
-          <form className="relative h-11 w-full sm:w-72" action="/app/imoveis">
+          <form data-tour="imoveis-busca" className="relative h-11 w-full sm:w-72" action="/app/imoveis">
             {regiao && <input type="hidden" name="regiao" value={regiao} />}
             <MagnifyingGlass className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-[#5b7284]" aria-hidden />
             <input
@@ -135,6 +135,7 @@ export default async function ImoveisPage({
               <li key={i.id}>
                 <Link
                   href={`/app/imoveis/${i.codigo}`}
+                  data-tour="imoveis-card"
                   className="group block rounded-[28px] bg-white p-3 shadow-[0_1px_2px_rgba(9,44,62,0.04)] transition-transform duration-200 hover:-translate-y-0.5 hover:shadow-[0_14px_34px_rgba(9,44,62,0.10)]"
                 >
                   <div className="relative aspect-[4/3] overflow-hidden rounded-[22px]">

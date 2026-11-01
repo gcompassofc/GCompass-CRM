@@ -99,6 +99,40 @@ export function minutosUteis(deMs: number, ateMs: number, horario: DiaAtendiment
   return total;
 }
 
+/**
+ * Agora está dentro do horário de atendimento? Fora dele, quando o relógio volta a
+ * contar (início da próxima janela). Sem nenhum dia aberto, o relógio conta sempre.
+ */
+export function situacaoDoRelogio(
+  agoraMs: number,
+  horario: DiaAtendimento[],
+): { aberto: true } | { aberto: false; voltaMs: number } {
+  const janelas = janelasDaSemana(horario);
+  if (janelas.size === 0) return { aberto: true };
+  let dia = diaSP(agoraMs);
+  for (let n = 0; n < 8; n++) {
+    const j = janelas.get(diaDaSemana(dia));
+    if (j) {
+      const zero = inicioDoDia(dia);
+      const abre = zero + j.abre * MIN_MS;
+      if (agoraMs >= abre && agoraMs < zero + j.fecha * MIN_MS) return { aberto: true };
+      if (agoraMs < abre) return { aberto: false, voltaMs: abre };
+    }
+    dia = somarDias(dia, 1);
+  }
+  return { aberto: true };
+}
+
+/** "hoje às 08:00", "amanhã às 08:00" ou "segunda às 08:00", no horário de São Paulo. */
+export function quandoVolta(voltaMs: number, agoraMs: number): string {
+  const hora = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }).format(voltaMs);
+  const dia = diaSP(voltaMs);
+  if (dia === diaSP(agoraMs)) return `hoje às ${hora}`;
+  if (dia === somarDias(diaSP(agoraMs), 1)) return `amanhã às ${hora}`;
+  const semana = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "long" }).format(voltaMs).replace("-feira", "");
+  return `${semana} às ${hora}`;
+}
+
 /** Minutos de espera, arredondados, no horário de atendimento. */
 export function esperaEmMinutos(deMs: number, ateMs: number, horario: DiaAtendimento[]): number {
   return Math.round(minutosUteis(deMs, ateMs, horario));

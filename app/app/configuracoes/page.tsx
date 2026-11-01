@@ -31,6 +31,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { CabecalhoOpa, CorpoOpa } from "../_opa/cabecalho";
+import { FormComRetorno } from "../_opa/form-com-retorno";
 import { AbasPilula, Avatar, BotaoPilula, Cartao, Chip, IconeRedondo, TituloBloco, iniciaisDe, type Icone } from "../_opa/ui";
 import {
   adicionarCampo,
@@ -251,7 +252,7 @@ function AbaRoleta({ config, equipe }: { config: ConfigOpa; equipe: Map<string, 
   return (
     <div className="grid gap-5 xl:grid-cols-2 [&>*]:min-w-0">
       <div className="flex flex-col gap-5">
-        <Cartao bloco>
+        <Cartao bloco tour="roleta-ordem">
           <TituloBloco
             icone={ArrowsClockwise}
             titulo="Roleta de leads"
@@ -263,9 +264,9 @@ function AbaRoleta({ config, equipe }: { config: ConfigOpa; equipe: Map<string, 
           </div>
         </Cartao>
 
-        <Cartao bloco>
+        <Cartao bloco tour="roleta-prazos">
           <TituloBloco icone={Clock} titulo="Prazos do primeiro atendimento" sub="Sem resposta no prazo, o lead passa para o próximo" />
-          <form action={salvarPrazos} className="mt-5 flex flex-col gap-5">
+          <FormComRetorno action={salvarPrazos} sucesso="Prazos salvos." className="mt-5 flex flex-col gap-5">
             <ul className="flex flex-col gap-2">
               <Regra rotulo="Tráfego pago">
                 avisos aos {config.prazos.avisos_pago.join(" e ")} min, troca em
@@ -297,12 +298,12 @@ function AbaRoleta({ config, equipe }: { config: ConfigOpa; equipe: Map<string, 
                 Salvar prazos
               </button>
             </div>
-          </form>
+          </FormComRetorno>
         </Cartao>
       </div>
 
       <div className="flex flex-col gap-5">
-        <Cartao bloco escuro>
+        <Cartao bloco escuro tour="roleta-regras">
           <TituloBloco icone={ArrowRight} claro titulo="Quem fica com o lead" sub="Nesta ordem; a roleta é a última regra" />
           <ol className="mt-5 flex flex-col gap-2">
             {prioridade.map((t, i) => (
@@ -321,7 +322,7 @@ function AbaRoleta({ config, equipe }: { config: ConfigOpa; equipe: Map<string, 
 
         <Cartao bloco>
           <TituloBloco icone={Target} titulo="Roleta de captação" sub="OPA Radar: imóveis que a OPA ainda não tem" />
-          <form action={salvarCaptacao} className="mt-5 flex flex-col gap-4">
+          <FormComRetorno action={salvarCaptacao} sucesso="Captação salva." className="mt-5 flex flex-col gap-4">
             <ul className="flex flex-col gap-2">
               <Regra rotulo="Imóveis por semana, por corretor">
                 <Seletor nome="por_semana" valor={config.captacao.por_semana} opcoes={[[1, "1"], [2, "2"], [3, "3"]]} />
@@ -345,7 +346,7 @@ function AbaRoleta({ config, equipe }: { config: ConfigOpa; equipe: Map<string, 
                 Salvar captação
               </button>
             </div>
-          </form>
+          </FormComRetorno>
           <p className="mb-2 mt-6 text-[13px] font-semibold text-[#34566b]">Ordem da captação</p>
           <OrdemCorretores ids={ordemCaptacao} equipe={equipe} qual="captacao" />
           <div className="mt-4">
@@ -702,7 +703,7 @@ function AbaHorario({ config }: { config: ConfigOpa }) {
   return (
     <Cartao bloco className="max-w-3xl">
       <TituloBloco icone={Clock} titulo="Horário de atendimento" sub="Fora dele, a fila e os lembretes esperam a abertura" />
-      <form action={salvarHorario} className="mt-5 flex flex-col gap-5">
+      <FormComRetorno action={salvarHorario} sucesso="Horário salvo." className="mt-5 flex flex-col gap-5">
         <ul className="flex flex-col gap-2">
           {config.horario.map((d, i) => (
             <li key={d.dias} className={cn(linhaLista, "flex-wrap")}>
@@ -735,7 +736,7 @@ function AbaHorario({ config }: { config: ConfigOpa }) {
             Salvar horário
           </button>
         </div>
-      </form>
+      </FormComRetorno>
     </Cartao>
   );
 }

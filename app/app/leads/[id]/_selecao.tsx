@@ -22,7 +22,10 @@ export function MontarSelecao({
   inegociavel: string | null;
   itens: ItemSelecao[];
 }) {
-  const [marcados, setMarcados] = useState<string[]>(() => itens.slice(0, 2).map((i) => i.codigo));
+  // Os 2 que mais combinam já vêm marcados como sugestão; o corretor troca à vontade.
+  const sugeridos = useMemo(() => itens.slice(0, 2).map((i) => i.codigo), [itens]);
+  const [marcados, setMarcados] = useState<string[]>(sugeridos);
+  const aindaSugestao = marcados.length > 0 && marcados.length === sugeridos.length && marcados.every((c) => sugeridos.includes(c));
   const escolhidos = useMemo(() => itens.filter((i) => marcados.includes(i.codigo)), [itens, marcados]);
   const texto = mensagemSelecao({ nome, inegociavel, itens: escolhidos });
 
@@ -33,7 +36,11 @@ export function MontarSelecao({
   return (
     <div className="mt-6 rounded-[24px] bg-[#f2f6f9] p-4">
       <p className="text-[15px] font-semibold text-[#0a2d40]">Montar seleção</p>
-      <p className="mt-0.5 text-[13px] text-[#5b7284]">Marque até 3. A mensagem sai pronta, uma só.</p>
+      <p className="mt-0.5 text-[13px] text-[#5b7284]">
+        {aindaSugestao
+          ? `Sugestão: ${sugeridos.length === 1 ? "marcamos o que mais combina" : `marcamos os ${sugeridos.length} que mais combinam`}. Troque à vontade, até 3.`
+          : "Marque até 3. A mensagem sai pronta, uma só."}
+      </p>
       <ul className="mt-3 flex flex-wrap gap-2">
         {itens.map((i) => {
           const on = marcados.includes(i.codigo);
@@ -44,7 +51,7 @@ export function MontarSelecao({
                 aria-pressed={on}
                 title={`${i.codigo}: ${i.titulo}`}
                 onClick={() => alternar(i.codigo)}
-                className={`inline-flex h-10 items-center gap-1.5 rounded-full px-3.5 text-[13px] font-medium ${
+                className={`inline-flex h-11 items-center gap-1.5 rounded-full px-3.5 text-[13px] font-medium ${
                   on ? "bg-[#12455f] text-white" : "bg-white text-[#12455f]"
                 }`}
               >

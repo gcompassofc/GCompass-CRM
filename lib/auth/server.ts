@@ -128,6 +128,9 @@ export async function loadAuthUser(): Promise<AuthUser | null> {
     avatar_url: avatarUrl,
     is_platform_admin: !!paRow,
     organizations: memberships,
+    // O cookie de sessão é HttpOnly: o navegador não lê o user_metadata, então
+    // a marca do tutorial (perfil imobiliária) vem daqui.
+    tutorial_opa: user.user_metadata?.tutorial_opa ?? null,
   };
 }
 

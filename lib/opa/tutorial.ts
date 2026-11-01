@@ -102,6 +102,7 @@ export const PASSOS: Record<VersaoTutorial, PassoTutorial[]> = {
       texto: "Responda rápido. No primeiro atendimento existe um prazo: se ele vencer, o lead passa para o próximo corretor da roleta.",
       detalhes: [
         "Depois da sua primeira resposta, o lead é seu. O prazo não volta.",
+        "Respondeu por fora, por ligação ou outro número? Toque em Respondi no cartão do lead.",
         "Antes do prazo acabar, o CRM te avisa pelo WhatsApp.",
         "O relógio só corre dentro do horário de atendimento.",
       ],
@@ -125,7 +126,6 @@ export const PASSOS: Record<VersaoTutorial, PassoTutorial[]> = {
       texto: "O assistente lê a conversa e anota o que o cliente procura. Ele sugere a próxima mensagem. Você confirma ou ajusta.",
       detalhes: [
         "Ligar: um toque no telefone e a ligação já começa.",
-        "Respondi: marque quando respondeu por fora, para o prazo parar.",
         "Etapa: mude pela própria ficha quando o cliente avança.",
         "Kit: mensagens prontas para cada situação, no menu Kit.",
       ],
@@ -240,7 +240,8 @@ export function versoesPermitidas(role: Role | null, isPlatformAdmin = false): V
   return [];
 }
 
-export type TutorialVisto = Partial<Record<VersaoTutorial, string>>;
+/** Uma data por versão do tutorial e, em `tours`, uma data por tour de tela feito. */
+export type TutorialVisto = Partial<Record<VersaoTutorial, string>> & { tours?: Record<string, string> };
 
 /** Lê o que já foi visto a partir do `user_metadata` inteiro. Tolera lixo. */
 export function lerVisto(metadata: unknown): TutorialVisto {
@@ -252,7 +253,24 @@ export function lerVisto(metadata: unknown): TutorialVisto {
     const data = (bruto as Record<string, unknown>)[v];
     if (typeof data === "string" && data) visto[v] = data;
   }
+  const tours = (bruto as Record<string, unknown>).tours;
+  if (tours && typeof tours === "object") {
+    const feitos: Record<string, string> = {};
+    for (const [id, data] of Object.entries(tours as Record<string, unknown>)) if (typeof data === "string" && data) feitos[id] = data;
+    if (Object.keys(feitos).length > 0) visto.tours = feitos;
+  }
   return visto;
+}
+
+/** Ids dos tours de tela que a pessoa já terminou. */
+export function toursFeitos(metadata: unknown): string[] {
+  return Object.keys(lerVisto(metadata).tours ?? {});
+}
+
+/** O valor novo da chave `tutorial_opa` com mais um tour feito, preservando o resto. */
+export function marcarTourFeito(metadata: unknown, tour: string, agora: Date = new Date()): TutorialVisto {
+  const atual = lerVisto(metadata);
+  return { ...atual, tours: { ...(atual.tours ?? {}), [tour]: agora.toISOString() } };
 }
 
 /** Abre sozinho quando a versão do papel ainda não foi vista. */
@@ -300,10 +318,10 @@ export const DUVIDAS: Duvida[] = [
   {
     id: "marcar-respondi",
     pergunta: "Como marco que respondi?",
-    resposta: "Na ficha do lead, toque em Respondi. Use quando você respondeu por fora, por ligação ou por outro número: o prazo para.",
-    tela: "ficha",
-    href: "/app/leads",
-    rotuloLink: "Abrir Meus leads",
+    resposta: "Na Fila, toque em Respondi no cartão do lead. Use quando você respondeu por fora, por ligação ou por outro número: o prazo para.",
+    tela: "fila",
+    href: "/app/fila",
+    rotuloLink: "Abrir a Fila",
   },
   {
     id: "copiloto-errou",

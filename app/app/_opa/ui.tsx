@@ -54,12 +54,15 @@ export function Cartao({
   bloco,
   escuro,
   href,
+  tour,
 }: {
   children: ReactNode;
   className?: string;
   bloco?: boolean;
   escuro?: boolean;
   href?: string;
+  /** Âncora do tour guiado (`data-tour`), ver lib/opa/tour.ts. */
+  tour?: string;
 }) {
   const cls = cn(
     bloco ? "rounded-[32px] p-7" : "rounded-[28px] p-6",
@@ -69,11 +72,13 @@ export function Cartao({
     className,
   );
   return href ? (
-    <Link href={href} className={cls}>
+    <Link href={href} className={cls} data-tour={tour}>
       {children}
     </Link>
   ) : (
-    <section className={cls}>{children}</section>
+    <section className={cls} data-tour={tour}>
+      {children}
+    </section>
   );
 }
 

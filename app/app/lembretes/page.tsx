@@ -123,7 +123,7 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
           parado. O resto da cadência é o guia do dia a dia, ainda sem aviso automático.
         </p>
 
-        <div className="flex flex-wrap items-center gap-3">
+        <div data-tour="agenda-abas" className="flex flex-wrap items-center gap-3">
           <AbasPilula
             itens={ABAS.map(([k, r, I]) => ({
               href: k === "pago" ? "/app/lembretes" : `/app/lembretes?aba=${k}`,
@@ -146,7 +146,7 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
         <div className="grid gap-5 xl:grid-cols-[1fr_380px] [&>*]:min-w-0">
           <div className="flex flex-col gap-5">
             {trilha.length > 0 && (
-              <Cartao bloco>
+              <Cartao bloco tour="agenda-trilha">
                 <TituloBloco
                   icone={aba === "captacao" ? Target : aba === "organico" ? ChatText : Megaphone}
                   titulo={aba === "captacao" ? "Captação pelo OPA Radar" : aba === "organico" ? "Lead orgânico" : "Lead do tráfego pago"}
@@ -188,7 +188,7 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
             )}
 
             {gestor && ehRegras && (
-              <Cartao bloco>
+              <Cartao bloco tour="agenda-nova-regra">
                 <div id="nova-regra" className="scroll-mt-6" />
                 <TituloBloco icone={Plus} titulo="Nova regra" sub={`Entra na trilha ${aba === "captacao" ? "de captação" : aba === "organico" ? "do orgânico" : "do tráfego pago"}`} />
                 <form action={novaRegra} className="mt-5 grid gap-3 md:grid-cols-2">
@@ -207,7 +207,7 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
             )}
 
             {aba === "agendadas" && (
-              <Cartao bloco>
+              <Cartao bloco tour="agenda-agendadas">
                 <TituloBloco icone={CalendarBlank} titulo="Mensagens agendadas" sub="Saem na hora marcada pelo OPA Lembretes" />
                 {agendadas.length === 0 ? (
                   <Vazio ilustracao={<IlustraAgenda />} titulo="Nenhuma mensagem agendada" texto="Agende pelo botão no topo ou pela ficha do lead." />

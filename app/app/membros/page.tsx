@@ -113,9 +113,11 @@ export default async function MembrosPage() {
   return (
     <>
       <CabecalhoOpa secao="Configuração" titulo="Membros" subtitulo="Papéis e o que cada um pode fazer" icone={Users} equipe={false}>
-        <BotaoPilula href="/app/team/invite" icone={Users} tom="branco">
-          Convidar membro
-        </BotaoPilula>
+        <span data-tour="membros-convidar" className="inline-flex">
+          <BotaoPilula href="/app/team/invite" icone={Users} tom="branco">
+            Convidar membro
+          </BotaoPilula>
+        </span>
       </CabecalhoOpa>
       <CorpoOpa>
         <div className="grid gap-5 sm:grid-cols-3">
@@ -124,7 +126,7 @@ export default async function MembrosPage() {
           <CartaoNumero icone={ShieldCheck} rotulo="Corretores" valor={membros.filter((m) => m.papel === "agent").length} contexto="veem só os próprios leads" />
         </div>
 
-        <Cartao bloco>
+        <Cartao bloco tour="membros-lista">
           <TituloBloco icone={Users} titulo="Quem está na equipe" sub="Papel, pipelines, WhatsApp e último acesso" />
           <ul className="mt-5 flex flex-col gap-2">
             {membros.map((m) => (
@@ -161,7 +163,7 @@ export default async function MembrosPage() {
           </ul>
         </Cartao>
 
-        <Cartao bloco>
+        <Cartao bloco tour="membros-papeis">
           <TituloBloco icone={ShieldCheck} titulo="O que cada papel pode fazer" sub="A regra fica no banco, não só na tela" />
           <p className="mt-4 flex items-center gap-2 text-[13px] text-[#5b7284]">
             <Info className="size-4 shrink-0 text-[#2a7ca8]" /> O corretor não vê o lead de outro nem se a tela tiver erro.

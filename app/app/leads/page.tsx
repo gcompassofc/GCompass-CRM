@@ -126,7 +126,7 @@ export default async function LeadsPage({
       <CabecalhoOpa titulo="Leads" subtitulo="Toque num lead para ver a conversa e o próximo passo" icone={UserPlus} />
       <CorpoOpa>
         {/* A busca do topo some abaixo de 1024 px: esta fica na própria tela, em todo tamanho. */}
-        <form action="/app/leads" method="get" role="search" className="flex items-center gap-2">
+        <form action="/app/leads" method="get" role="search" data-tour="leads-busca" className="flex items-center gap-2">
           {filtro[0] !== "todos" && <input type="hidden" name="aba" value={filtro[0]} />}
           {corretor && <input type="hidden" name="corretor" value={corretor} />}
           <label className="relative min-w-0 flex-1">
@@ -162,7 +162,7 @@ export default async function LeadsPage({
           <CartaoNumero icone={Lock} rotulo="Off market" valor={offMarket} contexto="atendimento com sigilo" href={link("offmarket")} />
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div data-tour="leads-abas" className="flex flex-wrap items-center justify-between gap-3">
           <AbasPilula
             itens={ABAS.map(([k, r, icone, f]) => ({
               href: link(k),
@@ -208,7 +208,7 @@ export default async function LeadsPage({
           </div>
         )}
 
-        <Cartao bloco className="p-3 md:p-4">
+        <Cartao bloco tour="leads-lista" className="p-3 md:p-4">
           <ul className="flex flex-col">
             {visiveis.map((l) => {
               const im = porCodigo.get(l.imovelCodigo ?? "");
@@ -220,6 +220,7 @@ export default async function LeadsPage({
                 <li key={l.id}>
                   <Link
                     href={`/app/leads/${l.id}`}
+                    data-tour="leads-item"
                     className="group flex items-center gap-4 rounded-[22px] px-3 py-3.5 transition-colors hover:bg-[#f2f6f9]"
                   >
                     <span className="relative shrink-0">

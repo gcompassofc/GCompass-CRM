@@ -89,9 +89,13 @@ export async function editarCampo(formData: FormData) {
   const leadId = String(formData.get("leadId") ?? "");
   const campo = String(formData.get("campo") ?? "");
   const valor = String(formData.get("valor") ?? "").trim();
+  // "antes" só escolhe a frase do aviso; a gravação não depende dele.
+  const antes = String(formData.get("antes") ?? "").trim();
   if (!leadId || !campo) return;
+  if (!valor && !antes) return { ok: true as const, aviso: "O campo está vazio: nada mudou." };
   await gravarCampo(leadId, campo, valor);
   revalidatePath(`/app/leads/${leadId}`);
+  if (!valor) return { ok: true as const, aviso: "Campo apagado." };
 }
 
 export async function reanalisar(formData: FormData) {

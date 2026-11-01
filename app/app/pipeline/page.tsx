@@ -172,7 +172,7 @@ export default async function PipelinePage({
     <>
       <CabecalhoOpa icone={Kanban} titulo="Funis" subtitulo="Arraste o card para mudar de etapa. No celular, toque em Mover." />
       <CorpoOpa largura="max-w-none">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div data-tour="funil-abas" className="flex flex-wrap items-center justify-between gap-3">
           <AbasPilula
             itens={funis.map((f) => ({
               href: link(f.slug),
