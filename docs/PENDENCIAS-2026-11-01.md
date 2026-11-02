@@ -1,8 +1,12 @@
 ---
 tags: [cliente/opa, tipo/pendencias]
-atualizado: 2026-11-01
+atualizado: 2026-11-02
 status: vigente
 ---
+
+> **02/11/2026:** a lista de pendências passou para a Central (tarefa #490 e subtarefas, etapa "CRM próprio da OPA"
+> no roadmap da OPA). Publicado hoje: troca de papel em Membros, Funis do corretor com "Mandar para todos" e conversa
+> de contato novo guardada até decidir (0124), a partir do teste do Kallyl como corretor. Este arquivo fica como histórico.
 
 # CRM OPA: erros e vulnerabilidades para corrigir (01/11/2026)
 

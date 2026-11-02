@@ -1,6 +1,6 @@
 ---
 tags: [cliente/opa, tipo/roteiro]
-atualizado: 2026-11-01
+atualizado: 2026-11-02
 status: vigente
 ---
 
@@ -8,7 +8,26 @@ status: vigente
 
 Roteiro único para tirar o CRM da OPA do computador e colocar em produção.
 Cada passo diz **quem faz**: 🙋 é do Allyson (conta, cartão, celular, decisão), 🤖 a IA executa.
-Nada aqui foi publicado ainda: banco, servidor e domínio de produção não existem.
+
+## Estado em 02/11/2026: publicação de atualizações
+
+No ar o commit `fb0d7b27d` (migrations até a 0124), publicado em 02/11 com conferência 34 ok e 0 falhando:
+troca de papel em Membros (`8836af372`), Funis do corretor com "Mandar para todos" da etapa (`3cd202de2`) e conversa
+de contato novo guardada, cifrada, até o corretor decidir (`fb0d7b27d`, tabela `whatsapp_mensagens_a_classificar`).
+Falta conferir com mensagem real se o telefone de contato oculto (`@lid`) aparece: os campos do Baileys lidos para isso
+não foram vistos em payload real.
+
+**Como publicar daqui para frente (🙋 roda, 🤖 prepara e confere):** o modo auto do Claude Code nega publicação em
+produção à IA. A IA commita e testa; o Allyson roda no PowerShell, passando as migrations novas como argumento:
+
+```powershell
+& "C:\Program Files\Git\bin\bash.exe" "D:/3. GCompass/GCompass-CRM/scripts/producao/publicar-opa.sh" supabase/migrations/<nova>.sql
+```
+
+O script confere chaves de cifra e pull travado, guarda cópia do `.env` e da imagem anterior, leva o código por
+`git archive`, aplica as migrations numa transação só, constrói a imagem, sobe só o app e roda a conferência.
+No PowerShell, `bash` solto abre o WSL, que não acha a chave SSH. Depois, a IA confere só lendo: contêineres,
+texto novo dentro de `.next/server`, objetos da migration no banco e a resposta da rotina `opa-lembretes`.
 
 ## Estado em 01/11/2026: CRM NO AR
 
