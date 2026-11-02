@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { carregarConfig } from "@/lib/opa/config";
-import { carregarEquipe, carregarImoveis, carregarLeads, filtrarCorretor, ROTULO_ORIGEM, type LeadOpa } from "@/lib/opa/dados";
+import { carregarEquipe, carregarImoveis, carregarLeads, filtrarCorretor, primeiroNome, ROTULO_ORIGEM, type LeadOpa } from "@/lib/opa/dados";
+import { escopoDoFunil } from "@/lib/opa/envio-etapa";
 import { afinidade, precoCurto } from "@/lib/opa/imoveis";
 import { diaSP, inicioDoDia } from "@/lib/opa/periodo";
 import { createClient } from "@/lib/supabase/server";
@@ -35,6 +36,10 @@ export default async function PipelinePage({
   if (!org) redirect("/app");
   const { p = "compradores", corretor } = await searchParams;
   const supabase = await createClient();
+  // Corretor vê só os leads dele (decisão de 02/11/2026), sem depender só da
+  // visibilidade configurada no banco; o gestor vê a equipe, com filtro opcional.
+  const dono = escopoDoFunil({ role: org.role, plataforma: user.is_platform_admin, userId: user.id, corretor });
+  const soDele = dono === user.id && org.role === "agent";
 
   const { data: funisRaw } = await supabase
     .from("crm_pipelines")
@@ -64,30 +69,34 @@ export default async function PipelinePage({
     // Contagens pelo banco: buscar as linhas parava em 1.000 e errava o número.
     Promise.all(
       funis.map(async (f) => {
-        const { count } = await supabase
+        let q = supabase
           .from("crm_leads")
           .select("id", { count: "exact", head: true })
           .eq("organization_id", org.orgId)
           .eq("status", "open")
           .eq("pipeline_id", f.id);
+        if (soDele) q = q.eq("owner_user_id", user.id);
+        const { count } = await q;
         return { pipeline_id: f.id, n: count ?? 0 };
       }),
     ).then((data) => ({ data })),
     Promise.all(
       (["won", "lost"] as const).map(async (status) => {
-        const { count } = await supabase
+        let q = supabase
           .from("crm_leads")
           .select("id", { count: "exact", head: true })
           .eq("organization_id", org.orgId)
           .eq("pipeline_id", funil.id)
           .eq("status", status)
           .gte("closed_at", inicioMes.toISOString());
+        if (soDele) q = q.eq("owner_user_id", user.id);
+        const { count } = await q;
         return { status, n: count ?? 0 };
       }),
     ).then((data) => ({ data })),
   ]);
 
-  const leads = filtrarCorretor(leadsRaw, corretor).sort(ordem);
+  const leads = filtrarCorretor(leadsRaw, dono).sort(ordem);
   const porCodigo = new Map(imoveis.map((i) => [i.codigo, i]));
   const acervo = imoveis.filter((i) => i.status !== "vendido");
   const porFunil = new Map<string, number>();
@@ -123,6 +132,7 @@ export default async function PipelinePage({
     return {
       id: e.id,
       nome: e.name,
+      slug: e.slug,
       cor: e.color,
       evento: e.evento_meta,
       lembrete: lembretePorEtapa.get(e.name) ?? null,
@@ -192,7 +202,8 @@ export default async function PipelinePage({
           </div>
         </div>
 
-        <QuadroOpa colunas={colunas} />
+        {/* "Mandar para todos" abre um por um no WhatsApp de quem envia; leitura não envia. */}
+        <QuadroOpa colunas={colunas} envio={org.role === "viewer" ? null : { corretor: primeiroNome(user.full_name), filtro: dono }} />
 
         <div className="flex flex-wrap items-center gap-2 px-1 text-[13px] text-[#5b7284]">
           <span>Ganho e perdido saem do quadro. Neste mês:</span>

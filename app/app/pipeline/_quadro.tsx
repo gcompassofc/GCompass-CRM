@@ -26,6 +26,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { marcarRespondido, moverEtapa } from "../leads/actions";
+import { EnviarEtapa, type EnvioDaEtapa } from "./_enviar-etapa";
 import { moverCartao } from "./mover";
 
 export interface CartaoQuadro {
@@ -52,6 +53,8 @@ export interface CartaoQuadro {
 export interface ColunaQuadro {
   id: string;
   nome: string;
+  /** Slug da etapa: escolhe a sugestão do "Mandar para todos". */
+  slug: string;
   cor: string | null;
   evento: string | null;
   lembrete: string | null;
@@ -103,7 +106,8 @@ function useToque(): boolean {
   );
 }
 
-export function QuadroOpa({ colunas: inicial }: { colunas: ColunaQuadro[] }) {
+/** `envio` ausente (leitura) = sem o botão "Mandar para todos". */
+export function QuadroOpa({ colunas: inicial, envio }: { colunas: ColunaQuadro[]; envio?: EnvioDaEtapa | null }) {
   const router = useRouter();
   const [colunas, setColunas] = useState(inicial);
   const [, iniciar] = useTransition();
@@ -144,7 +148,12 @@ export function QuadroOpa({ colunas: inicial }: { colunas: ColunaQuadro[] }) {
                   <span className="size-2.5 shrink-0 rounded-full" style={{ background: col.cor ?? "#2a7ca8" }} />
                   <span className="truncate">{col.nome}</span>
                 </p>
-                <span className="shrink-0 rounded-full bg-white px-2 text-[12px] font-semibold tabular-nums text-[#34566b]">{col.cartoes.length + col.ocultos}</span>
+                <div className="flex shrink-0 items-center gap-1">
+                  <span className="rounded-full bg-white px-2 text-[12px] font-semibold tabular-nums text-[#34566b]">{col.cartoes.length + col.ocultos}</span>
+                  {envio && col.cartoes.length + col.ocultos > 0 && (
+                    <EnviarEtapa etapa={{ id: col.id, nome: col.nome, slug: col.slug, quantos: col.cartoes.length + col.ocultos }} envio={envio} />
+                  )}
+                </div>
               </div>
               <div className="mt-2 flex min-h-7 items-center justify-between gap-2">
                 <span className="text-[12px] text-[#5b7284]">{col.total ? brl(col.total) : ""}</span>

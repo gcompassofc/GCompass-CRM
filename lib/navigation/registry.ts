@@ -677,10 +677,18 @@ export const MENU_IMOBILIARIA = {
 
 /**
  * Menu por papel (protótipo "Telas por permissão", 31/10/2026): o corretor vê só
- * o dia dele, sem Funis (move a etapa pela ficha); o gestor vê a equipe toda.
+ * o dia dele; o gestor vê a equipe toda. Funis voltaram para o corretor em
+ * 02/11/2026 (pedido do Kallyl, decisão do Allyson), só com os leads dele: a
+ * etapa de cada lead num olhar e o "Mandar para todos" da etapa. No celular
+ * eles entram pelo "Mais", como para o gestor (a barra já tem cinco alvos).
  */
-const MENU_CORRETOR = ["/app/hoje", "/app/fila", "/app/lembretes", "/app/leads", "/app/imoveis", "/app/kit", "/app/meu-whatsapp"];
-const ROTULO_CORRETOR: Record<string, string> = { "/app/lembretes": "Agenda", "/app/leads": "Meus leads", "/app/fila": "Fila" };
+const MENU_CORRETOR = ["/app/hoje", "/app/fila", "/app/lembretes", "/app/leads", "/app/pipeline", "/app/imoveis", "/app/kit", "/app/meu-whatsapp"];
+const ROTULO_CORRETOR: Record<string, string> = {
+  "/app/lembretes": "Agenda",
+  "/app/leads": "Meus leads",
+  "/app/fila": "Fila",
+  "/app/pipeline": "Funis",
+};
 const ROTULO_GESTOR: Record<string, string> = {
   "/app/fila": "Fila da equipe",
   "/app/pipeline": "Funis",
