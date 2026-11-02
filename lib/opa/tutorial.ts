@@ -406,6 +406,16 @@ export const DUVIDAS: Duvida[] = [
     rotuloLink: "Abrir a Fila da equipe",
     soGestor: true,
   },
+  {
+    id: "trocar-papel",
+    pergunta: "Como mudo o papel de alguém da equipe?",
+    resposta:
+      "Em Equipe, o administrador escolhe o novo papel ao lado do nome e toca em Salvar. Quem vira Gestor passa a ver a equipe toda; quem vira Leitura não muda mais nada.",
+    tela: "equipe",
+    href: "/app/membros",
+    rotuloLink: "Abrir a Equipe",
+    soGestor: true,
+  },
 ];
 
 /** Minúsculas e sem acento: "Roleta" e "roléta" acham a mesma coisa. */

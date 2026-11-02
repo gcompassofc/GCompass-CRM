@@ -221,7 +221,7 @@ export const TOURS: Record<TourId, Tour> = {
     soGestor: true,
     passos: [
       { alvo: "membros-convidar", titulo: "Convidar", texto: "Convide corretores pelo e-mail." },
-      { alvo: "membros-lista", titulo: "A equipe", texto: "Papel, WhatsApp conectado e último acesso de cada um." },
+      { alvo: "membros-lista", titulo: "A equipe", texto: "Papel, WhatsApp conectado e último acesso de cada um. O administrador troca o papel aqui." },
       { alvo: "membros-papeis", titulo: "O que cada papel pode", texto: "As permissões ficam no banco, não só na tela." },
     ],
     vazio: { titulo: "Equipe", texto: "Quem está na equipe e o que cada papel pode fazer." },

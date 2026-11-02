@@ -7,6 +7,7 @@ import { CheckCircle, Clock, Info, Kanban, ShieldCheck, Users, WhatsappLogo, Wif
 
 import { CabecalhoOpa, CorpoOpa } from "../_opa/cabecalho";
 import { Avatar, BotaoPilula, Cartao, CartaoNumero, Chip, TituloBloco, iniciaisDe } from "../_opa/ui";
+import { TrocarPapel } from "./_trocar-papel";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Membros" };
@@ -34,6 +35,7 @@ const MATRIZ: Array<[string, string, string, string]> = [
   ["Editar regras de lembrete e cadência", "sim", "sim", "nao"],
   ["Conectar WhatsApp", "sim", "só o seu", "só o seu"],
   ["Convidar membros", "sim", "só corretores", "nao"],
+  ["Trocar o papel de alguém da equipe", "sim", "nao", "nao"],
   ["Excluir lead (o pedido vem do corretor)", "sim", "nao", "nao"],
   ["Repassar oportunidade de captação", "sim", "sim", "devolve as suas"],
   ["Exportar leads", "sim", "nao", "nao"],
@@ -109,6 +111,9 @@ export default async function MembrosPage() {
   const membros = await carregarMembros(org.orgId);
   const conectados = membros.filter((m) => m.whatsapp === "conectado").length;
   const gestores = membros.filter((m) => m.papel === "admin" || m.papel === "manager").length;
+  // Só o administrador troca papel (a rota confere de novo). O próprio papel fica fixo,
+  // para ninguém se trancar fora sem querer.
+  const podeTrocar = (m: Membro) => org.role === "admin" && m.id !== user.id && m.papel in PAPEL;
 
   return (
     <>
@@ -128,6 +133,11 @@ export default async function MembrosPage() {
 
         <Cartao bloco tour="membros-lista">
           <TituloBloco icone={Users} titulo="Quem está na equipe" sub="Papel, pipelines, WhatsApp e último acesso" />
+          {org.role === "admin" ? (
+            <p className="mt-4 flex items-center gap-2 text-[13px] text-[#5b7284]">
+              <Info className="size-4 shrink-0 text-[#2a7ca8]" /> Para mudar o papel de alguém, escolha na lista e toque em Salvar.
+            </p>
+          ) : null}
           <ul className="mt-5 flex flex-col gap-2">
             {membros.map((m) => (
               <li key={m.id} className="flex flex-wrap items-center gap-3 rounded-[22px] bg-[#f2f6f9] px-4 py-3">
@@ -136,9 +146,13 @@ export default async function MembrosPage() {
                   <p className="truncate text-[15px] font-semibold text-[#0a2d40]">{m.nome}</p>
                   <p className="truncate text-[13px] text-[#5b7284]">{m.email}</p>
                 </div>
-                <Chip icone={ShieldCheck} tom={m.papel === "admin" ? "escuro" : m.papel === "manager" ? "claro" : "neutro"}>
-                  {PAPEL[m.papel] ?? m.papel}
-                </Chip>
+                {podeTrocar(m) ? (
+                  <TrocarPapel userId={m.id} nome={m.nome} papel={m.papel} />
+                ) : (
+                  <Chip icone={ShieldCheck} tom={m.papel === "admin" ? "escuro" : m.papel === "manager" ? "claro" : "neutro"}>
+                    {PAPEL[m.papel] ?? m.papel}
+                  </Chip>
+                )}
                 <Chip icone={Kanban} tom="neutro" className="hidden md:inline-flex">
                   {m.papel === "agent" ? "Compradores, Captação" : "Todas as pipelines"}
                 </Chip>
