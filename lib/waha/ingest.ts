@@ -713,7 +713,8 @@ async function handleSessionStatus(
 /**
  * Grava as mensagens antigas de uma conversa que acabou de virar lead, da mais
  * velha para a mais nova, sem disparar nada por mensagem (é contexto para a IA,
- * não mensagem nova). No fim carimba a conversa uma vez, com a mais recente.
+ * não mensagem nova). No fim carimba a conversa uma vez, com a mais recente, se
+ * ela for mais nova do que o que a conversa já mostra.
  * O dedup por `external_id` impede duplicar o que já estava gravado.
  */
 export async function ingerirHistorico(
@@ -737,6 +738,11 @@ export async function ingerirHistorico(
   const conversationId = await upsertConversation(admin, session.organization_id, contactId, session.id);
   if (!conversationId) return ordem.length;
   const em = ultima.timestamp ? new Date(ultima.timestamp * 1000).toISOString() : new Date().toISOString();
+  // Histórico mais velho que o que a conversa já mostra (a mensagem que fez o
+  // contato virar lead entrou antes): a prévia não volta para trás.
+  const { data: conversa } = await admin.from("conversations").select("last_message_at").eq("id", conversationId).maybeSingle();
+  const jaMostra = (conversa as { last_message_at: string | null } | null)?.last_message_at;
+  if (jaMostra && Date.parse(jaMostra) >= Date.parse(em)) return ordem.length;
   await markConversation(
     admin,
     session.organization_id,

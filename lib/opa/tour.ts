@@ -136,6 +136,7 @@ export const TOURS: Record<TourId, Tour> = {
     passos: [
       { alvo: "funil-abas", titulo: "Os funis", texto: "Compradores, captação e proprietários. Troque de funil por aqui." },
       { alvo: "funil-etapa", titulo: "Etapas", texto: "Cada coluna é uma etapa. O número mostra quantos leads estão nela." },
+      { alvo: "funil-enviar", titulo: "Mensagem para a etapa", texto: "Monte uma mensagem e abra um por um no seu WhatsApp. Você envia cada uma." },
       { alvo: "funil-cartao", titulo: "Cartão do lead", texto: "Arraste o cartão para outra coluna para mudar a etapa." },
       { alvo: "funil-mover", titulo: "No celular, Mover", texto: "Toque em Mover e escolha a nova etapa, sem precisar arrastar." },
     ],
@@ -195,7 +196,7 @@ export const TOURS: Record<TourId, Tour> = {
         titulo: "Conversas pessoais protegidas",
         texto: "O que é pessoal não é guardado nem lido. A IA acompanha só os leads: use a etiqueta Lead OPA ou o botão É lead.",
       },
-      { alvo: "contatos-novos", titulo: "É lead?", texto: "Quem escreveu e ainda não foi classificado. Um toque decide." },
+      { alvo: "contatos-novos", titulo: "É lead?", texto: "Quem escreveu e ainda não foi classificado, com a última mensagem. Só você vê. Um toque decide; sem decisão, some em 7 dias." },
       { alvo: "whats-acao", titulo: "Conectar", texto: "Leia o código com o celular, em Aparelhos conectados no WhatsApp." },
     ],
     vazio: { titulo: "Meu WhatsApp", texto: "Aqui você liga o seu número lendo um código com o celular." },

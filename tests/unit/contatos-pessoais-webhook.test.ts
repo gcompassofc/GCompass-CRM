@@ -1,14 +1,25 @@
-import { createHmac } from "node:crypto";
+import { createHmac, randomBytes } from "node:crypto";
 
 import { NextRequest } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 /**
  * Prova de privacidade (pedido do Allyson, 01/11/2026): no WhatsApp do corretor,
- * mensagem de contato pessoal ou a classificar NÃO deixa corpo em lugar nenhum:
- * nem no webhook_events_log, nem em messages, nem evento para a IA. Passa pela
- * rota de verdade (auth HMAC + filtro + ingest), só o banco é de mentira.
+ * mensagem de contato pessoal ou a classificar NÃO deixa corpo no
+ * webhook_events_log, em messages nem evento para a IA. Passa pela rota de
+ * verdade (auth HMAC + filtro + ingest), só o banco é de mentira.
+ *
+ * Desde 02/11/2026 (0124) a mensagem de contato a classificar fica guardada
+ * CIFRADA em whatsapp_mensagens_a_classificar, para o corretor ver quem é.
  */
+
+// Chaves de cifra só deste arquivo (o CI não tem .env.local): a cifra está ligada.
+process.env.PII_CHAVES = `v1:${randomBytes(32).toString("base64")}`;
+process.env.PII_CHAVE_ATUAL = "v1";
+process.env.PII_CHAVE_INDICE = randomBytes(32).toString("base64");
+const { decifrar, esquecerChaves } = await import("@/lib/crypto/dados-pessoais");
+esquecerChaves();
+const ORG = "org-1";
 
 const SEGREDO = "segredo-de-teste-com-mais-de-16";
 const NUMERO_DO_CORRETOR = {
@@ -35,7 +46,7 @@ interface Op {
 
 const estado: {
   sessao: Record<string, unknown>;
-  contato: { id: string; situacao: string; mensagens_ignoradas: number } | null;
+  contato: { id: string; situacao: string; mensagens_ignoradas: number; nome_cifrado?: string | null; telefone_cifrado?: string | null } | null;
   leadNoCrm: boolean;
   ops: Op[];
 } = { sessao: NUMERO_DO_CORRETOR, contato: null, leadNoCrm: false, ops: [] };
@@ -137,6 +148,10 @@ const gravouConteudo = () =>
       o.tabela === "rpc:fn_upsert_wa_contact",
   );
 
+/** O que foi para whatsapp_mensagens_a_classificar (0124). */
+const espera = () =>
+  estado.ops.filter((o) => o.tabela === "whatsapp_mensagens_a_classificar" && o.op === "upsert").map((o) => o.valor as Record<string, unknown>);
+
 beforeEach(() => {
   estado.sessao = NUMERO_DO_CORRETOR;
   estado.contato = null;
@@ -157,7 +172,7 @@ describe("WhatsApp do corretor: conversa pessoal não é guardada", () => {
     expect(JSON.stringify(atualizacoes[0]?.valor)).not.toMatch(/churrasco|5512999990000/);
   });
 
-  it("contato nunca visto (fora da janela): vira a classificar, sem guardar a conversa", async () => {
+  it("contato nunca visto (fora da janela): vira a classificar, sem corpo no log, em messages nem na IA", async () => {
     const r = await POST(pedido(mensagem("Oi, tudo bem?")));
     expect(r.status).toBe(200);
     expect(gravouConteudo()).toBe(false);
@@ -172,6 +187,14 @@ describe("WhatsApp do corretor: conversa pessoal não é guardada", () => {
     expect(gravouConteudo()).toBe(false);
     const nova = estado.ops.find((o) => o.tabela === "whatsapp_contatos_numero" && o.op === "upsert");
     expect(nova?.valor).toMatchObject({ situacao: "pessoal", origem: "importacao", telefone_cifrado: null, nome_cifrado: null, chat_cifrado: null });
+    // Janela de 15 min depois do QR: nada vai para a espera.
+    expect(espera()).toEqual([]);
+  });
+
+  it("contato pessoal não vai para a espera", async () => {
+    estado.contato = { id: "linha-1", situacao: "pessoal", mensagens_ignoradas: 3 };
+    await POST(pedido(mensagem("Bora no churrasco sábado?")));
+    expect(espera()).toEqual([]);
   });
 
   it("grupo do corretor é descartado antes de qualquer gravação", async () => {
@@ -209,5 +232,108 @@ describe("WhatsApp do corretor: lead é guardado", () => {
     await POST(pedido(mensagem("Bom dia")));
     expect(estado.ops.some((o) => o.tabela === "whatsapp_contatos_numero")).toBe(false);
     expect(estado.ops.some((o) => o.tabela === "messages" && o.op === "insert")).toBe(true);
+    expect(espera()).toEqual([]);
+  });
+});
+
+describe("WhatsApp do corretor: a classificar guarda a conversa cifrada (0124)", () => {
+  const linhaGravada = () =>
+    estado.ops.find((o) => o.tabela === "whatsapp_contatos_numero" && o.op === "upsert")?.valor as Record<string, string | null>;
+
+  it("mensagem do cliente vai cifrada para a espera, sem o texto nem o telefone em claro", async () => {
+    await POST(pedido(mensagem("Oi, vi a casa da Siriúba no Instagram", { _data: { notifyName: "Marina" } })));
+    expect(gravouConteudo()).toBe(false);
+    const [m] = espera();
+    expect(m).toMatchObject({ contato_numero_id: "linha-1", direcao: "entrada", tipo: "text", mensagem_wa_id: "3EB0AAA" });
+    expect(String(m?.corpo_cifrado)).toMatch(/^pii1\./);
+    expect(JSON.stringify(m)).not.toMatch(/Siriúba|5512999990000/);
+    expect(decifrar(String(m?.corpo_cifrado), { org: ORG, campo: "mensagem" })).toBe("Oi, vi a casa da Siriúba no Instagram");
+    // Nome e telefone do contato, cifrados, para a tela "Contatos novos".
+    const linha = linhaGravada();
+    expect(decifrar(linha.nome_cifrado!, { org: ORG, campo: "nome" })).toBe("Marina");
+    expect(decifrar(linha.telefone_cifrado!, { org: ORG, campo: "telefone" })).toBe("+5512999990000");
+  });
+
+  it("resposta do corretor pelo celular também entra, como saída", async () => {
+    estado.contato = { id: "linha-1", situacao: "a_classificar", mensagens_ignoradas: 1 };
+    await POST(
+      pedido({
+        event: "message.any",
+        session: "org_corretor",
+        payload: {
+          id: "true_5512999990000@c.us_3EB0BBB",
+          from: "5512999990000@c.us",
+          fromMe: true,
+          body: "Oi Marina, te mando as fotos",
+          timestamp: 1_790_000_100,
+        },
+      }),
+    );
+    expect(gravouConteudo()).toBe(false);
+    expect(espera()).toHaveLength(1);
+    expect(espera()[0]).toMatchObject({ direcao: "saida", mensagem_wa_id: "3EB0BBB" });
+  });
+
+  it("áudio sem legenda entra só como tipo, sem baixar arquivo", async () => {
+    estado.contato = { id: "linha-1", situacao: "a_classificar", mensagens_ignoradas: 1 };
+    await POST(
+      pedido({
+        event: "message",
+        session: "org_corretor",
+        payload: {
+          id: "false_5512999990000@c.us_3EB0CCC",
+          from: "5512999990000@c.us",
+          fromMe: false,
+          hasMedia: true,
+          media: { url: "http://waha/arquivo.ogg", mimetype: "audio/ogg" },
+          _data: { message: { audioMessage: {} } },
+          timestamp: 1_790_000_200,
+        },
+      }),
+    );
+    expect(espera()[0]).toMatchObject({ tipo: "audio", corpo_cifrado: null });
+    expect(JSON.stringify(espera()[0])).not.toMatch(/arquivo\.ogg/);
+    expect(estado.ops.some((o) => o.tabela === "rpc:emit_event")).toBe(false);
+  });
+
+  it("número oculto (@lid): o telefone do campo alternativo vai cifrado para o contato", async () => {
+    // Fixture com o campo do Baileys (key.remoteJidAlt): não conferida com payload real.
+    await POST(
+      pedido({
+        event: "message",
+        session: "org_corretor",
+        payload: {
+          id: "false_250302204792918@lid_3EB0DDD",
+          from: "250302204792918@lid",
+          fromMe: false,
+          body: "Boa tarde",
+          _data: { notifyName: "Carlos", key: { remoteJid: "250302204792918@lid", remoteJidAlt: "5512988887777@s.whatsapp.net" } },
+        },
+      }),
+    );
+    const linha = linhaGravada();
+    expect(decifrar(linha.telefone_cifrado!, { org: ORG, campo: "telefone" })).toBe("+5512988887777");
+    expect(JSON.stringify(linha)).not.toMatch(/5512988887777|250302204792918/);
+    expect(espera()).toHaveLength(1);
+  });
+
+  it("número oculto sem campo alternativo: segue sem telefone, sem quebrar", async () => {
+    await POST(
+      pedido({
+        event: "message",
+        session: "org_corretor",
+        payload: { id: "false_250302204792918@lid_3EB0EEE", from: "250302204792918@lid", fromMe: false, body: "Oi" },
+      }),
+    );
+    expect(linhaGravada().telefone_cifrado).toBeNull();
+    expect(espera()).toHaveLength(1);
+  });
+
+  it("contato já a classificar ganha o nome que faltava (e não troca o telefone que já tem)", async () => {
+    estado.contato = { id: "linha-1", situacao: "a_classificar", mensagens_ignoradas: 1, nome_cifrado: null, telefone_cifrado: "pii1.v1.x" };
+    await POST(pedido(mensagem("Ainda tem a casa?", { _data: { pushName: "Marina" } })));
+    const upd = estado.ops.find((o) => o.tabela === "whatsapp_contatos_numero" && o.op === "update")?.valor as Record<string, string>;
+    expect(decifrar(upd.nome_cifrado!, { org: ORG, campo: "nome" })).toBe("Marina");
+    expect(upd.telefone_cifrado).toBeUndefined();
   });
 });

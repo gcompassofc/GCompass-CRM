@@ -9,8 +9,10 @@
  *   - chega por anúncio de clique para o WhatsApp ou pelo botão do site;
  *   - o corretor marca como lead (etiqueta "Lead OPA" do WhatsApp Business ou o
  *     botão "É lead" no CRM).
- * O resto que chega depois de ligar o número fica "a classificar": nada é
- * guardado até o corretor decidir.
+ * O resto que chega depois de ligar o número fica "a classificar": desde
+ * 02/11/2026 (decisão do Allyson) guarda nome, número e as últimas mensagens,
+ * cifrados e só para o dono do número, até ele decidir. "Pessoal" apaga tudo; sem
+ * decisão, as mensagens somem sozinhas em 7 dias.
  *
  * Este arquivo é só regra, sem banco: quem grava é lib/waha/contatos-pessoais.ts.
  */
@@ -29,6 +31,89 @@ export const JANELA_IMPORTACAO_MS = 15 * 60_000;
 
 /** Quantos "a classificar" a tela mostra de uma vez (o resto entra conforme decide). */
 export const LIMITE_A_CLASSIFICAR = 20;
+
+/** Sem decisão do corretor, a conversa guardada de um contato a classificar some depois disto. */
+export const ESPERA_DIAS = 7;
+export const ESPERA_MS = ESPERA_DIAS * 24 * 60 * 60_000;
+
+/** Quantas mensagens ficam guardadas por contato a classificar (as mais recentes; o banco corta o resto). */
+export const ESPERA_MAX_POR_CONTATO = 20;
+
+/** Quantas mensagens o "Ver conversa" mostra. */
+export const CONVERSA_NA_TELA = 5;
+
+/**
+ * Tipos de mensagem guardados enquanto o corretor decide (o vocabulário de
+ * `messages.type`). Reação e o que não for conteúdo não entram.
+ */
+export const TIPOS_EM_ESPERA = ["text", "audio", "image", "video", "document", "sticker", "location", "contact"] as const;
+export type TipoEmEspera = (typeof TIPOS_EM_ESPERA)[number];
+
+export function tipoEmEspera(tipo: string): tipo is TipoEmEspera {
+  return (TIPOS_EM_ESPERA as readonly string[]).includes(tipo);
+}
+
+/** Mídia não é baixada enquanto espera: vira um marcador, como na leitura da IA. */
+const MARCADOR_DE_MIDIA: Record<Exclude<TipoEmEspera, "text">, string> = {
+  audio: "[áudio]",
+  image: "[foto]",
+  video: "[vídeo]",
+  document: "[documento]",
+  sticker: "[figurinha]",
+  location: "[localização]",
+  contact: "[contato]",
+};
+
+/** O texto de uma mensagem em espera para a tela: mídia vira marcador, com a legenda se houver. */
+export function textoDaEspera(tipo: string, corpo: string | null): string {
+  const marca = tipo !== "text" && tipoEmEspera(tipo) ? MARCADOR_DE_MIDIA[tipo as Exclude<TipoEmEspera, "text">] : null;
+  const texto = corpo?.trim() ? corpo.trim() : null;
+  if (marca) return texto ? `${marca} ${texto}` : marca;
+  return texto ?? "";
+}
+
+/**
+ * Onde o payload do NOWEB pode trazer o telefone de um contato `@lid`, sem o
+ * store ligado. NÃO CONFERIDO COM PAYLOAD REAL (02/11/2026): são os nomes que o
+ * Baileys usa (`key.remoteJidAlt` nas versões novas, `key.senderPn` nas antigas,
+ * `participantPn`). Na saída só vale o do chat: `senderPn` seria o do corretor.
+ */
+const CAMPOS_TELEFONE_ENTRADA: ReadonlyArray<readonly string[]> = [
+  ["key", "remoteJidAlt"],
+  ["key", "senderPn"],
+  ["senderPn"],
+  ["key", "participantPn"],
+  ["participantPn"],
+  ["remoteJidAlt"],
+];
+const CAMPOS_TELEFONE_SAIDA: ReadonlyArray<readonly string[]> = [["key", "remoteJidAlt"], ["remoteJidAlt"]];
+
+const JID_DE_TELEFONE = /^\+?(\d{8,15})(?::\d+)?@(?:s\.whatsapp\.net|c\.us)$/;
+
+function campo(obj: unknown, caminho: readonly string[]): unknown {
+  let atual: unknown = obj;
+  for (const k of caminho) {
+    if (!atual || typeof atual !== "object") return undefined;
+    atual = (atual as Record<string, unknown>)[k];
+  }
+  return atual;
+}
+
+/**
+ * Telefone (E.164, "+55...") de um contato que o WhatsApp mandou com número
+ * oculto (`@lid`), lido dos campos alternativos do payload. Só aceita valor que
+ * termine em `@s.whatsapp.net` ou `@c.us`; sem nenhum, devolve null.
+ */
+export function telefoneAlternativo(p: { _data?: unknown }, direcao: "entrada" | "saida"): string | null {
+  const campos = direcao === "entrada" ? CAMPOS_TELEFONE_ENTRADA : CAMPOS_TELEFONE_SAIDA;
+  for (const c of campos) {
+    const v = campo(p._data, c);
+    if (typeof v !== "string") continue;
+    const m = v.trim().match(JID_DE_TELEFONE);
+    if (m?.[1]) return `+${m[1]}`;
+  }
+  return null;
+}
 
 function semAcento(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();

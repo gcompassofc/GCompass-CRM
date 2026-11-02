@@ -26,6 +26,7 @@ interface Contato {
   nome_cifrado: string | null;
   telefone_cifrado: string | null;
   email_cifrado: string | null;
+  telefone_indice: string | null;
 }
 
 export async function cifrarPendentes(
@@ -37,7 +38,7 @@ export async function cifrarPendentes(
 
   const { data: contatos, error } = await admin
     .from("contacts")
-    .select("id, organization_id, name, phone_number, email, nome_cifrado, telefone_cifrado, email_cifrado")
+    .select("id, organization_id, name, phone_number, email, nome_cifrado, telefone_cifrado, email_cifrado, telefone_indice")
     .is("cifrado_em", null)
     .order("created_at")
     .limit(limites.contatos);
@@ -49,7 +50,9 @@ export async function cifrarPendentes(
       nome_cifrado: c.nome_cifrado ?? cifrar(c.name, { org, campo: "nome" }),
       telefone_cifrado: c.telefone_cifrado ?? cifrar(c.phone_number, { org, campo: "telefone" }),
       email_cifrado: c.email_cifrado ?? cifrar(c.email, { org, campo: "email" }),
-      telefone_indice: c.phone_number ? indiceTelefone(org, c.phone_number) : null,
+      // Contato `@lid` sem phone_number pode ter o telefone só cifrado (descoberto no
+      // payload, lib/waha/contatos-pessoais.ts): o índice dele fica.
+      telefone_indice: c.phone_number ? indiceTelefone(org, c.phone_number) : c.telefone_indice,
       email_indice: c.email ? indiceEmail(org, c.email) : null,
       cifrado_em: new Date().toISOString(),
     };
@@ -59,6 +62,7 @@ export async function cifrarPendentes(
     q = c.name == null ? q.is("name", null) : q.eq("name", c.name);
     q = c.phone_number == null ? q.is("phone_number", null) : q.eq("phone_number", c.phone_number);
     q = c.email == null ? q.is("email", null) : q.eq("email", c.email);
+    q = c.telefone_cifrado == null ? q.is("telefone_cifrado", null) : q.eq("telefone_cifrado", c.telefone_cifrado);
     const { error: e } = await q;
     if (e) r.erros++;
     else r.contatos++;

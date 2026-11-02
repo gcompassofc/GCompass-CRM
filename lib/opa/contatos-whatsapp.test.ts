@@ -8,6 +8,9 @@ import {
   emJanelaDeImportacao,
   etiquetaDe,
   sinalDeEntrada,
+  telefoneAlternativo,
+  textoDaEspera,
+  tipoEmEspera,
   type EntradaDecisao,
 } from "./contatos-whatsapp";
 
@@ -120,5 +123,52 @@ describe("decisão do corretor (botão ou etiqueta) e desfazer", () => {
   it("lead cria o lead; pessoal apaga o que estava guardado", () => {
     expect(decisaoDoCorretor("lead")).toEqual({ situacao: "lead", apagarConteudo: false, criarLead: true });
     expect(decisaoDoCorretor("pessoal")).toEqual({ situacao: "pessoal", apagarConteudo: true, criarLead: false });
+  });
+});
+
+describe("conversa em espera (0124): o que a tela mostra", () => {
+  it("mídia vira marcador, com a legenda quando há", () => {
+    expect(textoDaEspera("audio", null)).toBe("[áudio]");
+    expect(textoDaEspera("image", "Fachada da casa")).toBe("[foto] Fachada da casa");
+    expect(textoDaEspera("document", "  ")).toBe("[documento]");
+    expect(textoDaEspera("text", "Oi, tudo bem?")).toBe("Oi, tudo bem?");
+  });
+
+  it("reação e tipo desconhecido não entram na espera", () => {
+    expect(tipoEmEspera("text")).toBe(true);
+    expect(tipoEmEspera("audio")).toBe(true);
+    expect(tipoEmEspera("reaction")).toBe(false);
+    expect(tipoEmEspera("poll")).toBe(false);
+  });
+});
+
+describe("telefone de contato com número oculto (@lid), sem o store do WAHA", () => {
+  // Fixtures montadas com os nomes de campo do Baileys: NÃO conferidas com payload real.
+  it("lê remoteJidAlt ou senderPn da chave e devolve em E.164", () => {
+    expect(telefoneAlternativo({ _data: { key: { remoteJid: "250302204792918@lid", remoteJidAlt: "5512988887777@s.whatsapp.net" } } }, "entrada")).toBe(
+      "+5512988887777",
+    );
+    expect(telefoneAlternativo({ _data: { key: { senderPn: "5512988887777@s.whatsapp.net" } } }, "entrada")).toBe("+5512988887777");
+    expect(telefoneAlternativo({ _data: { senderPn: "5512988887777@c.us" } }, "entrada")).toBe("+5512988887777");
+    // Sufixo de aparelho (":12") do Baileys não atrapalha.
+    expect(telefoneAlternativo({ _data: { key: { participantPn: "5512988887777:12@s.whatsapp.net" } } }, "entrada")).toBe("+5512988887777");
+  });
+
+  it("só aceita JID de telefone; lid, grupo ou lixo não viram número", () => {
+    expect(telefoneAlternativo({ _data: { key: { remoteJidAlt: "250302204792918@lid" } } }, "entrada")).toBeNull();
+    expect(telefoneAlternativo({ _data: { key: { senderPn: "120363@g.us" } } }, "entrada")).toBeNull();
+    expect(telefoneAlternativo({ _data: { senderPn: 5512988887777 } }, "entrada")).toBeNull();
+    expect(telefoneAlternativo({ _data: { key: { senderPn: "abc@s.whatsapp.net" } } }, "entrada")).toBeNull();
+  });
+
+  it("tolera payload sem nada (o caso mais provável sem o store)", () => {
+    expect(telefoneAlternativo({}, "entrada")).toBeNull();
+    expect(telefoneAlternativo({ _data: undefined }, "saida")).toBeNull();
+    expect(telefoneAlternativo({ _data: { key: null } }, "entrada")).toBeNull();
+  });
+
+  it("na saída não usa senderPn: seria o telefone do próprio corretor", () => {
+    expect(telefoneAlternativo({ _data: { key: { senderPn: "5512911112222@s.whatsapp.net" } } }, "saida")).toBeNull();
+    expect(telefoneAlternativo({ _data: { key: { remoteJidAlt: "5512988887777@s.whatsapp.net" } } }, "saida")).toBe("+5512988887777");
   });
 });

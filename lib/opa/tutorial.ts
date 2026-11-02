@@ -115,6 +115,10 @@ export const PASSOS: Record<VersaoTutorial, PassoTutorial[]> = {
       icone: "leads",
       titulo: "Seus leads",
       texto: "Todos os seus clientes num lugar só. Busque pelo nome ou pelo telefone e toque no lead para abrir a ficha.",
+      detalhes: [
+        "Nos Funis, veja em que etapa está cada lead seu.",
+        "O avião no topo da etapa monta uma mensagem para todos dela.",
+      ],
       href: "/app/leads",
       rotuloLink: "Abrir Meus leads",
     },
@@ -126,7 +130,7 @@ export const PASSOS: Record<VersaoTutorial, PassoTutorial[]> = {
       texto: "O assistente lê a conversa e anota o que o cliente procura. Ele sugere a próxima mensagem. Você confirma ou ajusta.",
       detalhes: [
         "Ligar: um toque no telefone e a ligação já começa.",
-        "Etapa: mude pela própria ficha quando o cliente avança.",
+        "Etapa: mude pela ficha ou nos Funis quando o cliente avança.",
         "Kit: escolha o cliente e a situação, e a mensagem sai pronta para mandar.",
       ],
     },
@@ -347,10 +351,19 @@ export const DUVIDAS: Duvida[] = [
   {
     id: "mudar-etapa",
     pergunta: "Como mudo a etapa do lead?",
-    resposta: "Na ficha do lead, escolha a nova etapa quando o cliente avança.",
+    resposta: "Na ficha do lead, escolha a nova etapa. Nos Funis, arraste o cartão ou toque em Mover no celular.",
     tela: "ficha",
     href: "/app/leads",
     rotuloLink: "Abrir Meus leads",
+  },
+  {
+    id: "mensagem-etapa",
+    pergunta: "Como mando uma mensagem para todos de uma etapa?",
+    resposta:
+      "Nos Funis, toque no avião no topo da etapa, ajuste a mensagem e abra um por um no seu WhatsApp. Você confere e envia cada uma. O CRM não dispara nada sozinho, para o seu número não ser bloqueado.",
+    tela: "funis",
+    href: "/app/pipeline",
+    rotuloLink: "Abrir os Funis",
   },
   {
     id: "tres-imoveis",
@@ -372,7 +385,7 @@ export const DUVIDAS: Duvida[] = [
     id: "conversa-pessoal",
     pergunta: "O CRM lê minhas conversas pessoais?",
     resposta:
-      "Não. O que já estava no seu WhatsApp é pessoal e não é guardado. A IA só lê quem é lead: veio de anúncio ou do site, foi cadastrado no CRM ou você marcou com a etiqueta Lead OPA ou o botão É lead.",
+      "Não. Quem escreve depois que você liga o WhatsApp aparece em Contatos novos, com as últimas mensagens guardadas só para você até decidir: se for pessoal, apagamos tudo, e sem decisão some em 7 dias. A IA só lê quem é lead: veio de anúncio ou do site, foi cadastrado no CRM ou você marcou com a etiqueta Lead OPA ou o botão É lead.",
     tela: "whatsapp",
     href: "/app/meu-whatsapp",
     rotuloLink: "Abrir Meu WhatsApp",

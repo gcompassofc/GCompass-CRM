@@ -1,5 +1,6 @@
 import { cache } from "react";
 
+import { cifraConfigurada, decifrar } from "@/lib/crypto/dados-pessoais";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -133,9 +134,23 @@ type LinhaLead = {
   contact_id: string;
   created_at: string;
   assigned_at: string | null;
-  contacts: { name: string | null; phone_number: string | null } | null;
+  contacts: { name: string | null; phone_number: string | null; telefone_cifrado?: string | null } | null;
   crm_stages: { name: string; slug: string; color: string | null; position: number } | null;
 };
+
+/**
+ * Contato que o WhatsApp mandou com número oculto (`@lid`) não tem
+ * `phone_number`; quando o telefone apareceu no payload, ele fica só cifrado
+ * (lib/waha/contatos-pessoais.ts). Aberto aqui, a ficha ganha o botão do WhatsApp.
+ */
+function telefoneSoCifrado(orgId: string, valor: string | null): string | null {
+  if (!valor || !cifraConfigurada()) return null;
+  try {
+    return decifrar(valor, { org: orgId, campo: "telefone" });
+  } catch {
+    return null;
+  }
+}
 
 export function prazoDoLead(l: Pick<LeadOpa, "prazoMin">): number {
   return l.prazoMin;
@@ -172,7 +187,7 @@ export async function carregarLeadsSemCache(
     let c = supabase
       .from("crm_leads")
       .select(
-        "id, title, status, stage_id, pipeline_id, owner_user_id, value_cents, source, tags, custom_fields, contact_id, created_at, assigned_at, contacts(name, phone_number), crm_stages(name, slug, color, position)",
+        "id, title, status, stage_id, pipeline_id, owner_user_id, value_cents, source, tags, custom_fields, contact_id, created_at, assigned_at, contacts(name, phone_number, telefone_cifrado), crm_stages(name, slug, color, position)",
       )
       .eq("organization_id", orgId);
     // A ficha abre também negócio ganho ou perdido; as listas só mostram os abertos.
@@ -266,7 +281,7 @@ export async function carregarLeadsSemCache(
       status: l.status,
       venda: (cf.venda as VendaDoLead | undefined) ?? null,
       nome,
-      telefone: l.contacts?.phone_number ?? null,
+      telefone: l.contacts?.phone_number ?? telefoneSoCifrado(orgId, l.contacts?.telefone_cifrado ?? null),
       contatoId: l.contact_id,
       etapa: {
         id: l.stage_id,

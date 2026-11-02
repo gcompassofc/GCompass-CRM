@@ -200,9 +200,10 @@ describe("conteúdo", () => {
 
   // 13: a dúvida "O CRM lê minhas conversas pessoais?" entrou com a separação pessoal x lead (01/11/2026).
   // 14: "Como mudo o papel de alguém da equipe?" entrou com a troca de papel em Membros (02/11/2026).
-  it("dúvidas frequentes: de 8 a 14, resposta de 1 a 3 frases, ids únicos", () => {
+  // 15: "Como mando uma mensagem para todos de uma etapa?" entrou com os Funis do corretor (02/11/2026).
+  it("dúvidas frequentes: de 8 a 15, resposta de 1 a 3 frases, ids únicos", () => {
     expect(DUVIDAS.length).toBeGreaterThanOrEqual(8);
-    expect(DUVIDAS.length).toBeLessThanOrEqual(14);
+    expect(DUVIDAS.length).toBeLessThanOrEqual(15);
     expect(new Set(DUVIDAS.map((d) => d.id)).size).toBe(DUVIDAS.length);
     for (const d of DUVIDAS) {
       const frases = d.resposta.split(/[.!?](?:\s|$)/).filter((f) => f.trim()).length;
