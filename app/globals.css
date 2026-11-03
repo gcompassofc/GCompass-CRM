@@ -570,3 +570,15 @@
     animation: none;
   }
 }
+
+/* Balão do menu da OPA no primeiro acesso (components/shell/SidebarOpa.tsx). */
+@keyframes opa-dica-menu-entra {
+  from { opacity: 0; transform: translateX(-6px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+.opa-dica-menu {
+  animation: opa-dica-menu-entra 400ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .opa-dica-menu { animation: none; }
+}

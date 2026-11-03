@@ -47,6 +47,9 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   // Read sidebar collapsed state SSR to avoid flash.
   const store = await cookies();
   const collapsed = store.get("sidebar_collapsed")?.value === "1";
+  // Menu da OPA (03/11/2026): "aberto", "recolhido" ou nada (primeiro acesso, com apresentação).
+  const menuCookie = store.get("opa_menu")?.value;
+  const menuOpa = menuCookie === "aberto" || menuCookie === "recolhido" ? menuCookie : null;
 
   // Impersonate (S-11.07): verify cookie server-side and resolve tenant name.
   // Middleware already validates HMAC + expiry on /app/*; we re-verify here as
@@ -82,7 +85,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     filaCount = leads.filter((l) => l.conversa?.esperandoMin != null).length;
   }
   const shell = (
-    <AppShell sidebarCollapsed={collapsed} filaCount={filaCount}>
+    <AppShell sidebarCollapsed={collapsed} filaCount={filaCount} menuOpa={menuOpa}>
       {children}
     </AppShell>
   );

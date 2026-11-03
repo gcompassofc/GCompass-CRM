@@ -1,7 +1,7 @@
 "use client";
-import { useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Sidebar } from "@/components/shell/Sidebar";
-import { SidebarOpa } from "@/components/shell/SidebarOpa";
+import { LARGURA_MENU, SUAVE_MENU, SidebarOpa } from "@/components/shell/SidebarOpa";
 import { perfilAtivo } from "@/lib/navigation/registry";
 import { TopBar } from "@/components/shell/TopBar";
 import { MobileNav } from "@/components/shell/MobileNav";
@@ -14,25 +14,88 @@ interface AppShellProps {
   sidebarCollapsed: boolean;
   /** Perfil imobiliária: leads esperando resposta, o número ao lado de "Fila de atendimento". */
   filaCount?: number;
+  /** Menu da OPA lido do cookie no servidor (sem piscar); null = primeiro acesso. */
+  menuOpa?: "aberto" | "recolhido" | null;
   children: ReactNode;
 }
 
-export function AppShell({ sidebarCollapsed, filaCount, children }: AppShellProps) {
+/** Guarda a escolha do menu da OPA por um ano (preferência de tela, não credencial). */
+function guardarMenu(estado: "aberto" | "recolhido") {
+  document.cookie = `opa_menu=${estado}; path=/; max-age=31536000; SameSite=Lax`;
+}
+
+/**
+ * Menu da OPA que recolhe e expande (pedido do Allyson, 03/11/2026). Primeiro
+ * acesso: abre cheio, recolhe sozinho depois de um instante e mostra o balão
+ * de onde abrir. Depois, vale a última escolha da pessoa. Ctrl + B alterna.
+ */
+function useMenuOpa(ativo: boolean, inicial: "aberto" | "recolhido" | null) {
+  const [recolhido, setRecolhido] = useState(inicial === "recolhido");
+  const [dica, setDica] = useState(false);
+
+  const alternar = useCallback(() => {
+    setDica(false);
+    setRecolhido((r) => {
+      guardarMenu(r ? "aberto" : "recolhido");
+      return !r;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!ativo || inicial !== null) return;
+    // O tutorial de boas-vindas também abre no primeiro acesso: a apresentação do
+    // menu espera ele (ou qualquer janela) fechar, senão o balão fica por baixo.
+    let recolher: ReturnType<typeof setTimeout> | undefined;
+    let sumir: ReturnType<typeof setTimeout> | undefined;
+    const espera = setInterval(() => {
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+      clearInterval(espera);
+      recolher = setTimeout(() => {
+        setRecolhido(true);
+        setDica(true);
+        guardarMenu("recolhido");
+        sumir = setTimeout(() => setDica(false), 6000);
+      }, 1600);
+    }, 500);
+    return () => {
+      clearInterval(espera);
+      clearTimeout(recolher);
+      clearTimeout(sumir);
+    };
+  }, [ativo, inicial]);
+
+  useEffect(() => {
+    if (!ativo) return;
+    const tecla = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "b") {
+        e.preventDefault();
+        alternar();
+      }
+    };
+    window.addEventListener("keydown", tecla);
+    return () => window.removeEventListener("keydown", tecla);
+  }, [ativo, alternar]);
+
+  return { recolhido, dica, alternar };
+}
+
+export function AppShell({ sidebarCollapsed, filaCount, menuOpa = null, children }: AppShellProps) {
   return (
     <ImmersiveViewProvider>
-      <AppShellInterno sidebarCollapsed={sidebarCollapsed} filaCount={filaCount}>
+      <AppShellInterno sidebarCollapsed={sidebarCollapsed} filaCount={filaCount} menuOpa={menuOpa}>
         {children}
       </AppShellInterno>
     </ImmersiveViewProvider>
   );
 }
 
-function AppShellInterno({ sidebarCollapsed, filaCount, children }: AppShellProps) {
+function AppShellInterno({ sidebarCollapsed, filaCount, menuOpa = null, children }: AppShellProps) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   // Imobiliária: menu escuro do protótipo da OPA, sempre aberto, e cada tela
   // traz o próprio cabeçalho (sem a barra de cima no computador).
   const imobiliaria = perfilAtivo() === "imobiliaria";
   const recolhido = imobiliaria ? false : sidebarCollapsed;
+  const menu = useMenuOpa(imobiliaria, menuOpa);
 
   /**
    * Na conversa aberta, o rodapé é do composer.
@@ -48,7 +111,11 @@ function AppShellInterno({ sidebarCollapsed, filaCount, children }: AppShellProp
     <div className="mobile-shell flex min-h-screen w-full bg-background md:bg-background">
       {/* Desktop Sidebar */}
       <div className="hidden md:block">
-        {imobiliaria ? <SidebarOpa filaCount={filaCount} /> : <Sidebar collapsed={sidebarCollapsed} />}
+        {imobiliaria ? (
+          <SidebarOpa filaCount={filaCount} recolhido={menu.recolhido} onAlternar={menu.alternar} dica={menu.dica} />
+        ) : (
+          <Sidebar collapsed={sidebarCollapsed} />
+        )}
       </div>
 
       {/* Mobile Drawer */}
@@ -78,9 +145,14 @@ function AppShellInterno({ sidebarCollapsed, filaCount, children }: AppShellProp
           do seu próprio container, nunca empurrando a página. */}
       <div
         className={cn(
-          "flex min-h-screen min-w-0 flex-1 flex-col overflow-x-hidden transition-[margin] duration-200 ml-0",
-          imobiliaria ? "md:ml-[272px]" : recolhido ? "md:ml-16" : "md:ml-60",
+          "flex min-h-screen min-w-0 flex-1 flex-col overflow-x-hidden transition-[margin] ml-0",
+          imobiliaria ? cn("md:ml-[var(--menu-opa)]", SUAVE_MENU) : cn("duration-200", recolhido ? "md:ml-16" : "md:ml-60"),
         )}
+        style={
+          imobiliaria
+            ? ({ "--menu-opa": `${menu.recolhido ? LARGURA_MENU.recolhido : LARGURA_MENU.aberto}px` } as React.CSSProperties)
+            : undefined
+        }
       >
         <div className={cn(imobiliaria && "md:hidden")}>
           <TopBar onOpenMobileNav={() => setMobileNavOpen(true)} />

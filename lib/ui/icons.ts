@@ -93,6 +93,7 @@ export {
   CaretDown,
   CaretUp,
   CaretDoubleLeft,
+  SidebarSimple,
   CaretDoubleRight,
   CaretLeft,
   CaretRight,
