@@ -114,7 +114,6 @@ const FORA_DO_PERFIL_IMOBILIARIA = new Set([
   "/app/contacts",
   "/app/templates",
   "/app/settings/tenant/pipelines",
-  "/app/webhooks",
   "/app/ai/agents",
   "/app/ai/followups",
   "/app/ai/routers",
@@ -672,7 +671,9 @@ export function searchable(isPlatformAdmin: boolean, role: Role | null): NavDest
  */
 export const MENU_IMOBILIARIA = {
   principal: ["/app/hoje", "/app/fila", "/app/inbox", "/app/pipeline", "/app/leads", "/app/imoveis", "/app/lembretes", "/app/kit", "/app/meu-whatsapp"],
-  configuracao: ["/app/conexoes", "/app/membros", "/app/integracoes", "/app/configuracoes"],
+  // Webhooks e automações (03/11/2026): regras que agem sozinhas quando um lead
+  // entra, muda de etapa, ganha etiqueta ou manda mensagem; inclui avisar outro sistema.
+  configuracao: ["/app/conexoes", "/app/membros", "/app/integracoes", "/app/webhooks", "/app/configuracoes"],
 };
 
 /**
@@ -703,6 +704,7 @@ const ROTULO_GESTOR: Record<string, string> = {
   "/app/lembretes": "Agenda",
   "/app/configuracoes": "Roleta e funis",
   "/app/membros": "Equipe",
+  "/app/webhooks": "Automações",
 };
 
 export function menuImobiliaria(

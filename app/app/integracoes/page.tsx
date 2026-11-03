@@ -280,6 +280,15 @@ export default async function IntegracoesPage() {
                 <p className="mt-0.5 break-all font-mono text-[11px] text-[#5b7284]">/api/v1/webhooks/opa-entrada/{slug}</p>
                 <p className="mt-1 text-[12px] text-[#5b7284]">Quem já tem dono volta para ele, sem roleta.</p>
               </li>
+              <li>
+                <Link
+                  href="/app/webhooks?aba=automacoes"
+                  className="flex items-center justify-between gap-2 rounded-[18px] bg-[#0a2d40] px-4 py-3 text-[14px] font-semibold text-white hover:bg-[#12455f]"
+                >
+                  Criar automação
+                  <span className="text-[12px] font-normal text-white/75">lead novo, etapa, etiqueta, mensagem</span>
+                </Link>
+              </li>
               {fontes.map((f) => (
                 <li key={f.id} className="flex items-center justify-between gap-2 rounded-[18px] bg-[#f2f6f9] px-4 py-3">
                   <span className="text-[14px] text-[#0a2d40]">{f.name}</span>

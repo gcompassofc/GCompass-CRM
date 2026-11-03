@@ -13,7 +13,7 @@ export type ActionType =
   | "call_webhook";
 
 export const TRIGGER_LABELS: Record<TriggerEvent, string> = {
-  "lead.created": "Quando entrar um contato novo (webhook)",
+  "lead.created": "Quando entrar um lead novo (site, webhook ou cadastro)",
   "lead.stage_changed": "Quando um lead mudar de etapa",
   "message.received": "Quando chegar mensagem no WhatsApp",
   "lead.tag_added": "Quando um lead ganhar uma tag",

@@ -9,6 +9,7 @@ import { carregarConfig } from "@/lib/opa/config";
 import { CAMPOS } from "@/lib/opa/copiloto";
 import { CAMPOS_DIAGNOSTICO } from "@/lib/opa/dados";
 import { diaSP } from "@/lib/opa/periodo";
+import { avisarMudancaDeEtapa, avisarTagsNovas, etapaAtual } from "@/lib/opa/eventos-lead";
 import { conferirDataETexto, faltaNaFicha } from "@/lib/opa/visita";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -150,6 +151,7 @@ export async function moverEtapa(formData: FormData): Promise<ResultadoEtapa> {
     .eq("id", leadId);
   // A trava do banco (fn_trava_campos_da_etapa) responde com a mesma frase.
   if (error) return { ok: false, erro: erroParaTela(error) };
+  await avisarMudancaDeEtapa(createAdminClient(), org.orgId, leadId, (lead as { stage_id: string | null }).stage_id, "opa.ficha");
   revalidatePath(`/app/leads/${leadId}`);
   revalidatePath("/app/hoje");
   return { ok: true };
@@ -179,6 +181,7 @@ export async function ganharNegocio(formData: FormData): Promise<ResultadoEtapa>
   // lead e o imóvel, calcula VGV e comissão pelo preço do acervo (o navegador
   // não manda comissão), marca o imóvel vendido e registra o evento do Meta.
   // Duas abas clicando juntas: a segunda encontra o negócio já encerrado.
+  const antesDeGanhar = await etapaAtual(createAdminClient(), org.orgId, leadId);
   const { error } = await supabase.rpc("fn_opa_ganhar_negocio", {
     p_lead: leadId,
     p_imovel_codigo: codigo,
@@ -188,6 +191,7 @@ export async function ganharNegocio(formData: FormData): Promise<ResultadoEtapa>
   if (error) {
     return { ok: false, erro: erroParaTela(error) };
   }
+  await avisarMudancaDeEtapa(createAdminClient(), org.orgId, leadId, antesDeGanhar, "opa.ganhou");
 
   revalidatePath(`/app/leads/${leadId}`);
   revalidatePath("/app/hoje");
@@ -266,9 +270,11 @@ export async function alternarEtiqueta(formData: FormData) {
     const tag = valor.startsWith("Proprietário") ? "off-market-proprietario" : "off-market-comprador";
     const { data } = await supabase.from("crm_leads").select("tags").eq("organization_id", org.orgId).eq("id", leadId).maybeSingle();
     const tags = new Set(((data as { tags: string[] | null } | null)?.tags ?? []) as string[]);
+    const ganhou = !tags.has(tag);
     if (tags.has(tag)) tags.delete(tag);
     else tags.add(tag);
-    await supabase.from("crm_leads").update({ tags: [...tags] }).eq("id", leadId);
+    const { error: erroTag } = await supabase.from("crm_leads").update({ tags: [...tags] }).eq("id", leadId);
+    if (!erroTag && ganhou) await avisarTagsNovas(createAdminClient(), org.orgId, leadId, [tag], [...tags], "opa.etiqueta");
   }
   revalidatePath(`/app/leads/${leadId}`);
 }
@@ -425,6 +431,7 @@ export async function perderNegocio(formData: FormData): Promise<ResultadoEtapa>
     .limit(1)
     .maybeSingle();
   const agora = new Date().toISOString();
+  const antesDePerder = await etapaAtual(admin, org.orgId, leadId);
   const { error } = await supabase
     .from("crm_leads")
     .update({
@@ -436,6 +443,7 @@ export async function perderNegocio(formData: FormData): Promise<ResultadoEtapa>
     })
     .eq("id", leadId);
   if (error) return { ok: false, erro: erroParaTela(error) };
+  await avisarMudancaDeEtapa(admin, org.orgId, leadId, antesDePerder, "opa.perdeu");
   revalidatePath(`/app/leads/${leadId}`);
   revalidatePath("/app/pipeline");
   revalidatePath("/app/hoje");
@@ -472,6 +480,7 @@ export async function reabrirNegocio(formData: FormData): Promise<ResultadoEtapa
     .maybeSingle();
   if (!etapa) return { ok: false, erro: "O funil deste lead não tem etapa aberta." };
   const agora = new Date().toISOString();
+  const antesDeReabrir = await etapaAtual(createAdminClient(), org.orgId, leadId);
   const { error } = await supabase
     .from("crm_leads")
     .update({
@@ -496,6 +505,7 @@ export async function reabrirNegocio(formData: FormData): Promise<ResultadoEtapa
     performed_by_user_id: user.id,
   });
   if (erroHistorico) console.error("[reabrirNegocio] histórico não gravado", { leadId, code: erroHistorico.code });
+  await avisarMudancaDeEtapa(createAdminClient(), org.orgId, leadId, antesDeReabrir, "opa.reabriu");
   revalidatePath(`/app/leads/${leadId}`);
   revalidatePath("/app/pipeline");
   revalidatePath("/app/hoje");

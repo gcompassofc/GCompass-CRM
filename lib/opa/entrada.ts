@@ -15,6 +15,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { mesclarCampos } from "./campos";
 import { carregarConfig } from "./config";
+import { avisarLeadCriado } from "@/lib/opa/eventos-lead";
 
 /** Padrão da janela; a empresa muda em Configurações (config.volta_dias). */
 export const JANELA_VOLTA_DIAS = 90;
@@ -277,5 +278,8 @@ async function criarLead(
     .select("id")
     .single();
   if (error) throw new Error(`entrada: lead: ${error.message}`);
-  return (data as { id: string }).id;
+  const leadId = (data as { id: string }).id;
+  // Automações (webhook e regras) disparam também para lead que entra pela OPA.
+  await avisarLeadCriado(admin, orgId, { id: leadId, pipeline_id: pipelineId, stage_id: etapaId, title: `${e.nome}${im ? ` · ${im.codigo}` : ""}` }, `opa.${e.origem}`);
+  return leadId;
 }
