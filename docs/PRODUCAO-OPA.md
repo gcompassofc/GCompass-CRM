@@ -42,7 +42,9 @@ falta só fechar o cadastro no Supabase. Rotinas da OPA (lembretes, copiloto, ci
 **Falta (🙋 Allyson):**
 1. Supabase > Authentication > Sign In / Providers: desligar **Allow new users to sign up** (sem desligar o provedor Email),
    senha mínima 12, URL Configuration (Site URL e redirects `/auth/confirm` e `/auth/callback`), conferir backup diário.
-2. Primeiro login em `/login` com o e-mail do administrador e cadastrar o segundo fator (aplicativo autenticador).
+2. Primeiro login em `/login` com o e-mail do administrador. Desde 03/11/2026 o segundo fator é escolha de cada pessoa,
+   inclusive do admin: aplicativo, código por e-mail (pede `RESEND_API_KEY`), código por WhatsApp (pede a sessão
+   `opa-lembretes` conectada) ou desligado, em "Segurança da conta" no menu.
 3. Convidar a equipe (Membros); cada corretor liga o próprio WhatsApp em "Meu WhatsApp"; definir o dono dos números que já existirem.
 4. 🤖 Testar a IA com 30 conversas reais anonimizadas (I3) e conferir `cacheLido` no log na primeira leitura.
 
@@ -240,5 +242,5 @@ tem segredo, e WAHA, Redis e app sem porta aberta para a internet.
 | "Muitas tentativas" para um corretor | bloqueio por conta e IP (5 erros em 5 min) | esperar 5 min; outro aparelho entra normal |
 | Lead do site não chega | token errado no site ou roleta vazia | Conexões (token) e Configurações (roleta) |
 | Foto de imóvel recusada | domínio fora de `settings.opa.dominios_imovel` | incluir o domínio ou usar o nome do arquivo do site |
-| Admin perdeu o celular do segundo fator | | `bash hostgator-setup-kit/reset-mfa.sh <email>` na VPS |
+| Alguém perdeu o acesso ao segundo fator (aplicativo, e-mail ou WhatsApp) | | `bash hostgator-setup-kit/reset-mfa.sh <email>` na VPS |
 | Incidente com dado pessoal | | avisar a ANPD em até 3 dias úteis (Resolução CD/ANPD 15/2024) e os titulares afetados |
