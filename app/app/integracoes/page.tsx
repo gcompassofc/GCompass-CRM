@@ -29,6 +29,8 @@ import { cn } from "@/lib/utils";
 import { CabecalhoOpa, CorpoOpa } from "../_opa/cabecalho";
 import { Cartao, Chip, IconeRedondo, TituloBloco, Vazio } from "../_opa/ui";
 import { FormCruzamento } from "./_cruzamento";
+import { UrlMcp } from "./_mcp";
+import { env } from "@/lib/env";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Integrações e API" };
@@ -290,10 +292,13 @@ export default async function IntegracoesPage() {
           <Cartao className="flex flex-col gap-4">
             <TituloBloco icone={Robot} titulo="Servidor MCP" sub="O Claude opera o CRM com as mesmas regras" />
             <div className="rounded-[18px] bg-[#f2f6f9] px-4 py-3">
-              <p className="flex items-center gap-2 font-mono text-[13px] text-[#0a2d40]">
-                <Code className="size-4 text-[#2a7ca8]" /> /api/mcp
+              <p className="flex items-center gap-2 text-[13px] font-semibold text-[#0a2d40]">
+                <Code className="size-4 text-[#2a7ca8]" /> URL do servidor
               </p>
-              <p className="mt-1 text-[12px] text-[#5b7284]">Bearer com token de API. Ação de IA aparece no histórico com o nome do token.</p>
+              <UrlMcp url={`${env.NEXT_PUBLIC_APP_URL.replace(/\/+$/, "")}/api/mcp`} />
+              <p className="mt-2 text-[12px] text-[#5b7284]">
+                No Claude, use esta URL e o token gerado abaixo (Bearer). Ação de IA aparece no histórico com o nome do token.
+              </p>
             </div>
             <Link
               href="/app/settings/api-tokens"

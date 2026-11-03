@@ -238,6 +238,26 @@ export function ApiTokensClient() {
           </DialogHeader>
           {created ? (
             <div className="space-y-3">
+              {/* A URL vai junto do token: é o par que o Claude (MCP) pede. */}
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">URL do servidor MCP</p>
+                <code className="block break-all rounded-md border bg-muted p-3 text-sm">
+                  {`${window.location.origin}/api/mcp`}
+                </code>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    void copyToClipboard(`${window.location.origin}/api/mcp`).then((ok) => {
+                      if (ok) toast.success("URL copiada.");
+                      else toast.error("Não foi possível copiar — selecione a URL acima.");
+                    });
+                  }}
+                >
+                  Copiar URL
+                </Button>
+              </div>
+              <p className="text-xs font-medium text-muted-foreground">Token</p>
               <code className="block break-all rounded-md border bg-muted p-3 text-sm">
                 {created.plaintext}
               </code>
@@ -251,7 +271,7 @@ export function ApiTokensClient() {
                   });
                 }}
               >
-                Copiar para clipboard
+                Copiar token
               </Button>
               <p className="text-xs text-muted-foreground">{created._warning}</p>
             </div>
