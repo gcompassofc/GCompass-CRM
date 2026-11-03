@@ -549,7 +549,7 @@ export default async function LeadPage({
                   claro
                   icone={Sparkle}
                   titulo="Copiloto"
-                  sub={`${lead.copiloto.motor === "ia" ? "Lido pelo Claude" : "Modo demonstração, sem chave de IA"}${lead.copiloto.analisado_em ? ` · ${hora(lead.copiloto.analisado_em)}` : ""}`}
+                  sub={`${lead.copiloto.motor === "ia" ? "Lido pelo Auxiliar OPA" : "Modo demonstração, sem chave de IA"}${lead.copiloto.analisado_em ? ` · ${hora(lead.copiloto.analisado_em)}` : ""}`}
                   acao={
                     <form action={reanalisar}>
                       <input type="hidden" name="leadId" value={lead.id} />
