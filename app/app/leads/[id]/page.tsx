@@ -12,6 +12,7 @@ import {
   carregarImoveis,
   carregarLeads,
   diagnosticoCompleto,
+  perguntarLeadOuPessoal,
   primeiroNome,
   ROTULO_ORIGEM,
   tempoCurto,
@@ -20,7 +21,7 @@ import {
 import { contarEtiquetas, etiquetasDoLead } from "@/lib/opa/etiquetas";
 import { afinidade, precoCheio, precoPrincipal } from "@/lib/opa/imoveis";
 import { ReabrirNegocio } from "./_reabrir";
-import { MarcarPessoal, VoltarParaLead } from "./_pessoal";
+import { LeadOuPessoal, MarcarPessoal, VoltarParaLead } from "./_pessoal";
 import { MOTIVO_PESSOAL } from "@/lib/opa/contatos-whatsapp";
 import { SeloLendo } from "./_lendo";
 import { MontarSelecao } from "./_selecao";
@@ -419,6 +420,9 @@ export default async function LeadPage({
             </Chip>
           )}
         </div>
+
+        {/* Logo de cara: "Lead ou pessoal?" até alguém responder. */}
+        {perguntarLeadOuPessoal(lead) && <LeadOuPessoal leadId={lead.id} depois="/app/hoje" />}
 
         {aberto && (
           <>

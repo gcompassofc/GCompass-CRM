@@ -224,3 +224,49 @@ export async function numeroViraLead(numero: string): Promise<Resultado> {
   revalidatePath("/app/meu-whatsapp");
   return { ok: true };
 }
+
+/**
+ * "É lead" da pergunta "Lead ou pessoal?" (pedido do Allyson, 03/11/2026): o
+ * corretor confirma que a conversa é de cliente. Grava a resposta no lead (a
+ * pergunta some de todas as telas) e põe a etiqueta "Lead OPA" no WhatsApp.
+ */
+export async function confirmarLead(leadId: string): Promise<Resultado> {
+  const c = await contexto(leadId);
+  if ("erro" in c) return { ok: false, erro: c.erro! };
+  const { admin, org, user, lead } = c;
+  if (lead.status !== "open") return { ok: false, erro: "Este lead já está encerrado." };
+
+  const { data } = await admin
+    .from("crm_leads")
+    .select("custom_fields")
+    .eq("organization_id", org.orgId)
+    .eq("id", leadId)
+    .maybeSingle();
+  const cf = ((data as { custom_fields: Record<string, unknown> | null } | null)?.custom_fields ?? {}) as Record<string, unknown>;
+  const agora = new Date().toISOString();
+  const { error } = await admin
+    .from("crm_leads")
+    .update({ custom_fields: { ...cf, classificado: { como: "lead", em: agora, por: user.id } } })
+    .eq("organization_id", org.orgId)
+    .eq("id", leadId);
+  if (error) return { ok: false, erro: "Não consegui salvar. Tente de novo." };
+
+  const conversa = await conversaDoLead(admin, org.orgId, lead);
+  if (conversa) {
+    try {
+      await aplicarDecisao(admin, conversa.sessao, conversa.chatId, "lead", {
+        origem: "corretor",
+        porUserId: user.id,
+        requestId: randomUUID(),
+      });
+    } catch {
+      // A resposta já está salva no lead; a etiqueta do WhatsApp é melhor esforço.
+    }
+  }
+  revalidatePath(`/app/leads/${leadId}`);
+  revalidatePath("/app/hoje");
+  revalidatePath("/app/fila");
+  revalidatePath("/app/pipeline");
+  revalidatePath("/app/leads");
+  return { ok: true };
+}

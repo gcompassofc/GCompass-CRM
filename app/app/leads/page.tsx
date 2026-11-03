@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
-import { carregarEquipe, carregarImoveis, carregarLeads, filtrarCorretor, ROTULO_ORIGEM, type LeadOpa } from "@/lib/opa/dados";
+import { carregarEquipe, carregarImoveis, carregarLeads, filtrarCorretor, perguntarLeadOuPessoal, ROTULO_ORIGEM, type LeadOpa } from "@/lib/opa/dados";
+import { LeadOuPessoal } from "./[id]/_pessoal";
 import { createClient } from "@/lib/supabase/server";
 import {
   ArrowsClockwise,
@@ -290,6 +291,7 @@ export default async function LeadsPage({
 
                     <CaretRight className="size-4 shrink-0 text-[#b9cfdc] transition-colors group-hover:text-[#2a7ca8]" />
                   </Link>
+                  {perguntarLeadOuPessoal(l) && <LeadOuPessoal leadId={l.id} variante="pilulas" className="pb-2 pl-[4.5rem] pr-3" />}
                 </li>
               );
             })}

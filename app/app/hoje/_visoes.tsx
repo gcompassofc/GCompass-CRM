@@ -14,6 +14,7 @@ import { CAMPOS, type CampoCopiloto } from "@/lib/opa/copiloto";
 import {
   COMISSAO_OPA,
   diagnosticoCompleto,
+  perguntarLeadOuPessoal,
   prazoDoLead,
   primeiroNome,
   ROTULO_ORIGEM,
@@ -55,6 +56,7 @@ import {
 
 import { BotaoEnvio, FormComRetorno } from "../_opa/form-com-retorno";
 import { confirmarSugestao, descartarSugestao } from "../leads/actions";
+import { LeadOuPessoal } from "../leads/[id]/_pessoal";
 import { FotoImovel } from "../_opa/componentes";
 import { IlustraAgenda, IlustraCalma } from "../_opa/ilustracoes";
 import { Avatar, BarraHachurada, Cartao, CartaoNumero, Chip, TituloBloco, Vazio, iniciaisDe, type Icone } from "../_opa/ui";
@@ -317,6 +319,7 @@ export async function VisaoCorretor({
                         </Situacao>
                       )}
                     </Link>
+                    {perguntarLeadOuPessoal(l) && <LeadOuPessoal leadId={l.id} variante="pilulas" className="pb-2 pl-16 pr-2" />}
                   </li>
                 );
               })}
@@ -455,6 +458,8 @@ function ResponderPrimeiro({ lead, imovel }: { lead: LeadOpa; imovel?: Imovel })
           </div>
         )}
       </div>
+
+      {perguntarLeadOuPessoal(lead) && <LeadOuPessoal leadId={lead.id} variante="escuro" />}
 
       <div className="flex flex-wrap gap-2">
         {/* Responde ali mesmo, no Multi-atendimento: sem conversa ainda, a rota abre uma. */}

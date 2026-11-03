@@ -12,6 +12,7 @@ import {
   proximoNaFila,
   tempoCurto,
   type LeadOpa,
+  perguntarLeadOuPessoal,
 } from "@/lib/opa/dados";
 import { precoCompacto, type Imovel } from "@/lib/opa/imoveis";
 import { createClient } from "@/lib/supabase/server";
@@ -38,6 +39,7 @@ import { IlustraCalma } from "../_opa/ilustracoes";
 import { AbasPilula, Avatar, BarraHachurada, Cartao, Chip, IconeRedondo, Vazio, iniciaisDe } from "../_opa/ui";
 import { BotaoEnvio, FormComRetorno } from "../_opa/form-com-retorno";
 import { marcarRespondido } from "../leads/actions";
+import { LeadOuPessoal } from "../leads/[id]/_pessoal";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Fila de atendimento" };
@@ -134,6 +136,7 @@ function Proximo({ l, im, dono, prazos }: { l: LeadOpa; im?: Imovel; dono?: stri
           </Link>
           <Respondi leadId={l.id} escuro />
         </div>
+        {perguntarLeadOuPessoal(l) && <LeadOuPessoal leadId={l.id} variante="escuro" />}
       </div>
     </Cartao>
   );
@@ -204,6 +207,7 @@ function CartaoFila({ l, i, im, dono, prazos }: { l: LeadOpa; i: number; im?: Im
         </Link>
         {espera != null && <Respondi leadId={l.id} />}
       </div>
+      {perguntarLeadOuPessoal(l) && <LeadOuPessoal leadId={l.id} variante="pilulas" className="md:col-span-3" />}
     </Cartao>
   );
 }

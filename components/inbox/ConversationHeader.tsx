@@ -13,6 +13,7 @@ import { ReassignDialog } from "@/components/inbox/ReassignDialog";
 import { SnoozeButton } from "@/components/inbox/SnoozeButton";
 import { CRMSidePanel } from "@/components/inbox/CRMSidePanel";
 import { DadosDoContato, telefoneLegivel } from "@/components/inbox/DadosDoContato";
+import { LeadOuPessoal } from "@/app/app/leads/[id]/_pessoal";
 import { leadPrincipal, useResumoDoContato } from "@/hooks/inbox/useResumoDoContato";
 import { perfilAtivo } from "@/lib/navigation/registry";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -93,7 +94,11 @@ export function ConversationHeader({ conversation, onBack }: Props) {
   const emAtendimentoHumano =
     (silenciada || c?.force_human === true) && status !== "closed" && status !== "archived";
 
+  // "Lead ou pessoal?" logo abaixo do topo, enquanto ninguém respondeu.
+  const perguntar = opa && lead?.status === "open" && lead.classificado?.como !== "lead";
+
   return (
+    <>
     <div data-wa-topo={opa ? "" : undefined} className="sticky top-0 z-10 border-b border-border/60 bg-background/80 backdrop-blur-xl max-md:flex max-md:flex-col max-md:border-[var(--m-border-soft)] max-md:bg-[var(--m-bg)] md:flex md:items-center md:justify-between md:gap-2 px-3 py-2.5 md:px-4 md:py-3 max-md:p-0">
       <div className="flex items-center gap-2 min-w-0 max-md:gap-2.5 max-md:border-b max-md:border-[var(--m-border-soft)] max-md:px-3.5 max-md:py-2.5">
         {onBack && (
@@ -352,5 +357,9 @@ export function ConversationHeader({ conversation, onBack }: Props) {
         </SheetContent>
       </Sheet>
     </div>
+    {perguntar && lead && (
+      <LeadOuPessoal key={lead.id} leadId={lead.id} depois="/app/inbox" className="mx-3 my-2 shrink-0" />
+    )}
+    </>
   );
 }

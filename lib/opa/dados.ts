@@ -109,6 +109,17 @@ export interface LeadOpa {
     esperandoMin: number | null;
   } | null;
   pendentes: number;
+  /** Resposta do "Lead ou pessoal?" (custom_fields.classificado); null = ninguém respondeu. */
+  classificado: "lead" | null;
+}
+
+/**
+ * A pergunta "Lead ou pessoal?" aparece no lead aberto que tem conversa de
+ * WhatsApp no CRM e que ninguém confirmou ainda. Lead de formulário sem conversa
+ * não pergunta: veio de quem pediu contato.
+ */
+export function perguntarLeadOuPessoal(l: Pick<LeadOpa, "status" | "classificado" | "conversa">): boolean {
+  return l.status === "open" && l.classificado === null && Boolean(l.conversa?.id);
 }
 
 export const ROTULO_ORIGEM: Record<string, string> = {
@@ -314,6 +325,7 @@ export async function carregarLeadsSemCache(
       criadoEm: l.created_at,
       conversa,
       pendentes: pendPorLead.get(l.id) ?? 0,
+      classificado: (cf.classificado as { como?: string } | undefined)?.como === "lead" ? "lead" : null,
     };
   });
 }

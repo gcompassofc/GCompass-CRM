@@ -9,6 +9,8 @@ export interface ResumoLead {
   value_cents: number | null;
   currency: string | null;
   updated_at: string;
+  /** Resposta do "Lead ou pessoal?" ({ como: "lead" }); null = ninguém respondeu. */
+  classificado?: { como?: string } | null;
 }
 
 export interface ResumoAtividade {
