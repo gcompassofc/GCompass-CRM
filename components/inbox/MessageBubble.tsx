@@ -19,7 +19,7 @@ interface Props {
 
 function AckIndicator({ status }: { status: string }) {
   if (status === "read") {
-    return <Checks size={12} weight="bold" className="text-blue-400" aria-label="Lida" />;
+    return <Checks size={12} weight="bold" className="text-blue-400" data-lida aria-label="Lida" />;
   }
   if (status === "delivered") {
     return <Checks size={12} weight="bold" className="text-current/70" aria-label="Entregue" />;
@@ -52,6 +52,8 @@ export function MessageBubble({ message, debugCitations }: Props) {
   return (
     <div className={cn("flex w-full px-2 sm:px-4 py-1", isOutbound ? "justify-end" : "justify-start")}>
       <div
+        // Marcador do visual de WhatsApp da OPA (app/marca-opa.css, `.opa-wa`).
+        data-bolha={isBareSticker ? undefined : isOutbound ? "saida" : "entrada"}
         className={cn(
           "max-w-[85%] sm:max-w-[75%] text-sm",
           "max-md:max-w-[80%] max-md:text-[13.5px]",
@@ -89,6 +91,7 @@ export function MessageBubble({ message, debugCitations }: Props) {
         )}
 
         <div
+          data-bolha-hora
           className={cn(
             "mt-1 flex items-center justify-end gap-1 text-[10px]",
             // `primary-foreground/70` é branco translúcido: legível sobre o

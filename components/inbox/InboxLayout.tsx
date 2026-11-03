@@ -21,6 +21,7 @@ import { InboxKeyboardShortcuts } from "./InboxKeyboardShortcuts";
 import { ShortcutsHelpDialog } from "./ShortcutsHelpDialog";
 import { useImmersiveView } from "@/lib/ui/immersive-view";
 import { cn } from "@/lib/utils";
+import { perfilAtivo } from "@/lib/navigation/registry";
 
 function tabToFilter(tab: InboxFiltersValue["tab"]): Partial<ConversationsFilters> {
   switch (tab) {
@@ -44,8 +45,12 @@ const FILTER_TABS: InboxTab[] = ["unassigned", "mine", "all", "closed", "ai"];
  * Lê ?filter= (G4-02, deep-link). ?filter=all é HONRADO mesmo para agent — a
  * lista volta RLS-scoped (a tab só some cosmeticamente); default: fila.
  */
-function parseFilterParam(v: string | null): InboxTab {
-  return v && FILTER_TABS.includes(v as InboxTab) ? (v as InboxTab) : "unassigned";
+function parseFilterParam(v: string | null, abriuUmaConversa = false): InboxTab {
+  if (v && FILTER_TABS.includes(v as InboxTab)) return v as InboxTab;
+  // Chegou por "Abrir conversa" (ficha, Início): a conversa já tem dono e não
+  // está na Fila, que ficava vazia ao lado do chat. Em "Todas" ela aparece
+  // marcada na lista.
+  return abriuUmaConversa ? "all" : "unassigned";
 }
 
 interface InboxLayoutProps {
@@ -59,7 +64,8 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const tab = parseFilterParam(searchParams.get("filter"));
+  const tab = parseFilterParam(searchParams.get("filter"), !!initialSelectedId);
+  const opa = perfilAtivo() === "imobiliaria";
 
   // tab vive na URL (?filter=); os demais filtros são estado local de sessão.
   const [aux, setAux] = useState<Omit<InboxFiltersValue, "tab">>({
@@ -167,7 +173,14 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
   // `dvh` em vez de `vh` porque no celular a `vh` ignora a barra do navegador — o
   // mesmo corte, só que pior e mudando conforme se rola a página.
   return (
-    <div className="grid h-[calc(100dvh-3.5rem)] md:h-[calc(100dvh-3.5rem-2*var(--space-6))] w-full grid-cols-1 md:grid-cols-[300px_1fr] xl:grid-cols-[300px_1fr_320px]">
+    <div
+      className={cn(
+        "grid h-[calc(100dvh-3.5rem)] md:h-[calc(100dvh-3.5rem-2*var(--space-6))] w-full grid-cols-1 md:grid-cols-[300px_1fr]",
+        // Na OPA os dados do contato abrem por "Mais informações", como no
+        // WhatsApp; a coluna fixa à direita apertava a conversa.
+        opa ? "opa-wa xl:grid-cols-[340px_1fr]" : "xl:grid-cols-[300px_1fr_320px]",
+      )}
+    >
       <div
         className={cn(
           "flex h-full min-h-0 flex-col border-r border-border",
@@ -229,9 +242,11 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
         )}
       </div>
 
-      <div className="hidden h-full min-h-0 xl:block">
-        <CRMSidePanel conversation={selectedConversation} />
-      </div>
+      {!opa && (
+        <div className="hidden h-full min-h-0 xl:block">
+          <CRMSidePanel conversation={selectedConversation} />
+        </div>
+      )}
 
       <InboxKeyboardShortcuts
         visibleIds={visibleIds}

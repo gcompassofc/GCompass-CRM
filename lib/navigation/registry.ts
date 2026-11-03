@@ -671,7 +671,7 @@ export function searchable(isPlatformAdmin: boolean, role: Role | null): NavDest
  * papel mínimo continuam vindo de NAV_DESTINATIONS.
  */
 export const MENU_IMOBILIARIA = {
-  principal: ["/app/hoje", "/app/fila", "/app/pipeline", "/app/leads", "/app/imoveis", "/app/lembretes", "/app/kit", "/app/meu-whatsapp"],
+  principal: ["/app/hoje", "/app/fila", "/app/inbox", "/app/pipeline", "/app/leads", "/app/imoveis", "/app/lembretes", "/app/kit", "/app/meu-whatsapp"],
   configuracao: ["/app/conexoes", "/app/membros", "/app/integracoes", "/app/configuracoes"],
 };
 
@@ -682,14 +682,21 @@ export const MENU_IMOBILIARIA = {
  * etapa de cada lead num olhar e o "Mandar para todos" da etapa. No celular
  * eles entram pelo "Mais", como para o gestor (a barra já tem cinco alvos).
  */
-const MENU_CORRETOR = ["/app/hoje", "/app/fila", "/app/lembretes", "/app/leads", "/app/pipeline", "/app/imoveis", "/app/kit", "/app/meu-whatsapp"];
+const MENU_CORRETOR = ["/app/hoje", "/app/fila", "/app/inbox", "/app/lembretes", "/app/leads", "/app/pipeline", "/app/imoveis", "/app/kit", "/app/meu-whatsapp"];
+/**
+ * "Multi-atendimento" (03/11/2026, pedido do Allyson): a tela das conversas,
+ * no estilo do WhatsApp, que é o que o corretor já conhece. Fica logo abaixo
+ * da Fila, para o gestor e para o corretor.
+ */
 const ROTULO_CORRETOR: Record<string, string> = {
+  "/app/inbox": "Multi-atendimento",
   "/app/lembretes": "Agenda",
   "/app/leads": "Meus leads",
   "/app/fila": "Fila",
   "/app/pipeline": "Funis",
 };
 const ROTULO_GESTOR: Record<string, string> = {
+  "/app/inbox": "Multi-atendimento",
   "/app/fila": "Fila da equipe",
   "/app/pipeline": "Funis",
   "/app/imoveis": "Imóveis",

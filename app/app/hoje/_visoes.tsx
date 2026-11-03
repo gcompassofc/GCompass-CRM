@@ -457,7 +457,15 @@ function ResponderPrimeiro({ lead, imovel }: { lead: LeadOpa; imovel?: Imovel })
       </div>
 
       <div className="flex flex-wrap gap-2">
-        {fone ? (
+        {lead.conversa?.id ? (
+          // Com conversa no CRM, responde ali mesmo, no Multi-atendimento.
+          <Link
+            href={`/app/inbox/${lead.conversa.id}`}
+            className="inline-flex h-12 flex-1 items-center justify-center gap-2 rounded-full bg-white px-6 text-[15px] font-semibold text-[#12455f] hover:bg-[#e3eff6]"
+          >
+            <WhatsappLogo weight="fill" className="size-5" /> Abrir conversa
+          </Link>
+        ) : fone ? (
           <a
             href={`https://wa.me/${fone}`}
             target="_blank"

@@ -154,7 +154,7 @@ export function ChatThread({ conversationId }: Props) {
 
   return (
     <div className="flex h-full flex-col">
-      <div ref={scrollerRef} className="flex-1 overflow-y-auto py-2">
+      <div ref={scrollerRef} data-wa-fundo className="flex-1 overflow-y-auto py-2">
         {q.hasNextPage && (
           <div className="flex justify-center py-2">
             <Button
@@ -171,7 +171,7 @@ export function ChatThread({ conversationId }: Props) {
         {groups.map((g) => (
           <div key={g.key} className="space-y-1">
             <div className="sticky top-0 z-10 flex justify-center py-1">
-              <span className="rounded-full bg-background/80 px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground backdrop-blur">
+              <span data-wa-dia className="rounded-full bg-background/80 px-2.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-muted-foreground backdrop-blur">
                 {dayLabel(g.date)}
               </span>
             </div>

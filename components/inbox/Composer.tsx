@@ -133,6 +133,7 @@ export const Composer = forwardRef<ComposerHandle, Props>(function Composer(
   return (
     <>
       <div
+        data-wa-composer={mode === "note" ? undefined : ""}
         className={cn(
           "relative border-t border-border bg-background px-2 pt-1.5 sm:px-3 sm:pt-3 pb-[calc(0.5rem+env(safe-area-inset-bottom))]",
           // No celular a barra de escrever é a última coisa antes da borda do

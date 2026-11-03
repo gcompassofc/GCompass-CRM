@@ -194,3 +194,99 @@
     box-shadow: 0 18px 44px -12px rgba(9, 44, 62, 0.45);
   }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────
+   Multi-atendimento no jeito do WhatsApp (03/11/2026): o corretor já conhece
+   aquela tela, então a conversa usa o mesmo fundo bege, balão branco para o
+   que chega e verde-claro para o que sai, hora e tiques dentro do balão.
+   Liga com a classe `.opa-wa`, que o InboxLayout põe no perfil imobiliária.
+   As marcas (data-bolha, data-wa-*) estão em MessageBubble, ChatThread e
+   Composer. `!important` porque o balão traz as classes do tema escuro do
+   celular (max-md:*), que vencem pela ordem do Tailwind.
+   ───────────────────────────────────────────────────────────────────────── */
+.opa-wa {
+  --wa-fundo: #efeae2;
+  --wa-saida: #d9fdd3;
+  --wa-entrada: #ffffff;
+  --wa-texto: #111b21;
+  --wa-hora: #667781;
+  --wa-barra: #f0f2f5;
+  --wa-lida: #53bdeb;
+}
+:root[data-theme="dark"] .opa-wa {
+  --wa-fundo: #0b141a;
+  --wa-saida: #005c4b;
+  --wa-entrada: #202c33;
+  --wa-texto: #e9edef;
+  --wa-hora: #8696a0;
+  --wa-barra: #202c33;
+}
+.opa-wa [data-wa-fundo] {
+  background-color: var(--wa-fundo);
+  background-image: radial-gradient(rgba(0, 0, 0, 0.035) 1px, transparent 1px);
+  background-size: 18px 18px;
+}
+.opa-wa [data-wa-dia] {
+  background: var(--wa-entrada) !important;
+  color: var(--wa-hora) !important;
+  text-transform: none !important;
+  letter-spacing: 0 !important;
+  font-size: 12px !important;
+  padding: 4px 12px !important;
+  border-radius: 8px !important;
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13);
+}
+.opa-wa [data-bolha] {
+  position: relative;
+  color: var(--wa-texto) !important;
+  border: 0 !important;
+  border-radius: 8px !important;
+  box-shadow: 0 1px 0.5px rgba(11, 20, 26, 0.13) !important;
+  padding: 6px 8px 4px 9px !important;
+  font-size: 14.2px !important;
+}
+.opa-wa [data-bolha="saida"] {
+  background: var(--wa-saida) !important;
+  border-top-right-radius: 0 !important;
+}
+.opa-wa [data-bolha="entrada"] {
+  background: var(--wa-entrada) !important;
+  border-top-left-radius: 0 !important;
+}
+/* O "rabinho" do balão, no canto de cima, como no WhatsApp. */
+.opa-wa [data-bolha]::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  width: 8px;
+  height: 13px;
+}
+.opa-wa [data-bolha="saida"]::before {
+  right: -8px;
+  background: var(--wa-saida);
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+.opa-wa [data-bolha="entrada"]::before {
+  left: -8px;
+  background: var(--wa-entrada);
+  clip-path: polygon(0 0, 100% 0, 100% 100%);
+}
+.opa-wa [data-bolha-hora] {
+  color: var(--wa-hora) !important;
+  font-size: 11px !important;
+  margin-top: 2px !important;
+}
+.opa-wa [data-lida] {
+  color: var(--wa-lida) !important;
+}
+.opa-wa [data-wa-composer] {
+  background: var(--wa-barra) !important;
+  border-color: transparent !important;
+}
+.opa-wa [data-wa-composer] textarea {
+  background: var(--wa-entrada);
+  border-radius: 10px;
+}
+.opa-wa [data-wa-topo] {
+  background: var(--wa-barra) !important;
+}

@@ -40,3 +40,14 @@ describe("menu do gestor", () => {
     }
   });
 });
+
+describe("Multi-atendimento (03/11/2026)", () => {
+  it("aparece logo abaixo da Fila, para corretor e gestor", () => {
+    for (const role of ["agent", "manager", "admin"] as const) {
+      const itens = principal(role);
+      const i = itens.findIndex((d) => d.href === "/app/inbox");
+      expect(itens[i]?.label, role).toBe("Multi-atendimento");
+      expect(itens[i - 1]?.href, role).toBe("/app/fila");
+    }
+  });
+});

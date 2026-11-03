@@ -12,6 +12,10 @@ import { useResumeAiAttendance } from "@/hooks/inbox/useResumeAiAttendance";
 import { ReassignDialog } from "@/components/inbox/ReassignDialog";
 import { SnoozeButton } from "@/components/inbox/SnoozeButton";
 import { CRMSidePanel } from "@/components/inbox/CRMSidePanel";
+import { DadosDoContato, telefoneLegivel } from "@/components/inbox/DadosDoContato";
+import { leadPrincipal, useResumoDoContato } from "@/hooks/inbox/useResumoDoContato";
+import { perfilAtivo } from "@/lib/navigation/registry";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/ui/useIsMobile";
@@ -70,6 +74,13 @@ export function ConversationHeader({ conversation, onBack }: Props) {
   const temp = metaDaConversa(conversation);
   const isMobile = useIsMobile();
 
+  // Multi-atendimento da OPA: topo como o do WhatsApp. Foto e nome sempre à
+  // vista; o nome abre a ficha do lead (onde se muda etiqueta, registra
+  // ligação, etc.) e "Mais informações" abre os dados do contato ao lado.
+  const opa = perfilAtivo() === "imobiliaria";
+  const resumo = useResumoDoContato(opa ? (c?.id ?? null) : null);
+  const lead = opa ? leadPrincipal(resumo.data?.leads) : null;
+
   /**
    * A conversa saiu do atendimento automático? As DUAS travas contam: o silêncio
    * na conversa e o `force_human` no contato. Olhar só o silêncio deixaria de
@@ -83,7 +94,7 @@ export function ConversationHeader({ conversation, onBack }: Props) {
     (silenciada || c?.force_human === true) && status !== "closed" && status !== "archived";
 
   return (
-    <div className="sticky top-0 z-10 border-b border-border/60 bg-background/80 backdrop-blur-xl max-md:flex max-md:flex-col max-md:border-[var(--m-border-soft)] max-md:bg-[var(--m-bg)] md:flex md:items-center md:justify-between md:gap-2 px-3 py-2.5 md:px-4 md:py-3 max-md:p-0">
+    <div data-wa-topo={opa ? "" : undefined} className="sticky top-0 z-10 border-b border-border/60 bg-background/80 backdrop-blur-xl max-md:flex max-md:flex-col max-md:border-[var(--m-border-soft)] max-md:bg-[var(--m-bg)] md:flex md:items-center md:justify-between md:gap-2 px-3 py-2.5 md:px-4 md:py-3 max-md:p-0">
       <div className="flex items-center gap-2 min-w-0 max-md:gap-2.5 max-md:border-b max-md:border-[var(--m-border-soft)] max-md:px-3.5 max-md:py-2.5">
         {onBack && (
           <Button
@@ -99,18 +110,54 @@ export function ConversationHeader({ conversation, onBack }: Props) {
         {/* Avatar só no celular: aqui não há lista ao lado mostrando de quem é
             a conversa, então a cor do avatar é a única continuidade visual
             entre a lista e a tela aberta. */}
-        <div
-          className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold text-white max-md:flex"
-          style={{ backgroundColor: corDoAvatar(c?.id ?? displayName) }}
-          aria-hidden
-        >
-          {iniciais(displayName, phone ?? "?")}
-        </div>
+        {opa ? (
+          <button
+            type="button"
+            onClick={() => setCrmPanelOpen(true)}
+            className="shrink-0 rounded-full"
+            aria-label="Mais informações do contato"
+          >
+            <Avatar className="h-10 w-10" style={{ backgroundColor: corDoAvatar(c?.id ?? displayName) }}>
+              {c?.avatar_storage_path && !c?.is_anonymized ? (
+                <AvatarImage src={`/api/v1/contacts/${c.id}/avatar`} alt="" className="object-cover" />
+              ) : null}
+              <AvatarFallback className="bg-transparent text-[13px] font-semibold text-white">
+                {iniciais(displayName, phone ?? "?")}
+              </AvatarFallback>
+            </Avatar>
+          </button>
+        ) : (
+          <div
+            className="hidden h-9 w-9 shrink-0 items-center justify-center rounded-full text-[13px] font-semibold text-white max-md:flex"
+            style={{ backgroundColor: corDoAvatar(c?.id ?? displayName) }}
+            aria-hidden
+          >
+            {iniciais(displayName, phone ?? "?")}
+          </div>
+        )}
         <div className="min-w-0 max-md:flex-1">
           <div className="flex items-center gap-1.5">
-            <h2 className="truncate text-sm font-semibold max-md:text-[15px] max-md:text-[var(--m-text-1)]">
-              {displayName}
-            </h2>
+            {opa && lead ? (
+              <Link
+                href={`/app/leads/${lead.id}`}
+                title="Abrir a ficha do lead"
+                className="truncate text-[16px] font-medium text-[#111b21] hover:underline dark:text-[#e9edef]"
+              >
+                {displayName}
+              </Link>
+            ) : opa ? (
+              <button
+                type="button"
+                onClick={() => setCrmPanelOpen(true)}
+                className="truncate text-left text-[16px] font-medium text-[#111b21] dark:text-[#e9edef]"
+              >
+                {displayName}
+              </button>
+            ) : (
+              <h2 className="truncate text-sm font-semibold max-md:text-[15px] max-md:text-[var(--m-text-1)]">
+                {displayName}
+              </h2>
+            )}
             <Badge variant="outline" className="h-4 px-1.5 text-[10px] shrink-0 max-md:hidden">
               {STATUS_LABEL[status] ?? status}
             </Badge>
@@ -129,7 +176,12 @@ export function ConversationHeader({ conversation, onBack }: Props) {
               </Badge>
             )}
           </div>
-          {phone && (
+          {opa && phone ? (
+            <p className="mt-0.5 truncate text-[13px] text-[#667781] dark:text-[#8696a0]">
+              {telefoneLegivel(phone)}
+              {lead ? " · toque no nome para abrir a ficha" : ""}
+            </p>
+          ) : phone && (
             <p className="mt-0.5 hidden sm:flex items-center gap-1 text-[11px] text-muted-foreground max-md:mt-px max-md:flex max-md:text-[11.5px] max-md:text-[var(--m-text-2)]">
               <Phone size={10} weight="regular" aria-hidden /> {phone}
             </p>
@@ -233,18 +285,31 @@ export function ConversationHeader({ conversation, onBack }: Props) {
             <span className="sm:hidden font-bold max-md:hidden">X</span>
           </Button>
         )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="xl:hidden h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground max-md:h-8 max-md:w-8 max-md:text-[var(--m-text-2)]"
-          onClick={() => setCrmPanelOpen(true)}
-          title="Detalhes do CRM"
-          aria-label="Ver dados do contato"
-        >
-          <Info size={18} weight="bold" />
-        </Button>
+        {opa ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className={cn("shrink-0 gap-1.5", ACAO_MOBILE)}
+            onClick={() => setCrmPanelOpen(true)}
+            aria-label="Mais informações do contato"
+          >
+            <Info size={16} weight="bold" aria-hidden />
+            <span className="hidden sm:inline max-md:inline">Mais informações</span>
+          </Button>
+        ) : (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="xl:hidden h-8 w-8 shrink-0 text-muted-foreground hover:text-foreground max-md:h-8 max-md:w-8 max-md:text-[var(--m-text-2)]"
+            onClick={() => setCrmPanelOpen(true)}
+            title="Detalhes do CRM"
+            aria-label="Ver dados do contato"
+          >
+            <Info size={18} weight="bold" />
+          </Button>
+        )}
 
-        {c?.id && (
+        {!opa && c?.id && (
           <Button asChild size="sm" variant="ghost" className="hidden md:inline-flex">
             <Link href={`/app/contacts/${c.id}`} className="flex items-center gap-1">
               Contato
@@ -270,19 +335,20 @@ export function ConversationHeader({ conversation, onBack }: Props) {
           side={isMobile ? "bottom" : "right"}
           className={cn(
             "w-[320px] sm:max-w-md p-0 overflow-y-auto",
+            opa && "w-[400px] sm:max-w-[400px] md:!bg-[#f0f2f5]",
             // `!bg-...` porque o `bg-background` do próprio SheetContent vence
             // pela ordem em que o Tailwind emite as classes. Medido no portal:
             // o painel vinha `rgba(0, 0, 0, 0)` e a conversa aparecia por trás.
             "max-md:h-[80dvh] max-md:w-full max-md:max-w-none max-md:rounded-t-[26px] max-md:border-[var(--m-border)] max-md:!bg-[var(--m-surface)] max-md:p-0",
           )}
         >
-          <SheetTitle className="sr-only">Detalhes do CRM</SheetTitle>
+          <SheetTitle className="sr-only">{opa ? "Dados do contato" : "Detalhes do CRM"}</SheetTitle>
           {/* Alça — diz "isto arrasta/fecha" antes de a pessoa tentar. */}
           <div
             className="mx-auto mt-2.5 hidden h-1 w-9 rounded-full bg-[var(--m-border)] max-md:block"
             aria-hidden
           />
-          <CRMSidePanel conversation={conversation} />
+          {opa ? <DadosDoContato conversation={conversation} /> : <CRMSidePanel conversation={conversation} />}
         </SheetContent>
       </Sheet>
     </div>
