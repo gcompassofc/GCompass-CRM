@@ -10,6 +10,7 @@ import { corDoAvatar, iniciais } from "@/lib/inbox/temperatura";
 import { activityLabel } from "@/lib/leads/activity-vocabulary";
 import { leadPrincipal, useResumoDoContato } from "@/hooks/inbox/useResumoDoContato";
 import { ConversationTagsEditor } from "./ConversationTagsEditor";
+import { MarcarPessoal } from "@/app/app/leads/[id]/_pessoal";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
 
 const SITUACAO: Record<string, string> = {
@@ -109,6 +110,19 @@ export function DadosDoContato({ conversation }: { conversation: ConversationWit
           tags={conversation.tags ?? []}
         />
       </section>
+
+      {lead?.status === "open" && (
+        <section className="bg-white px-6 py-4 dark:bg-[#202c33]">
+          <MarcarPessoal
+            leadId={lead.id}
+            depois="/app/inbox"
+            className="flex w-full items-center gap-3 text-left text-[15px] text-[#ea0038] hover:opacity-80 disabled:opacity-50"
+          />
+          <p className="mt-1 text-[12px] text-[#667781] dark:text-[#8696a0]">
+            Entrou como lead mas é conversa pessoal? A conversa sai do CRM e o lead é encerrado.
+          </p>
+        </section>
+      )}
 
       {atividades.length > 0 && (
         <section className="bg-white px-6 py-4 dark:bg-[#202c33]">

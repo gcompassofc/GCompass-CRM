@@ -9,6 +9,7 @@ import { ContatosNovos } from "../_opa/contatos-novos";
 import { listarContatosNovos } from "../_opa/contatos-novos-actions";
 import { estadoMeuWhatsapp } from "./actions";
 import { MeuWhatsappCliente } from "./_cliente";
+import { NumeroViraLead } from "./_virar-lead";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Meu WhatsApp" };
@@ -31,6 +32,7 @@ export default async function MeuWhatsappPage() {
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
           <ContatosNovos inicial={contatosNovos} compacto />
           <MeuWhatsappCliente inicial={inicial} />
+          <NumeroViraLead />
         </div>
       </CorpoOpa>
     </>

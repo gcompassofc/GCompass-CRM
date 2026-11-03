@@ -20,6 +20,8 @@ import {
 import { contarEtiquetas, etiquetasDoLead } from "@/lib/opa/etiquetas";
 import { afinidade, precoCheio, precoPrincipal } from "@/lib/opa/imoveis";
 import { ReabrirNegocio } from "./_reabrir";
+import { MarcarPessoal, VoltarParaLead } from "./_pessoal";
+import { MOTIVO_PESSOAL } from "@/lib/opa/contatos-whatsapp";
 import { SeloLendo } from "./_lendo";
 import { MontarSelecao } from "./_selecao";
 import { RegistrarLigacao } from "./_ligacao";
@@ -472,6 +474,7 @@ export default async function LeadPage({
               <span className="mx-1 hidden h-6 w-px bg-[#d5e2ea] sm:block" aria-hidden />
               <GanharNegocio leadId={lead.id} nome={lead.nome} opcoes={opcoesGanho} />
               <PerderNegocio leadId={lead.id} motivos={config.motivos_perda.map((m) => m.motivo)} />
+              <MarcarPessoal leadId={lead.id} />
             </div>
           </>
         )}
@@ -504,14 +507,25 @@ export default async function LeadPage({
             <IconeRedondo icone={Prohibit} tom="alerta" />
             <div className="min-w-0 flex-1">
               <p className="text-[15px] font-semibold text-[#0a2d40]">
-                Negócio perdido{perda?.closed_at ? ` em ${hora(perda.closed_at)}` : ""}
+                {perda?.lost_reason === MOTIVO_PESSOAL ? "Contato pessoal" : "Negócio perdido"}
+                {perda?.closed_at ? ` em ${hora(perda.closed_at)}` : ""}
               </p>
               <p className="text-[14px] text-[#34566b]">
-                {perda?.lost_reason ? `Motivo: ${perda.lost_reason}.` : "Sem motivo registrado."}{" "}
-                {gestorDaTela ? "Se o cliente voltou a negociar, reabra." : "Se o cliente voltou a negociar, peça ao gestor para reabrir."}
+                {perda?.lost_reason === MOTIVO_PESSOAL
+                  ? "Foi marcado como contato pessoal: a conversa saiu do CRM e a IA não lê. Se era lead de verdade, volte."
+                  : (
+                    <>
+                      {perda?.lost_reason ? `Motivo: ${perda.lost_reason}.` : "Sem motivo registrado."}{" "}
+                      {gestorDaTela ? "Se o cliente voltou a negociar, reabra." : "Se o cliente voltou a negociar, peça ao gestor para reabrir."}
+                    </>
+                  )}
               </p>
             </div>
-            {gestorDaTela && <ReabrirNegocio leadId={lead.id} />}
+            {perda?.lost_reason === MOTIVO_PESSOAL ? (
+              <VoltarParaLead leadId={lead.id} />
+            ) : (
+              gestorDaTela && <ReabrirNegocio leadId={lead.id} />
+            )}
           </Cartao>
         )}
 

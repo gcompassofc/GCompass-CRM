@@ -20,6 +20,9 @@
 export type Situacao = "pessoal" | "lead" | "a_classificar";
 export type OrigemContato = "importacao" | "etiqueta" | "corretor" | "campanha" | "site" | "lead_do_crm" | "novo";
 
+/** Motivo de perda de quem era contato pessoal e entrou como lead (03/11/2026). */
+export const MOTIVO_PESSOAL = "Contato pessoal";
+
 /** Nomes das etiquetas criadas no WhatsApp Business do corretor. */
 export const ETIQUETAS = { lead: "Lead OPA", pessoal: "Pessoal" } as const;
 

@@ -184,6 +184,27 @@ export class WahaClient {
   }
 
   /**
+   * Põe etiquetas numa conversa do WhatsApp Business (`PUT /labels/chats/{chat}`).
+   * Atenção: a lista SUBSTITUI as etiquetas da conversa. Sem o store do NOWEB não
+   * dá para ler as que já existem, então quem chama manda só a etiqueta da decisão
+   * (Lead OPA ou Pessoal). Conta comum devolve erro: quem chama segue sem ela.
+   */
+  async setChatLabels(session: string, chatId: string, labelIds: string[]): Promise<void> {
+    const res = await fetch(
+      `${this.baseUrl}/api/${encodeURIComponent(session)}/labels/chats/${encodeURIComponent(chatId)}/`,
+      {
+        method: "PUT",
+        headers: { "X-Api-Key": this.apiKey, "Content-Type": "application/json" },
+        body: JSON.stringify({ labels: labelIds.map((id) => ({ id })) }),
+      },
+    );
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`waha_chat_label_${res.status}: ${body.slice(0, 200)}`);
+    }
+  }
+
+  /**
    * Últimas mensagens de uma conversa, sem baixar mídia (contexto para a IA quando
    * o contato vira lead). No NOWEB sem store vem da memória da sessão.
    */

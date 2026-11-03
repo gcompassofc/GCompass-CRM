@@ -527,6 +527,10 @@ export async function aplicarDecisao(
     if (id) await admin.from(ESPERA).delete().eq("contato_numero_id", id);
     await apagarConteudoGuardado(admin, sessao, chatId);
   }
+  // Decisão tomada no CRM vira etiqueta no WhatsApp Business do corretor, para o
+  // aparelho e o CRM dizerem a mesma coisa (03/11/2026). Quando a decisão veio da
+  // própria etiqueta, não etiqueta de novo.
+  if (o.origem !== "etiqueta") await etiquetarNoWhatsapp(sessao, chatId, nova);
   if (efeito.criarLead && (promoveu || linha?.situacao === "lead")) {
     await promoverParaLead(admin, sessao, chatId, {
       origem: o.origem,
@@ -536,6 +540,43 @@ export async function aplicarDecisao(
       trazerHistorico: promoveu,
     });
   }
+}
+
+/** Põe "Lead OPA" ou "Pessoal" na conversa do aparelho. Melhor esforço: nunca lança. */
+async function etiquetarNoWhatsapp(sessao: SessaoDoCorretor, chatId: string, tipo: "lead" | "pessoal"): Promise<void> {
+  const waha = getWahaClient();
+  const etiqueta = tipo === "lead" ? sessao.etiqueta_lead_id : sessao.etiqueta_pessoal_id;
+  if (!waha || !sessao.waha_session_name || !etiqueta) return;
+  try {
+    await waha.setChatLabels(sessao.waha_session_name, chatId, [etiqueta]);
+  } catch (err) {
+    logger.info("contatos-pessoais: etiqueta não aplicada no WhatsApp", { sessao: sessao.id, erro: String(err).slice(0, 120) });
+  }
+}
+
+/** O chat do WhatsApp a partir da identidade do contato (`phone:55...` ou `lid:...`). */
+export function chatDoContato(waIdentity: string | null | undefined): string | null {
+  if (!waIdentity) return null;
+  if (waIdentity.startsWith("phone:")) {
+    const d = waIdentity.slice(6).replace(/\D/g, "");
+    return d ? `${d}@c.us` : null;
+  }
+  if (waIdentity.startsWith("lid:")) {
+    const l = waIdentity.slice(4);
+    return l ? `${l}@lid` : null;
+  }
+  return null;
+}
+
+/** Uma sessão pelo id, já filtrada pela empresa (para decidir a partir de um lead). */
+export async function sessaoPorId(admin: Admin, orgId: string, id: string): Promise<SessaoDoCorretor | null> {
+  const { data } = await admin
+    .from("channel_sessions")
+    .select(COLUNAS_SESSAO)
+    .eq("organization_id", orgId)
+    .eq("id", id)
+    .maybeSingle();
+  return (data as SessaoDoCorretor | null) ?? null;
 }
 
 interface LinhaEspera {
