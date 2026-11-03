@@ -31,6 +31,7 @@ import {
   ESPERA_MAX_POR_CONTATO,
   ESPERA_MS,
   ETIQUETAS,
+  MOTIVO_PESSOAL,
   HISTORICO_AO_VIRAR_LEAD,
   chatIgnorado,
   decidir,
@@ -46,6 +47,7 @@ import {
 } from "@/lib/opa/contatos-whatsapp";
 import { entregarConversaAoDono } from "@/lib/opa/conversa-do-lead";
 import { registrarLeadDoContato } from "@/lib/opa/entrada";
+import { avisarMudancaDeEtapa } from "@/lib/opa/eventos-lead";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { getWahaClient } from "@/lib/waha/client";
 import {
@@ -500,7 +502,8 @@ async function tratarEtiqueta(
  * - lead: cria o lead no CRM (dono = corretor do número), leva para a conversa as
  *   mensagens que estavam em espera e tenta trazer o histórico recente;
  * - pessoal: apaga o que o CRM tiver guardado da conversa deste número (inclusive
- *   o que estava em espera) e para de ler.
+ *   o que estava em espera), encerra o lead aberto como "Contato pessoal" e para
+ *   de ler.
  */
 export async function aplicarDecisao(
   admin: Admin,
@@ -669,6 +672,10 @@ async function promoverParaLead(
         dono: sessao.owner_user_id,
         proprio: canal === "whatsapp",
       });
+      // Decisão explícita (etiqueta "Lead OPA" ou botão no CRM): a pergunta some.
+      if (o.origem === "etiqueta" || o.origem === "corretor") {
+        await marcarClassificadoLead(admin, sessao.organization_id, r.leadId, sessao.owner_user_id ?? null);
+      }
       if (r.novo) {
         await admin.from("crm_lead_activities").insert({
           organization_id: sessao.organization_id,
@@ -720,8 +727,9 @@ async function promoverParaLead(
 
 /**
  * Contato marcado como pessoal: some do CRM o que estava guardado da conversa
- * neste número (mensagens e prévia) e as sugestões da IA tiradas dela. O lead, se
- * existir, fica (exclusão de lead é só do administrador), com o registro da decisão.
+ * neste número (mensagens e prévia) e as sugestões da IA tiradas dela. O lead não
+ * se apaga (exclusão é só do administrador): o aberto é encerrado como "Contato
+ * pessoal", com o registro da decisão, e sai das telas.
  */
 async function apagarConteudoGuardado(admin: Admin, sessao: SessaoDoCorretor, chatId: string): Promise<void> {
   const p = parseChatId(chatId);
@@ -749,12 +757,15 @@ async function apagarConteudoGuardado(admin: Admin, sessao: SessaoDoCorretor, ch
 
   const { data: leads } = await admin
     .from("crm_leads")
-    .select("id")
+    .select("id, status, pipeline_id, stage_id")
     .eq("organization_id", sessao.organization_id)
     .in("contact_id", ids)
     .eq("owner_user_id", sessao.owner_user_id ?? "");
-  for (const l of (leads ?? []) as Array<{ id: string }>) {
+  for (const l of (leads ?? []) as Array<{ id: string; status: string; pipeline_id: string; stage_id: string }>) {
     await admin.from("copiloto_sugestoes").delete().eq("lead_id", l.id);
+    // Pessoal não aparece: o lead aberto é encerrado como "Contato pessoal", venha
+    // a decisão da etiqueta no WhatsApp Business ou do botão no CRM (03/11/2026).
+    if (l.status === "open") await encerrarComoPessoal(admin, sessao.organization_id, l);
     await admin.from("crm_lead_activities").insert({
       organization_id: sessao.organization_id,
       lead_id: l.id,
@@ -765,6 +776,53 @@ async function apagarConteudoGuardado(admin: Admin, sessao: SessaoDoCorretor, ch
       reason: "O corretor marcou como contato pessoal: a conversa saiu do CRM e a IA deixou de ler.",
     });
   }
+}
+
+/** Encerra o lead como perdido com o motivo "Contato pessoal" (some da Fila, do Início e dos funis). */
+async function encerrarComoPessoal(
+  admin: Admin,
+  org: string,
+  lead: { id: string; pipeline_id: string; stage_id: string },
+): Promise<void> {
+  try {
+    await admin.rpc("fn_opa_garantir_motivos" as never, { p_pipeline: lead.pipeline_id, p_motivos: [MOTIVO_PESSOAL] } as never);
+    const { data: etapa } = await admin
+      .from("crm_stages")
+      .select("id")
+      .eq("organization_id", org)
+      .eq("pipeline_id", lead.pipeline_id)
+      .eq("is_lost", true)
+      .limit(1)
+      .maybeSingle();
+    const agora = new Date().toISOString();
+    const { error } = await admin
+      .from("crm_leads")
+      .update({
+        status: "lost",
+        lost_reason: MOTIVO_PESSOAL,
+        closed_at: agora,
+        last_activity_at: agora,
+        ...(etapa ? { stage_id: (etapa as { id: string }).id, stage_changed_at: agora } : {}),
+      })
+      .eq("organization_id", org)
+      .eq("id", lead.id)
+      .eq("status", "open");
+    if (!error) await avisarMudancaDeEtapa(admin, org, lead.id, lead.stage_id, "opa.pessoal");
+  } catch (err) {
+    logger.warn("contatos-pessoais: encerrar lead pessoal falhou", { lead: lead.id, erro: String(err) });
+  }
+}
+
+/** Grava no lead a resposta "é lead" (some o "Lead ou pessoal?" das telas). */
+async function marcarClassificadoLead(admin: Admin, org: string, leadId: string, porUserId: string | null): Promise<void> {
+  const { data } = await admin.from("crm_leads").select("custom_fields").eq("organization_id", org).eq("id", leadId).maybeSingle();
+  const cf = ((data as { custom_fields: Record<string, unknown> | null } | null)?.custom_fields ?? {}) as Record<string, unknown>;
+  if ((cf.classificado as { como?: string } | undefined)?.como === "lead") return;
+  await admin
+    .from("crm_leads")
+    .update({ custom_fields: { ...cf, classificado: { como: "lead", em: new Date().toISOString(), por: porUserId } } })
+    .eq("organization_id", org)
+    .eq("id", leadId);
 }
 
 const COLUNAS_SESSAO = `id, organization_id, waha_session_name, status, is_warmup_complete, warmup_started_at, ${COLUNAS_SESSAO_DO_CORRETOR}`;
