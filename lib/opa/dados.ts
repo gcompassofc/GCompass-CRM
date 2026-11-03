@@ -1,5 +1,6 @@
 import { cache } from "react";
 
+import type { PedidoRadarSalvo } from "@/lib/opa/pedido-radar";
 import { cifraConfigurada, decifrar } from "@/lib/crypto/dados-pessoais";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -111,6 +112,8 @@ export interface LeadOpa {
   pendentes: number;
   /** Resposta do "Lead ou pessoal?" (custom_fields.classificado); null = ninguém respondeu. */
   classificado: "lead" | null;
+  /** Último pedido ao OPA Radar feito pela ficha (lib/opa/pedido-radar.ts). */
+  pedidoRadar: PedidoRadarSalvo | null;
 }
 
 /**
@@ -326,6 +329,7 @@ export async function carregarLeadsSemCache(
       conversa,
       pendentes: pendPorLead.get(l.id) ?? 0,
       classificado: (cf.classificado as { como?: string } | undefined)?.como === "lead" ? "lead" : null,
+      pedidoRadar: (cf.pedido_radar as PedidoRadarSalvo | undefined)?.pedido ? (cf.pedido_radar as PedidoRadarSalvo) : null,
     };
   });
 }

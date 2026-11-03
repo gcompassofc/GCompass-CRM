@@ -11,6 +11,7 @@ import { CAMPOS_DIAGNOSTICO } from "@/lib/opa/dados";
 import { diaSP } from "@/lib/opa/periodo";
 import { avisarMudancaDeEtapa, avisarTagsNovas, etapaAtual } from "@/lib/opa/eventos-lead";
 import { conferirDataETexto, faltaNaFicha } from "@/lib/opa/visita";
+import { pedidoRadarSchema, resumoDoPedidoRadar } from "@/lib/opa/pedido-radar";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -561,6 +562,85 @@ export async function registrarLigacao(leadId: string, resultado: ResultadoLigac
   });
   revalidatePath("/app/fila");
   revalidatePath("/app/hoje");
+  revalidatePath(`/app/leads/${leadId}`);
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------- imóveis de interesse e OPA Radar
+
+/**
+ * "Adicionar imóvel" da ficha (03/11/2026): o corretor escolhe um imóvel do
+ * acervo da OPA. Lead sem imóvel de entrada ganha este como entrada, para o
+ * cruzamento com o acervo ter por onde começar.
+ */
+export async function adicionarImovelInteresse(leadId: string, codigo: string): Promise<{ ok: boolean; erro?: string }> {
+  const { org, supabase } = await contexto();
+  if (org.role === "viewer") return { ok: false, erro: "Seu acesso é só de leitura." };
+  const { data: imovel } = await supabase
+    .from("imoveis")
+    .select("codigo")
+    .eq("organization_id", org.orgId)
+    .eq("codigo", codigo)
+    .maybeSingle();
+  if (!imovel) return { ok: false, erro: "Imóvel não encontrado no acervo." };
+  try {
+    const lista = (await lerCampo<string[]>(leadId, "imoveis_interesse")) ?? [];
+    const entrada = await lerCampo<string | null>(leadId, "imovel_codigo");
+    if (lista.includes(codigo)) return { ok: true };
+    await mudarCampos(leadId, { imoveis_interesse: [...lista, codigo], ...(entrada ? {} : { imovel_codigo: codigo }) });
+  } catch {
+    return { ok: false, erro: "Não deu para salvar. Tente de novo." };
+  }
+  revalidatePath(`/app/leads/${leadId}`);
+  return { ok: true };
+}
+
+/** Tira um imóvel da lista de interesse. O de entrada fica: é a origem do lead. */
+export async function removerImovelInteresse(leadId: string, codigo: string): Promise<{ ok: boolean; erro?: string }> {
+  const { org } = await contexto();
+  if (org.role === "viewer") return { ok: false, erro: "Seu acesso é só de leitura." };
+  try {
+    const entrada = await lerCampo<string | null>(leadId, "imovel_codigo");
+    if (entrada === codigo) return { ok: false, erro: "O imóvel de entrada fica: é por onde o lead chegou." };
+    const lista = (await lerCampo<string[]>(leadId, "imoveis_interesse")) ?? [];
+    await mudarCampos(leadId, { imoveis_interesse: lista.filter((c) => c !== codigo) });
+  } catch {
+    return { ok: false, erro: "Não deu para salvar. Tente de novo." };
+  }
+  revalidatePath(`/app/leads/${leadId}`);
+  return { ok: true };
+}
+
+/** Guarda no lead o pedido ao OPA Radar (lib/opa/pedido-radar.ts) e registra na linha do tempo. */
+export async function salvarPedidoRadar(leadId: string, entrada: unknown): Promise<{ ok: boolean; erro?: string }> {
+  const { user, org, supabase } = await contexto();
+  if (org.role === "viewer") return { ok: false, erro: "Seu acesso é só de leitura." };
+  const parsed = pedidoRadarSchema.safeParse(entrada);
+  if (!parsed.success) return { ok: false, erro: "Confira os filtros do pedido." };
+  const pedido = parsed.data;
+  if (pedido.preco_min && pedido.preco_max && pedido.preco_min > pedido.preco_max) {
+    return { ok: false, erro: "O valor mínimo está maior que o máximo." };
+  }
+  const { data: lead } = await supabase.from("crm_leads").select("contact_id").eq("organization_id", org.orgId).eq("id", leadId).maybeSingle();
+  if (!lead) return { ok: false, erro: "Lead não encontrado." };
+  const agora = new Date().toISOString();
+  try {
+    await mudarCampos(leadId, { pedido_radar: { pedido, em: agora, por: user.id } });
+  } catch {
+    return { ok: false, erro: "Não deu para salvar. Tente de novo." };
+  }
+  await supabase.from("crm_lead_activities").insert({
+    organization_id: org.orgId,
+    lead_id: leadId,
+    contact_id: (lead as { contact_id: string | null }).contact_id,
+    source_module: "opa",
+    type: "pedido_radar",
+    payload: { resumo: resumoDoPedidoRadar(pedido) },
+    performed_at: agora,
+    performed_by_user_id: user.id,
+    actor_kind: "user",
+    reason: `Pedido ao OPA Radar: ${resumoDoPedidoRadar(pedido)}`,
+  });
   revalidatePath(`/app/leads/${leadId}`);
   return { ok: true };
 }

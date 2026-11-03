@@ -19,7 +19,9 @@ import {
   voltaRecente,
 } from "@/lib/opa/dados";
 import { contarEtiquetas, etiquetasDoLead } from "@/lib/opa/etiquetas";
-import { afinidade, precoCheio, precoPrincipal } from "@/lib/opa/imoveis";
+import { afinidade, fotoUrl, precoCheio, precoPrincipal } from "@/lib/opa/imoveis";
+import { pedidoInicial, resumoDoPedidoRadar } from "@/lib/opa/pedido-radar";
+import { AdicionarImovel, CopiarPedidoRadar, PesquisarRadar, RemoverImovel } from "./_imoveis";
 import { ReabrirNegocio } from "./_reabrir";
 import { LeadOuPessoal, MarcarPessoal, VoltarParaLead } from "./_pessoal";
 import { MOTIVO_PESSOAL } from "@/lib/opa/contatos-whatsapp";
@@ -276,6 +278,7 @@ export default async function LeadPage({
 
   const porCodigo = new Map(imoveis.map((i) => [i.codigo, i]));
   const entrada = porCodigo.get(lead.imovelCodigo ?? "") ?? null;
+  const podeEditar = org.role !== "viewer";
   const interesse = lead.imoveisInteresse.map((c) => porCodigo.get(c)).filter((i): i is NonNullable<typeof i> => Boolean(i));
   const vendido = lead.venda ? (porCodigo.get(lead.venda.imovel_codigo) ?? null) : null;
   const voltouRecente = voltaRecente(lead);
@@ -1008,10 +1011,36 @@ export default async function LeadPage({
           <div className="grid gap-5 lg:grid-cols-12 [&>*]:min-w-0">
             <Cartao bloco className="lg:col-span-5">
               <TituloBloco icone={HouseLine} titulo="Imóveis de interesse" sub="O de entrada e os que ele pediu depois" />
+              {podeEditar && (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <AdicionarImovel
+                    leadId={lead.id}
+                    jaTem={lead.imoveisInteresse}
+                    acervo={imoveis
+                      .filter((i) => i.status !== "vendido")
+                      .map((i) => ({ codigo: i.codigo, titulo: i.titulo, preco: precoPrincipal(i), bairro: i.bairro, foto: fotoUrl(i) }))}
+                  />
+                  <PesquisarRadar
+                    leadId={lead.id}
+                    inicial={lead.pedidoRadar?.pedido ?? pedidoInicial(primeiroNome(lead.nome), lead.campos)}
+                  />
+                </div>
+              )}
+              {lead.pedidoRadar && (
+                <div className="mt-4 rounded-[20px] bg-[#eaf4f9] p-4">
+                  <p className="text-[12px] font-medium text-[#5b7284]">
+                    Pedido ao OPA Radar · {new Date(lead.pedidoRadar.em).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}
+                  </p>
+                  <p className="mt-1 text-[14px] text-[#0a2d40]">{resumoDoPedidoRadar(lead.pedidoRadar.pedido)}</p>
+                  <div className="mt-2">
+                    <CopiarPedidoRadar pedido={lead.pedidoRadar.pedido} />
+                  </div>
+                </div>
+              )}
               <ul className="mt-5 flex flex-col gap-3">
                 {interesse.map((im) => (
-                  <li key={im.codigo}>
-                    <Link href={`/app/imoveis/${im.codigo}`} className="flex items-center gap-3 rounded-[20px] bg-[#f2f6f9] p-3 hover:bg-[#e7f0f5]">
+                  <li key={im.codigo} className="flex items-center gap-1">
+                    <Link href={`/app/imoveis/${im.codigo}`} className="flex min-w-0 flex-1 items-center gap-3 rounded-[20px] bg-[#f2f6f9] p-3 hover:bg-[#e7f0f5]">
                       <FotoImovel imovel={im} className="h-[64px] w-[88px] shrink-0 rounded-2xl" />
                       <div className="min-w-0">
                         <p className="flex items-center gap-1.5 text-[12px] font-medium text-[#5b7284]">
@@ -1022,6 +1051,7 @@ export default async function LeadPage({
                         <p className="text-[13px] text-[#5b7284]">{precoPrincipal(im)}</p>
                       </div>
                     </Link>
+                    {podeEditar && im.codigo !== lead.imovelCodigo && <RemoverImovel leadId={lead.id} codigo={im.codigo} />}
                   </li>
                 ))}
               </ul>
