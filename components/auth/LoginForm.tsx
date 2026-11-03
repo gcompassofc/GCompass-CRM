@@ -45,6 +45,10 @@ export function LoginForm({ next }: { next?: string }) {
         router.replace(`/login/mfa${params.toString() ? `?${params}` : ""}`);
         return;
       }
+      if (res.error === "codigo_required") {
+        router.replace(`/login/codigo${next ? `?next=${encodeURIComponent(next)}` : ""}`);
+        return;
+      }
       if (res.error === "invalid_credentials") {
         setServerError("E-mail ou senha incorretos. Confira e tente de novo.");
       } else if (res.error === "rate_limited") {

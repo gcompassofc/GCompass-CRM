@@ -34,7 +34,9 @@ export async function enrollMfa(): Promise<EnrollMfaResult> {
 
   const { data, error } = await supabase.auth.mfa.enroll({
     factorType: "totp",
-    friendlyName: `DeskcommCRM ${new Date().toISOString().slice(0, 10)}`,
+    // Data e hora: o nome precisa ser único por usuário, e trocar de aplicativo
+    // cadastra o novo no mesmo dia em que o antigo ainda existe.
+    friendlyName: `DeskcommCRM ${new Date().toISOString().slice(0, 19).replace("T", " ")}`,
   });
   if (error || !data) {
     return { ok: false, error: "enroll_failed", message: error?.message };

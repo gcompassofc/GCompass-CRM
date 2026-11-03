@@ -6,7 +6,7 @@ import { useTransition } from "react";
 import { useAuth } from "@/hooks/auth/AuthProvider";
 import { branding } from "@/lib/branding";
 import { menuImobiliaria, type NavDestination } from "@/lib/navigation/registry";
-import { Question, SignOut } from "@/lib/ui/icons";
+import { Question, ShieldCheck, SignOut } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
 
 /**
@@ -96,6 +96,19 @@ export function SidebarOpa({ filaCount = 0, onNavClick }: { filaCount?: number; 
         >
           <Question size={18} aria-hidden />
           Tutoriais
+        </Link>
+        {/* Cada pessoa liga, troca ou desliga a verificação em duas etapas (03/11/2026). */}
+        <Link
+          href="/app/settings/security"
+          onClick={onNavClick}
+          aria-current={pathname === "/app/settings/security" ? "page" : undefined}
+          className={cn(
+            "mx-3 mt-1 flex h-10 items-center gap-3 rounded-full px-3.5 text-[13px] transition-colors",
+            pathname === "/app/settings/security" ? "bg-[#eef3f6] font-semibold text-[#0a2d40]" : "text-[#5b7284] hover:bg-[#eef3f6] hover:text-[#0a2d40]",
+          )}
+        >
+          <ShieldCheck size={18} aria-hidden />
+          Segurança da conta
         </Link>
 
         <div className="m-3 flex items-center gap-3 rounded-[22px] bg-[#f2f6f9] p-2.5">

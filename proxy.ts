@@ -9,6 +9,7 @@ import {
   verifyImpersonateCookieEdge,
   IMPERSONATE_COOKIE_NAME_EDGE,
 } from "@/lib/impersonate/cookie-edge";
+import { COOKIE_SEGUNDO_FATOR, exigeCodigo, segundoFatorConfere } from "@/lib/auth/segundo-fator-cookie";
 
 const COOKIE_NAME = "sb-deskcomm-auth";
 
@@ -121,6 +122,31 @@ export async function proxy(request: NextRequest) {
     const mfaUrl = new URL("/login/mfa", request.url);
     mfaUrl.searchParams.set("next", pathname + search);
     return NextResponse.redirect(mfaUrl);
+  }
+
+  // Segundo fator por código no e-mail ou no WhatsApp (0125): a senha sozinha não
+  // abre o app nem a API enquanto esta sessão não confirmar o código. A marca é
+  // o cookie assinado com o session_id do JWT (lib/auth/segundo-fator-cookie.ts).
+  if (exigeCodigo(user.app_metadata)) {
+    const { data: jwt } = await supabase.auth.getClaims();
+    const sid = (jwt?.claims as { session_id?: unknown } | undefined)?.session_id;
+    const confere = await segundoFatorConfere(
+      env.INTERNAL_SECRET,
+      user.id,
+      typeof sid === "string" ? sid : null,
+      request.cookies.get(COOKIE_SEGUNDO_FATOR)?.value,
+    );
+    if (!confere) {
+      if (pathname.startsWith("/api/")) {
+        return new NextResponse(
+          JSON.stringify({ error: { code: "mfa_required", message: "Confirme o código de acesso" } }),
+          { status: 401, headers: { "content-type": "application/json", "x-request-id": requestId } },
+        );
+      }
+      const codigoUrl = new URL("/login/codigo", request.url);
+      codigoUrl.searchParams.set("next", pathname + search);
+      return NextResponse.redirect(codigoUrl);
+    }
   }
 
   // EPIC-11 S-11.07: validate impersonate cookie on /app/* paths. Middleware

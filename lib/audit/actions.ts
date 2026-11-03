@@ -219,4 +219,9 @@ export type AuditAction =
   // de código próprio para não somar duas grandezas no mesmo relatório.
   | "followup.scheduled"
   | "followup.cancelled"
-  | "lead.reactivation_proposed";
+  | "lead.reactivation_proposed"
+  /** Segundo fator ligado, trocado ou desligado pela própria pessoa (0125). metadata.metodo. */
+  | "auth.segundo_fator_alterado"
+  /** Código do e-mail/WhatsApp confirmado no login (0125). */
+  | "auth.codigo_login_ok"
+  | "auth.codigo_login_falhou";

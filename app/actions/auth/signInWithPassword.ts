@@ -13,10 +13,12 @@ import {
   AUTH_LIMITS,
 } from "@/lib/auth/rate-limit";
 import { IS_DEMO_MODE } from "@/lib/demo-mode";
+import { exigeCodigo } from "@/lib/auth/segundo-fator-cookie";
+import { enviarCodigo } from "@/lib/auth/segundo-fator";
 
 export type SignInResult = {
   ok: false;
-  error: "invalid_credentials" | "rate_limited" | "validation_error" | "mfa_required";
+  error: "invalid_credentials" | "rate_limited" | "validation_error" | "mfa_required" | "codigo_required";
   details?: Record<string, unknown>;
   challengeId?: string;
 };
@@ -107,6 +109,16 @@ export async function signInWithPassword(
   const verifiedTotp = factorsData?.totp?.find((f) => f.status === "verified");
   if (verifiedTotp) {
     return { ok: false, error: "mfa_required", challengeId: verifiedTotp.id };
+  }
+
+  // Código por e-mail ou WhatsApp (0125): manda agora e segue para /login/codigo.
+  // Se o envio falhar, a tela do código mostra e oferece mandar de novo.
+  if (exigeCodigo(data.user.app_metadata)) {
+    const canal = data.user.app_metadata.segundo_fator as "email" | "whatsapp";
+    const destino =
+      canal === "whatsapp" ? String(data.user.app_metadata.segundo_fator_whatsapp ?? "") : (data.user.email ?? "");
+    await enviarCodigo({ userId: data.user.id, canal, destino, finalidade: "entrar" });
+    return { ok: false, error: "codigo_required" };
   }
 
   await audit({

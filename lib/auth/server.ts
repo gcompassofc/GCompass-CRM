@@ -181,5 +181,9 @@ export async function isMfaEnrolled(): Promise<boolean> {
  */
 export function requiresMfa(role: Role | undefined, isPlatformAdmin: boolean): boolean {
   if (IS_DEMO_MODE) return false;
+  // CRM da OPA (03/11/2026, decisão do Allyson): a verificação em duas etapas é
+  // escolha de cada pessoa, inclusive do administrador. Liga, troca ou desliga
+  // em Segurança (aplicativo, código por e-mail ou por WhatsApp).
+  if (process.env.APP_PROFILE?.trim() === "imobiliaria") return false;
   return isPlatformAdmin || role === "admin";
 }
