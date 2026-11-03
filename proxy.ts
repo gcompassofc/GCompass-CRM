@@ -10,6 +10,7 @@ import {
   IMPERSONATE_COOKIE_NAME_EDGE,
 } from "@/lib/impersonate/cookie-edge";
 import { COOKIE_SEGUNDO_FATOR, exigeCodigo, segundoFatorConfere } from "@/lib/auth/segundo-fator-cookie";
+import { COOKIE_LEMBRAR, opcoesDeSessao, restanteDoLembrar } from "@/lib/auth/lembrar";
 
 const COOKIE_NAME = "sb-deskcomm-auth";
 
@@ -64,7 +65,8 @@ export async function proxy(request: NextRequest) {
         setAll(cookiesToSet: { name: string; value: string; options: CookieOptions }[]) {
           cookiesToSet.forEach(({ name, value, options }) => {
             request.cookies.set(name, value);
-            response.cookies.set(name, value, options);
+            // Renovação do token: mantém a validade do "Lembrar de mim".
+            response.cookies.set(name, value, opcoesDeSessao(options, restanteDoLembrar(request.cookies.get(COOKIE_LEMBRAR)?.value)));
           });
         },
       },

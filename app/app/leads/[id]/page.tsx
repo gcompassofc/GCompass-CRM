@@ -193,13 +193,13 @@ export default async function LeadPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ aba?: string }>;
+  searchParams: Promise<{ aba?: string; conversa?: string }>;
 }) {
   const user = await requireAuth();
   const org = await resolveActiveOrg(user);
   if (!org) redirect("/app");
   const { id } = await params;
-  const { aba = "resumo" } = await searchParams;
+  const { aba = "resumo", conversa: avisoConversa } = await searchParams;
   const supabase = await createClient();
 
   const [lead] = await carregarLeads(org.orgId, { leadId: id });
@@ -428,24 +428,25 @@ export default async function LeadPage({
               </p>
               <EtapasClicaveis leadId={lead.id} atual={lead.etapa.id} etapas={etapas} />
             </Cartao>
+            {avisoConversa && (
+              <p role="alert" className="rounded-2xl bg-[#fdf1e7] px-4 py-3 text-[14px] text-[#7a3f12]">
+                {avisoConversa === "sem_numero"
+                  ? "Não há WhatsApp conectado para abrir esta conversa. Conecte o seu em Meu WhatsApp."
+                  : avisoConversa === "sem_conversa"
+                    ? "Este lead ainda não tem conversa no CRM."
+                    : "Não deu para abrir a conversa agora. Tente de novo em instantes."}
+              </p>
+            )}
             <div data-tour="ficha-acoes" className="flex flex-wrap items-center gap-2">
-              {lead.conversa?.id ? (
-                <Link
-                  href={`/app/inbox/${lead.conversa.id}`}
-                  className="inline-flex h-11 items-center gap-2 rounded-full bg-[#2a7ca8] px-5 text-[14px] font-semibold text-white hover:bg-[#1f6a93]"
-                >
-                  <WhatsappLogo weight="fill" className="size-5" /> Abrir conversa
-                </Link>
-              ) : wa ? (
-                <a
-                  href={wa}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex h-11 items-center gap-2 rounded-full bg-[#2a7ca8] px-5 text-[14px] font-semibold text-white hover:bg-[#1f6a93]"
-                >
-                  <WhatsappLogo weight="fill" className="size-5" /> Abrir conversa
-                </a>
-              ) : null}
+              {/* Sempre no Multi-atendimento do CRM, nunca no WhatsApp Web: sem
+                  conversa ainda, a rota abre uma para mandar a primeira mensagem. */}
+              <Link
+                href={`/app/leads/${lead.id}/conversa`}
+                prefetch={false}
+                className="inline-flex h-11 items-center gap-2 rounded-full bg-[#2a7ca8] px-5 text-[14px] font-semibold text-white hover:bg-[#1f6a93]"
+              >
+                <WhatsappLogo weight="fill" className="size-5" /> {lead.conversa?.id ? "Abrir conversa" : "Começar conversa"}
+              </Link>
               {lead.telefone ? (
                 // Discar em um toque (no Hoje já existia; na ficha o corretor tinha de copiar o número).
                 <a

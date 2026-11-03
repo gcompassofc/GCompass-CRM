@@ -3,6 +3,8 @@ import { z } from "zod";
 export const loginSchema = z.object({
   email: z.string().email("Email inválido"),
   password: z.string().min(8, "Senha deve ter pelo menos 8 caracteres"),
+  /** "Lembrar de mim": sessão salva no aparelho por 30 dias (lib/auth/lembrar.ts). */
+  lembrar: z.boolean().optional(),
 });
 
 export type LoginInput = z.infer<typeof loginSchema>;

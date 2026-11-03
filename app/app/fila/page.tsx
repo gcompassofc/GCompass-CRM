@@ -126,7 +126,8 @@ function Proximo({ l, im, dono, prazos }: { l: LeadOpa; im?: Imovel; dono?: stri
         </div>
         <div data-tour="fila-acoes" className="flex gap-2">
           <Link
-            href={`/app/leads/${l.id}`}
+            href={`/app/leads/${l.id}/conversa`}
+            prefetch={false}
             className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-full bg-[#2a7ca8] text-[14px] font-semibold text-white hover:bg-[#1f6a93]"
           >
             <WhatsappLogo weight="fill" className="size-4" /> Conversa
@@ -192,7 +193,8 @@ function CartaoFila({ l, i, im, dono, prazos }: { l: LeadOpa; i: number; im?: Im
 
       <div className="flex items-center gap-2 md:justify-end">
         <Link
-          href={`/app/leads/${l.id}`}
+          href={`/app/leads/${l.id}/conversa`}
+          prefetch={false}
           title="Abrir a conversa"
           aria-label="Abrir a conversa"
           className="relative inline-flex size-11 items-center justify-center rounded-full bg-[#eef3f6] text-[#0a2d40] hover:bg-[#e7f0f5]"

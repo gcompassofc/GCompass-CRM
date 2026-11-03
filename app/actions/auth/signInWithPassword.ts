@@ -1,6 +1,6 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/server";
@@ -15,6 +15,8 @@ import {
 import { IS_DEMO_MODE } from "@/lib/demo-mode";
 import { exigeCodigo } from "@/lib/auth/segundo-fator-cookie";
 import { enviarCodigo } from "@/lib/auth/segundo-fator";
+import { COOKIE_LEMBRAR, novoLembrar } from "@/lib/auth/lembrar";
+import { cookieSecure } from "@/lib/supabase/cookie-secure";
 
 export type SignInResult = {
   ok: false;
@@ -46,7 +48,9 @@ export async function signInWithPassword(
     };
   }
 
-  const supabase = await createClient();
+  // "Lembrar de mim": decide a validade dos cookies que o login vai gravar.
+  const lembrar = parsed.data.lembrar !== false ? novoLembrar() : null;
+  const supabase = await createClient({ lembrarRestante: lembrar?.maxAge ?? null });
   const hdrs = await headers();
   const requestId = hdrs.get("x-request-id");
   const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
@@ -86,6 +90,21 @@ export async function signInWithPassword(
     email: parsed.data.email,
     password: parsed.data.password,
   });
+
+  if (!error && data.user) {
+    const loja = await cookies();
+    if (lembrar) {
+      loja.set(COOKIE_LEMBRAR, lembrar.valor, {
+        httpOnly: true,
+        sameSite: "strict",
+        secure: cookieSecure(),
+        path: "/",
+        maxAge: lembrar.maxAge,
+      });
+    } else {
+      loja.delete(COOKIE_LEMBRAR);
+    }
+  }
 
   if (error || !data.user) {
     // Só senha errada gasta o orçamento da conta.

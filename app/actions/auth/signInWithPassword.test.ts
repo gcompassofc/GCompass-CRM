@@ -11,7 +11,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 
-vi.mock("next/headers", () => ({ headers: vi.fn() }));
+vi.mock("next/headers", () => ({
+  headers: vi.fn(),
+  cookies: vi.fn(async () => ({ set: vi.fn(), delete: vi.fn(), get: vi.fn() })),
+}));
 vi.mock("@/lib/supabase/server", () => ({ createClient: vi.fn() }));
 vi.mock("@/lib/audit", async (orig) => ({
   ...(await orig<Record<string, unknown>>()),

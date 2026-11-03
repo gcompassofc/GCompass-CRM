@@ -2,7 +2,7 @@
 
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useTransition, useState } from "react";
+import { useEffect, useTransition, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { loginSchema, type LoginInput } from "@/lib/auth/schemas";
@@ -24,8 +24,25 @@ export function LoginForm({ next }: { next?: string }) {
     formState: { errors },
   } = useForm<LoginInput>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "" },
+    defaultValues: { email: "", password: "", lembrar: true },
   });
+
+  // Já entrou neste aparelho e chegou aqui por um link de fora (WhatsApp,
+  // e-mail): o navegador não manda o cookie SameSite=Strict nessa navegação e o
+  // proxy mandou para o login. Daqui, um pedido do próprio site leva o cookie:
+  // se a sessão responde, segue direto, sem pedir senha de novo.
+  useEffect(() => {
+    let vivo = true;
+    const destino = next && next.startsWith("/") && !next.startsWith("//") ? next : "/app";
+    fetch(destino, { method: "HEAD", redirect: "manual", credentials: "same-origin" })
+      .then((r) => {
+        if (vivo && r.ok && r.type !== "opaqueredirect") router.replace(destino);
+      })
+      .catch(() => {});
+    return () => {
+      vivo = false;
+    };
+  }, [next, router]);
 
   const onSubmit = (values: LoginInput) => {
     setServerError(null);
@@ -95,6 +112,14 @@ export function LoginForm({ next }: { next?: string }) {
           <p className="text-xs text-destructive">{errors.password.message}</p>
         )}
       </div>
+      <label className="flex min-h-11 cursor-pointer items-center gap-3 text-sm">
+        <input
+          type="checkbox"
+          className="size-5 shrink-0 cursor-pointer rounded border-input accent-[#2a7ca8]"
+          {...register("lembrar")}
+        />
+        <span>Lembrar de mim por 30 dias</span>
+      </label>
       {serverError && (
         <div
           className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"

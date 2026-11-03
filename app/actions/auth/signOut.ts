@@ -3,6 +3,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { audit } from "@/lib/audit";
+import { COOKIE_LEMBRAR } from "@/lib/auth/lembrar";
 
 export async function signOut(): Promise<void> {
   const supabase = await createClient();
@@ -16,6 +17,8 @@ export async function signOut(): Promise<void> {
   // Clear active_org cookie too.
   const store = await cookies();
   store.delete("active_org");
+  // Saiu de propósito: este aparelho para de lembrar.
+  store.delete(COOKIE_LEMBRAR);
 
   if (user) {
     await audit({

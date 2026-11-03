@@ -286,7 +286,8 @@ export function QuadroOpa({ colunas: inicial, envio }: { colunas: ColunaQuadro[]
                                   </label>
                                 )}
                                 <Link
-                                  href={`/app/leads/${c.id}`}
+                                  href={`/app/leads/${c.id}/conversa`}
+                                  prefetch={false}
                                   title="Abrir a conversa"
                                   aria-label="Abrir a conversa"
                                   className="relative inline-flex size-11 items-center justify-center rounded-full bg-[#eef3f6] text-[#0a2d40] hover:bg-[#e7f0f5]"

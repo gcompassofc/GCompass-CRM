@@ -22,6 +22,7 @@ import { sendEmail } from "@/lib/email/resend";
 import { getWahaClient } from "@/lib/waha/client";
 import { cookieSecure } from "@/lib/supabase/cookie-secure";
 import { COOKIE_SEGUNDO_FATOR, assinarSegundoFator } from "./segundo-fator-cookie";
+import { COOKIE_LEMBRAR, restanteDoLembrar } from "./lembrar";
 
 export type Metodo = "nenhum" | "app" | "email" | "whatsapp";
 export type Canal = "email" | "whatsapp";
@@ -270,10 +271,15 @@ export async function liberarSessao(supabase: SupabaseClient, userId: string): P
   const sid = await idDaSessao(supabase);
   if (!sid) throw new Error("liberarSessao: sessão sem session_id");
   const valor = await assinarSegundoFator(env.INTERNAL_SECRET, userId, sid);
-  (await cookies()).set(COOKIE_SEGUNDO_FATOR, valor, {
+  const loja = await cookies();
+  // Com "Lembrar de mim", o código confirmado vale o mesmo tempo da sessão salva;
+  // sem, morre quando o navegador fecha, junto com a sessão.
+  const restante = restanteDoLembrar(loja.get(COOKIE_LEMBRAR)?.value);
+  loja.set(COOKIE_SEGUNDO_FATOR, valor, {
     httpOnly: true,
     sameSite: "strict",
     secure: cookieSecure(),
     path: "/",
+    ...(restante ? { maxAge: restante } : {}),
   });
 }

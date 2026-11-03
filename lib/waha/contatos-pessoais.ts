@@ -44,6 +44,7 @@ import {
   type OrigemContato,
   type Situacao,
 } from "@/lib/opa/contatos-whatsapp";
+import { entregarConversaAoDono } from "@/lib/opa/conversa-do-lead";
 import { registrarLeadDoContato } from "@/lib/opa/entrada";
 import type { createAdminClient } from "@/lib/supabase/admin";
 import { getWahaClient } from "@/lib/waha/client";
@@ -647,7 +648,10 @@ async function promoverParaLead(
     const nome = o.nome ?? aberto(org, "nome", linha?.nome_cifrado ?? null);
     const contactId = await upsertContact(admin, org, parsed, chatId, nome);
     if (!contactId) return;
-    await upsertConversation(admin, org, contactId, sessao.id);
+    const conversaId = await upsertConversation(admin, org, contactId, sessao.id);
+    // O número é do corretor: a conversa é dele. Sem dono, o corretor (papel
+    // agent) via o lead e não via a conversa no Multi-atendimento (03/11/2026).
+    if (conversaId) await entregarConversaAoDono(admin, org, conversaId, sessao.owner_user_id ?? null);
     if (parsed.kind === "lid") {
       const telefone = aberto(org, "telefone", linha?.telefone_cifrado ?? null);
       if (telefone) await guardarTelefoneDoLid(admin, org, contactId, telefone);
