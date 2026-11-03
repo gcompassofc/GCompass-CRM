@@ -8,7 +8,7 @@
  * Os links para cá usam prefetch={false}: abrir a conversa pode criá-la e
  * atribuí-la, e isso só acontece no clique.
  */
-import { NextResponse, type NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
 import { conversaDoLead } from "@/lib/opa/conversa-do-lead";
@@ -17,9 +17,12 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const para = (caminho: string) => NextResponse.redirect(new URL(caminho, request.url));
+  // Location relativo: atrás do Caddy, `request.url` é o endereço interno do
+  // contêiner (http://0.0.0.0:3000) e um redirect absoluto levava o navegador
+  // para lá (ERR_ADDRESS_INVALID, 03/11/2026).
+  const para = (caminho: string) => new NextResponse(null, { status: 303, headers: { Location: caminho } });
 
   const user = await loadAuthUser();
   if (!user) return para(`/login?next=${encodeURIComponent(`/app/leads/${id}/conversa`)}`);
