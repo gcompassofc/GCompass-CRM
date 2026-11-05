@@ -6,6 +6,8 @@ export interface ConversationCounts {
   unassigned: number;
   mine: number;
   all: number;
+  /** Aba "Não respondidas" da OPA. */
+  pendentes?: number;
 }
 
 /**

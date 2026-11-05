@@ -28,7 +28,7 @@ No NOWEB sem armazenamento, o evento de etiqueta não sai: o WAHA consulta o arm
 
 O motor vale para o contêiner inteiro. Ao publicar, o WhatsApp de todos os números cai até cada um ler o QR Code de novo, inclusive o OPA Lembretes. A sessão antiga fica no volume `waha-data`.
 
-1. Rodar `scripts/producao/publicar-opa.sh supabase/migrations/20261105010000_0126_opa_lead_da_opa_travado.sql`.
+1. Rodar `scripts/producao/publicar-opa.sh supabase/migrations/20261105010000_0126_opa_lead_da_opa_travado.sql supabase/migrations/20261105020000_0127_conversa_aguardando_resposta.sql`.
 2. Cada corretor abre Meu WhatsApp e lê o QR Code. O OPA Lembretes reconecta em Conexões.
 3. Conferir `channel_sessions.etiqueta_lead_id` preenchido em cada número.
 4. Clicar num anúncio de verdade e conferir que entrou como lead pago.

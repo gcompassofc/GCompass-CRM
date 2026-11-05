@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/hooks/auth/AuthProvider";
 import { useClaimConversation } from "@/hooks/inbox/useClaimConversation";
@@ -20,6 +20,7 @@ import { CRMSidePanel } from "./CRMSidePanel";
 import { InboxKeyboardShortcuts } from "./InboxKeyboardShortcuts";
 import { ShortcutsHelpDialog } from "./ShortcutsHelpDialog";
 import { useImmersiveView } from "@/lib/ui/immersive-view";
+import { SidebarSimple } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
 import { perfilAtivo } from "@/lib/navigation/registry";
 
@@ -31,6 +32,10 @@ function tabToFilter(tab: InboxFiltersValue["tab"]): Partial<ConversationsFilter
       return { assigned_to: "me" };
     case "closed":
       return { status: "closed" };
+    case "pendentes":
+      return { resposta: "pendente" };
+    case "respondidas":
+      return { resposta: "respondida" };
     case "ai":
       return { status: "ai_handling" };
     case "all":
@@ -40,12 +45,17 @@ function tabToFilter(tab: InboxFiltersValue["tab"]): Partial<ConversationsFilter
 }
 
 const FILTER_TABS: InboxTab[] = ["unassigned", "mine", "all", "closed", "ai"];
+const FILTER_TABS_OPA: InboxTab[] = ["all", "pendentes", "respondidas", "closed"];
+
+/** Onde fica guardado, neste navegador, se a lista de conversas está recolhida. */
+const CHAVE_LISTA = "opa-conversas-lista";
 
 /**
  * Lê ?filter= (G4-02, deep-link). ?filter=all é HONRADO mesmo para agent — a
  * lista volta RLS-scoped (a tab só some cosmeticamente); default: fila.
  */
-function parseFilterParam(v: string | null, abriuUmaConversa = false): InboxTab {
+function parseFilterParam(v: string | null, abriuUmaConversa = false, opa = false): InboxTab {
+  if (opa) return v && FILTER_TABS_OPA.includes(v as InboxTab) ? (v as InboxTab) : "all";
   if (v && FILTER_TABS.includes(v as InboxTab)) return v as InboxTab;
   // Chegou por "Abrir conversa" (ficha, Início): a conversa já tem dono e não
   // está na Fila, que ficava vazia ao lado do chat. Em "Todas" ela aparece
@@ -64,8 +74,29 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const tab = parseFilterParam(searchParams.get("filter"), !!initialSelectedId);
   const opa = perfilAtivo() === "imobiliaria";
+  const tab = parseFilterParam(searchParams.get("filter"), !!initialSelectedId, opa);
+
+  // Recolher a lista, como o menu lateral. Lido depois de montar: o servidor não
+  // conhece o navegador, e o valor guardado pode não abrir (janela privada).
+  const [listaRecolhida, setListaRecolhida] = useState(false);
+  useEffect(() => {
+    try {
+      if (opa && localStorage.getItem(CHAVE_LISTA) === "recolhida") setListaRecolhida(true);
+    } catch {
+      // sem o valor guardado, a lista começa aberta
+    }
+  }, [opa]);
+  const alternarLista = useCallback(() => {
+    setListaRecolhida((atual) => {
+      try {
+        localStorage.setItem(CHAVE_LISTA, atual ? "aberta" : "recolhida");
+      } catch {
+        // vale só até recarregar a página
+      }
+      return !atual;
+    });
+  }, []);
 
   // tab vive na URL (?filter=); os demais filtros são estado local de sessão.
   const [aux, setAux] = useState<Omit<InboxFiltersValue, "tab">>({
@@ -178,16 +209,34 @@ export function InboxLayout({ initialSelectedId = null }: InboxLayoutProps = {})
         "grid h-[calc(100dvh-3.5rem)] md:h-[calc(100dvh-3.5rem-2*var(--space-6))] w-full grid-cols-1 md:grid-cols-[300px_1fr]",
         // Na OPA os dados do contato abrem por "Mais informações", como no
         // WhatsApp; a coluna fixa à direita apertava a conversa.
-        opa ? "opa-wa xl:grid-cols-[340px_1fr]" : "xl:grid-cols-[300px_1fr_320px]",
+        opa
+          ? cn("opa-wa transition-[grid-template-columns] duration-200", listaRecolhida ? "md:grid-cols-[56px_1fr]" : "md:grid-cols-[340px_1fr]")
+          : "xl:grid-cols-[300px_1fr_320px]",
       )}
     >
+      {/* Lista recolhida: sobra o botão de abrir. No celular a lista é a tela, nunca recolhe. */}
+      {listaRecolhida && (
+        <div className="hidden h-full min-h-0 flex-col items-center border-r border-border pt-3 md:flex">
+          <button
+            type="button"
+            onClick={alternarLista}
+            title="Abrir a lista de conversas"
+            aria-label="Abrir a lista de conversas"
+            aria-expanded={false}
+            className="flex size-10 items-center justify-center rounded-full text-[#5b7284] transition-colors hover:bg-[#eef3f6] hover:text-[#0a2d40]"
+          >
+            <SidebarSimple size={20} aria-hidden />
+          </button>
+        </div>
+      )}
       <div
         className={cn(
           "flex h-full min-h-0 flex-col border-r border-border",
           selectedId ? "hidden md:flex" : "flex w-full",
+          listaRecolhida && "md:hidden",
         )}
       >
-        <InboxFilters value={filterValue} onChange={setFilterValue} />
+        <InboxFilters value={filterValue} onChange={setFilterValue} onRecolher={opa ? alternarLista : undefined} />
         {/* A folga da barra flutuante é paga pelo <main> do AppShell, para toda
             tela de uma vez. Repeti-la aqui somava duas e abria um vão morto no
             fim da lista. */}

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { MagnifyingGlass } from "@/lib/ui/icons";
+import { MagnifyingGlass, SidebarSimple } from "@/lib/ui/icons";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Switch } from "@/components/ui/switch";
@@ -18,8 +18,9 @@ import { useAuth } from "@/hooks/auth/AuthProvider";
 import { useConversationTagVocabulary } from "@/hooks/inbox/useConversationTags";
 import { useConversationCounts } from "@/hooks/inbox/useConversationCounts";
 import type { Role, VisibilityMode } from "@/lib/auth/types";
+import { perfilAtivo } from "@/lib/navigation/registry";
 
-export type InboxTab = "unassigned" | "mine" | "all" | "closed" | "ai";
+export type InboxTab = "unassigned" | "mine" | "all" | "closed" | "ai" | "pendentes" | "respondidas";
 
 const INBOX_TABS: { value: InboxTab; label: string }[] = [
   { value: "unassigned", label: "Fila" },
@@ -27,6 +28,18 @@ const INBOX_TABS: { value: InboxTab; label: string }[] = [
   { value: "all", label: "Todas" },
   { value: "closed", label: "Fechadas" },
   { value: "ai", label: "IA" },
+];
+
+/**
+ * Abas da OPA (pedido do Allyson, 05/11/2026): como no WhatsApp, tudo por ordem da
+ * última mensagem, e depois separado pelo que falta responder. O que cada um enxerga
+ * continua decidido pela RLS: o corretor vê só as dele em "Geral" também.
+ */
+export const ABAS_OPA: { value: InboxTab; label: string }[] = [
+  { value: "all", label: "Geral" },
+  { value: "pendentes", label: "Não respondidas" },
+  { value: "respondidas", label: "Respondidas" },
+  { value: "closed", label: "Fechadas" },
 ];
 
 /**
@@ -50,23 +63,31 @@ export interface InboxFiltersValue {
 interface Props {
   value: InboxFiltersValue;
   onChange: (next: InboxFiltersValue) => void;
+  /** Recolhe a coluna da lista (só no computador). */
+  onRecolher?: () => void;
 }
 
-export function InboxFilters({ value, onChange }: Props) {
+export function InboxFilters({ value, onChange, onRecolher }: Props) {
   const [searchInput, setSearchInput] = useState(value.search);
   const { data: channels } = useChannelSessions({ refetchInterval: 30_000 });
   const { activeOrg } = useAuth();
   const { data: tagVocabulary } = useConversationTagVocabulary(activeOrg?.orgId ?? null);
   const { data: counts } = useConversationCounts(activeOrg?.orgId ?? null);
 
-  const tabs = activeOrg
-    ? visibleInboxTabs(activeOrg.role, activeOrg.visibility_mode)
-    : INBOX_TABS.map((t) => t.value);
-  const countFor: Partial<Record<InboxTab, number>> = {
-    unassigned: counts?.unassigned,
-    mine: counts?.mine,
-    all: counts?.all,
-  };
+  const opa = perfilAtivo() === "imobiliaria";
+  const rotulos = opa ? ABAS_OPA : INBOX_TABS;
+  const tabs = opa
+    ? ABAS_OPA.map((t) => t.value)
+    : activeOrg
+      ? visibleInboxTabs(activeOrg.role, activeOrg.visibility_mode)
+      : INBOX_TABS.map((t) => t.value);
+  const countFor: Partial<Record<InboxTab, number>> = opa
+    ? { pendentes: counts?.pendentes }
+    : {
+        unassigned: counts?.unassigned,
+        mine: counts?.mine,
+        all: counts?.all,
+      };
   // Filtrar por um número que saiu da lista (o operador acabou de excluir o
   // canal) deixa o inbox mostrando um subconjunto — às vezes vazio — sem nada na
   // tela dizendo que há filtro. O número some do dropdown junto com o canal, e o
@@ -98,20 +119,34 @@ export function InboxFilters({ value, onChange }: Props) {
         Conversas
       </h1>
 
-      <div className="relative max-md:px-5">
-        <MagnifyingGlass
-          size={14}
-          weight="regular"
-          className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground max-md:left-8 max-md:text-[var(--m-text-3)]"
-          aria-hidden
-        />
-        <Input
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          placeholder="Buscar mensagens…"
-          className="h-8 pl-8 text-sm max-md:h-11 max-md:rounded-xl max-md:border-[var(--m-border-soft)] max-md:bg-[var(--m-elevated)] max-md:pl-10 max-md:text-[14px] max-md:text-[var(--m-text-1)] max-md:placeholder:text-[var(--m-text-3)]"
-          aria-label="Buscar conversas"
-        />
+      <div className="flex items-center gap-2 max-md:block">
+        <div className="relative min-w-0 flex-1 max-md:px-5">
+          <MagnifyingGlass
+            size={14}
+            weight="regular"
+            className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground max-md:left-8 max-md:text-[var(--m-text-3)]"
+            aria-hidden
+          />
+          <Input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Buscar mensagens…"
+            className="h-8 pl-8 text-sm max-md:h-11 max-md:rounded-xl max-md:border-[var(--m-border-soft)] max-md:bg-[var(--m-elevated)] max-md:pl-10 max-md:text-[14px] max-md:text-[var(--m-text-1)] max-md:placeholder:text-[var(--m-text-3)]"
+            aria-label="Buscar conversas"
+          />
+        </div>
+        {onRecolher && (
+          <button
+            type="button"
+            onClick={onRecolher}
+            title="Recolher a lista de conversas"
+            aria-label="Recolher a lista de conversas"
+            aria-expanded
+            className="flex size-9 shrink-0 items-center justify-center rounded-full text-[#5b7284] transition-colors hover:bg-[#eef3f6] hover:text-[#0a2d40] max-md:hidden"
+          >
+            <SidebarSimple size={20} aria-hidden />
+          </button>
+        )}
       </div>
 
       {showChannelSwitch && (
@@ -165,13 +200,14 @@ export function InboxFilters({ value, onChange }: Props) {
       >
         <TabsList
           className="grid h-8 w-full"
-          style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}
+          // Na OPA os rótulos têm tamanhos bem diferentes: cada aba fica do tamanho do texto.
+          style={{ gridTemplateColumns: opa ? `repeat(${tabs.length}, auto)` : `repeat(${tabs.length}, minmax(0, 1fr))` }}
         >
           {tabs.map((tab) => {
-            const meta = INBOX_TABS.find((t) => t.value === tab)!;
+            const meta = rotulos.find((t) => t.value === tab)!;
             const count = countFor[tab];
             return (
-              <TabsTrigger key={tab} value={tab} className="gap-1 text-[11px]">
+              <TabsTrigger key={tab} value={tab} className={cn("gap-1 text-[11px]", opa && "px-1.5")}>
                 {meta.label}
                 {typeof count === "number" && count > 0 && (
                   <span className="text-[10px] tabular-nums text-muted-foreground">
@@ -196,7 +232,7 @@ export function InboxFilters({ value, onChange }: Props) {
         className="m-scroll-x hidden gap-[7px] px-5 pb-1 pt-3 max-md:flex"
       >
         {tabs.map((tab) => {
-          const meta = INBOX_TABS.find((t) => t.value === tab)!;
+          const meta = rotulos.find((t) => t.value === tab)!;
           const count = countFor[tab];
           const on = value.tab === tab;
           return (

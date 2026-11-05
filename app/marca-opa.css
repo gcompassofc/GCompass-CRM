@@ -290,3 +290,22 @@
 .opa-wa [data-wa-topo] {
   background: var(--wa-barra) !important;
 }
+
+/* Conversas no celular, tema claro: os tokens --m-* nasceram para o fundo escuro.
+   Sobre o fundo claro da OPA, nomes e título ficavam quase invisíveis (05/11/2026). */
+@media (max-width: 767px) {
+  :root[data-marca="opa"]:not([data-theme="dark"]) .opa-wa {
+    --m-bg: #edf2f5;
+    --m-surface: #f2f6f9;
+    --m-elevated: #ffffff;
+    --m-hover: #e3eff6;
+    --m-border: #c9d8e1;
+    --m-border-soft: #d5e2ea;
+    --m-text-1: #0a2d40;
+    --m-text-2: #34566b;
+    --m-text-3: #5b7284;
+    --m-violet: #1f6a93;
+    --m-violet-dim: #e3eff6;
+    --m-violet-line: #2a7ca8;
+  }
+}

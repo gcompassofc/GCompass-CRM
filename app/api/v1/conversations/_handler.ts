@@ -101,6 +101,12 @@ export async function listConversationsHandler(
   if (q.status) query = query.eq("status", q.status);
   if (q.channel_session_id) query = query.eq("channel_session_id", q.channel_session_id);
   if (q.tag) query = query.contains("tags", [q.tag]); // tags @> array[tag] (GIN)
+  // Conversa fechada fica só na aba Fechadas. Respondida exige ao menos uma resposta:
+  // conversa sem mensagem nenhuma não é "respondida".
+  if (q.resposta) {
+    query = query.not("status", "in", "(closed,archived)").eq("aguardando_resposta", q.resposta === "pendente");
+    if (q.resposta === "respondida") query = query.not("last_outbound_at", "is", null);
+  }
 
   if (q.assigned_to === "me") {
     if (ctx.actor.type !== "user") {
