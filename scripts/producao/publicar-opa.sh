@@ -26,11 +26,13 @@ for m in "$@"; do test -f "$m" || { echo "Migration não encontrada: $m" >&2; ex
 echo "== 1/6 Conferências e cópia do .env e da imagem atual"
 $SSH "cd /opt/crm && test \$(grep -c '^PII_' .env) -ge 3 && echo 'chaves de cifra: ok' \
   && grep -q \"^APP_PULL_POLICY='\\?never\" .env && echo 'pull travado: ok' \
-  && echo \"sentry preenchido no .env: \$(grep -cE '^(NEXT_PUBLIC_)?SENTRY_DSN=.+' .env || true) (o esperado e 0)\" \
+  && echo \"sentry ligado no .env: \$(grep -cE '^(NEXT_PUBLIC_)?SENTRY_DSN=.*[.]' .env || true) (o esperado e 0; 'off' nao conta)\" \
   && cp -p .env .env.bak-$MARCA && docker tag ghcr.io/gcompassofc/gcompass-crm:latest gcompass-crm:$MARCA && echo 'copia: ok'"
 
 echo "== 2/6 Código do commit para /opt/crm (o .env não vai junto)"
-git archive --format=tar HEAD | $SSH 'tar -x -C /opt/crm && echo ok'
+# O tar só acrescenta: arquivo apagado no commit ficava no servidor e quebrava a
+# montagem (05/11/2026). As pastas de código saem antes; o .env e os volumes ficam.
+git archive --format=tar HEAD | $SSH 'cd /opt/crm && rm -rf app components hooks lib tests scripts workers types && tar -x && echo ok'
 
 echo "== 3/6 Migrations (${#} nesta publicação)"
 for m in "$@"; do
