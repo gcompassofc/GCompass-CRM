@@ -163,7 +163,15 @@ const registrarLead = vi.fn(async (_a: unknown, _org: string, contactId: string)
 });
 vi.mock("@/lib/opa/entrada", () => ({ registrarLeadDoContato: registrarLead }));
 
-const { aplicarDecisao, apagarEsperaVencida, chaveDoChat, contatosAClassificar, conversaEmEspera } = await import(
+const {
+  aplicarDecisao,
+  apagarEsperaVencida,
+  chaveDoChat,
+  contatosAClassificar,
+  contatosAClassificarDaEquipe,
+  conversaEmEspera,
+  sessaoDoContatoAClassificar,
+} = await import(
   "@/lib/waha/contatos-pessoais"
 );
 
@@ -338,5 +346,44 @@ describe("Tela Contatos novos", () => {
     const conversa = await conversaEmEspera(A, SESSAO, "linha-1", 2);
     expect(conversa.map((m) => m.texto)).toEqual(["Oi! Te mando as fotos", "[áudio]"]);
     expect(await conversaEmEspera(A, { ...SESSAO, id: "sessao-de-outro" }, "linha-1")).toEqual([]);
+  });
+});
+
+describe("Contatos novos da equipe (gestor, 05/11/2026)", () => {
+  const sessoes = () => {
+    tabela("channel_sessions").push(
+      { id: SESSAO.id, organization_id: ORG, owner_user_id: "corretor-1", archived_at: null },
+      { id: "sessao-gestor", organization_id: ORG, owner_user_id: "gestor-1", archived_at: null },
+      { id: "sessao-sem-dono", organization_id: ORG, owner_user_id: null, archived_at: null },
+      { id: "sessao-arquivada", organization_id: ORG, owner_user_id: "corretor-2", archived_at: "2026-11-01T00:00:00Z" },
+      { id: "sessao-outra-org", organization_id: "org-2", owner_user_id: "corretor-3", archived_at: null },
+    );
+  };
+
+  it("traz os contatos dos corretores com o dono, sem o próprio número nem outra organização", async () => {
+    semear("5512999990000@c.us", { telefone: "+5512999990000" });
+    sessoes();
+    tabela("whatsapp_contatos_numero").push(
+      { id: "linha-gestor", organization_id: ORG, channel_session_id: "sessao-gestor", situacao: "a_classificar", mensagens_ignoradas: 0 },
+      { id: "linha-outra-org", organization_id: "org-2", channel_session_id: "sessao-outra-org", situacao: "a_classificar", mensagens_ignoradas: 0 },
+    );
+    const lista = await contatosAClassificarDaEquipe(A, ORG, "gestor-1", 20);
+    expect(lista.map((c) => c.id)).toEqual(["linha-1"]);
+    expect(lista[0]).toMatchObject({ corretorId: "corretor-1", nome: "Marina" });
+  });
+
+  it("contato marcado como pessoal sai da lista do gestor", async () => {
+    semear("5512999990000@c.us");
+    sessoes();
+    await decidir("5512999990000@c.us", "pessoal");
+    expect(await contatosAClassificarDaEquipe(A, ORG, "gestor-1", 20)).toEqual([]);
+  });
+
+  it("Ver conversa do gestor acha o número só dentro da organização e só enquanto espera decisão", async () => {
+    semear("5512999990000@c.us");
+    expect(await sessaoDoContatoAClassificar(A, ORG, "linha-1")).toEqual({ id: SESSAO.id, organization_id: ORG });
+    expect(await sessaoDoContatoAClassificar(A, "org-2", "linha-1")).toBeNull();
+    await decidir("5512999990000@c.us", "lead");
+    expect(await sessaoDoContatoAClassificar(A, ORG, "linha-1")).toBeNull();
   });
 });

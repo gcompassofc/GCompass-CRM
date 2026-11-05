@@ -10,6 +10,7 @@ import { CAMPOS } from "@/lib/opa/copiloto";
 import { CAMPOS_DIAGNOSTICO } from "@/lib/opa/dados";
 import { diaSP } from "@/lib/opa/periodo";
 import { avisarMudancaDeEtapa, avisarTagsNovas, etapaAtual } from "@/lib/opa/eventos-lead";
+import { ehTipoDeLead, TIPOS_DE_LEAD } from "@/lib/opa/tipo-lead";
 import { conferirDataETexto, faltaNaFicha } from "@/lib/opa/visita";
 import { pedidoRadarSchema, resumoDoPedidoRadar } from "@/lib/opa/pedido-radar";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -154,6 +155,81 @@ export async function moverEtapa(formData: FormData): Promise<ResultadoEtapa> {
   if (error) return { ok: false, erro: erroParaTela(error) };
   await avisarMudancaDeEtapa(createAdminClient(), org.orgId, leadId, (lead as { stage_id: string | null }).stage_id, "opa.ficha");
   revalidatePath(`/app/leads/${leadId}`);
+  revalidatePath("/app/hoje");
+  return { ok: true };
+}
+
+/**
+ * Comprador ou vendedor (pedido do Allyson, 05/11/2026): passa o MESMO lead para o
+ * outro funil, na etapa de entrada. Conversa, dono, campos e histórico não mudam;
+ * o corretor resolve sozinho, sem apagar nem recriar. Vale só para negócio aberto.
+ * O cliente da sessão faz o RLS decidir se a pessoa pode mexer neste lead.
+ */
+export async function mudarTipoDoLead(formData: FormData): Promise<ResultadoEtapa> {
+  const leadId = String(formData.get("leadId") ?? "");
+  const tipo = formData.get("tipo");
+  const { user, org, supabase } = await contexto();
+  if (org.role === "viewer") return { ok: false, erro: "Seu acesso é só de leitura." };
+  if (!ehTipoDeLead(tipo)) return { ok: false, erro: "Escolha Comprador ou Vendedor." };
+
+  const { data: lead } = await supabase
+    .from("crm_leads")
+    .select("id, pipeline_id, stage_id, contact_id, status")
+    .eq("organization_id", org.orgId)
+    .eq("id", leadId)
+    .maybeSingle();
+  if (!lead) return { ok: false, erro: "Lead não encontrado." };
+  const atual = lead as { pipeline_id: string; stage_id: string | null; contact_id: string | null; status: string };
+  if (atual.status !== "open") return { ok: false, erro: "Este negócio já foi encerrado." };
+
+  const destino = TIPOS_DE_LEAD[tipo];
+  const { data: funil } = await supabase
+    .from("crm_pipelines")
+    .select("id, name, slug")
+    .eq("organization_id", org.orgId)
+    .eq("slug", destino.funil)
+    .maybeSingle();
+  const { data: etapa } = funil
+    ? await supabase
+        .from("crm_stages")
+        .select("id, name")
+        .eq("organization_id", org.orgId)
+        .eq("pipeline_id", (funil as { id: string }).id)
+        .eq("slug", destino.etapa)
+        .maybeSingle()
+    : { data: null };
+  if (!funil || !etapa) return { ok: false, erro: "O funil de destino não tem etapa aberta." };
+  const para = funil as { id: string; name: string };
+  if (para.id === atual.pipeline_id) return { ok: true };
+
+  const agora = new Date().toISOString();
+  // Só grava se o lead ainda está no funil lido: dois toques não se atropelam.
+  const { data: mudou, error } = await supabase
+    .from("crm_leads")
+    .update({ pipeline_id: para.id, stage_id: (etapa as { id: string }).id, stage_changed_at: agora, last_activity_at: agora })
+    .eq("organization_id", org.orgId)
+    .eq("id", leadId)
+    .eq("pipeline_id", atual.pipeline_id)
+    .select("id");
+  if (error) return { ok: false, erro: erroParaTela(error) };
+  if (!mudou?.length) return { ok: false, erro: "Não deu para mudar. Atualize a página e tente de novo." };
+
+  const { error: erroHistorico } = await supabase.from("crm_lead_activities").insert({
+    organization_id: org.orgId,
+    lead_id: leadId,
+    contact_id: atual.contact_id,
+    source_module: "opa",
+    type: "mudou_de_funil",
+    payload: { para: para.name, tipo },
+    performed_at: agora,
+    performed_by_user_id: user.id,
+  });
+  if (erroHistorico) console.error("[mudarTipoDoLead] histórico não gravado", { leadId, code: erroHistorico.code });
+  await avisarMudancaDeEtapa(createAdminClient(), org.orgId, leadId, atual.stage_id, "opa.mudou_de_funil");
+  revalidatePath(`/app/leads/${leadId}`);
+  revalidatePath("/app/leads");
+  revalidatePath("/app/pipeline");
+  revalidatePath("/app/fila");
   revalidatePath("/app/hoje");
   return { ok: true };
 }

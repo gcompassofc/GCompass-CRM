@@ -1,20 +1,33 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
-import { CaretDown, CaretUp, ChatCircle, Check, CircleNotch, Lock, UserPlus } from "@/lib/ui/icons";
+import { CaretDown, CaretUp, ChatCircle, Check, CircleNotch, Lock, UserPlus, UsersThree } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
 
-import { decidirContato, verConversa, type ContatoNovo, type MensagemDoContatoNovo } from "./contatos-novos-actions";
+import { useRepetir } from "./atualiza-sozinho";
+import {
+  decidirContato,
+  listarContatosDaEquipe,
+  listarContatosNovos,
+  verConversa,
+  verConversaDaEquipe,
+  type ContatoNovo,
+  type ContatoNovoDaEquipe,
+  type MensagemDoContatoNovo,
+} from "./contatos-novos-actions";
 import { Cartao, TituloBloco } from "./ui";
 
 /**
  * "Contatos novos: é lead?" no Hoje do corretor e no Meu WhatsApp. Desde
- * 02/11/2026 a conversa desses contatos fica guardada, cifrada e só para o dono
- * do número, até ele decidir: a lista mostra quem é e a última mensagem; "Ver
- * conversa" abre as últimas 5. Lead passa a ser lido pela IA; pessoal apaga tudo
- * (por isso pede um segundo toque); sem decisão, some em 7 dias.
+ * 02/11/2026 a conversa desses contatos fica guardada, cifrada, até o dono do
+ * número decidir: a lista mostra quem é e a última mensagem; "Ver conversa" abre as
+ * últimas 5. Lead passa a ser lido pela IA; pessoal apaga tudo (por isso pede um
+ * segundo toque); sem decisão, some em 7 dias.
+ *
+ * Desde 05/11/2026 as listas se atualizam sozinhas com a tela aberta, e o gestor vê
+ * também os contatos da equipe (ContatosDaEquipe), só para ler.
  */
 
 const FUSO = "America/Sao_Paulo";
@@ -74,13 +87,63 @@ function Baloes({ conversa }: { conversa: Conversa }) {
   );
 }
 
+/** O "Ver conversa" de uma lista. `renovar` descarta a conversa de quem recebeu mensagem nova, e recarrega a que está aberta. */
+function useConversas(ver: (id: string) => Promise<{ ok: boolean; mensagens: MensagemDoContatoNovo[] }>) {
+  const [conversas, setConversas] = useState<Record<string, Conversa>>({});
+  const [aberto, setAberto] = useState<string | null>(null);
+  const [, iniciar] = useTransition();
+  const ultimas = useRef(new Map<string, string | null>());
+
+  const carregar = (id: string) => {
+    setConversas((v) => ({ ...v, [id]: v[id] && v[id] !== "erro" ? v[id] : "carregando" }));
+    iniciar(async () => {
+      try {
+        const r = await ver(id);
+        setConversas((v) => ({ ...v, [id]: r.ok ? r.mensagens : "erro" }));
+      } catch {
+        setConversas((v) => ({ ...v, [id]: "erro" }));
+      }
+    });
+  };
+
+  const alternar = (id: string) => {
+    if (aberto === id) {
+      setAberto(null);
+      return;
+    }
+    setAberto(id);
+    const atual = conversas[id];
+    if (!atual || atual === "erro") carregar(id);
+  };
+
+  const renovar = (lista: ContatoNovo[]) => {
+    for (const c of lista) {
+      const ultima = c.ultimaMensagem?.id ?? null;
+      const antes = ultimas.current.get(c.id);
+      ultimas.current.set(c.id, ultima);
+      if (antes === undefined || antes === ultima) continue;
+      if (aberto === c.id) carregar(c.id);
+      else setConversas((v) => Object.fromEntries(Object.entries(v).filter(([id]) => id !== c.id)));
+    }
+  };
+
+  return { conversas, aberto, alternar, renovar };
+}
+
 export function ContatosNovos({ inicial, compacto }: { inicial: ContatoNovo[]; compacto?: boolean }) {
   const [lista, setLista] = useState(inicial);
   const [ocupado, setOcupado] = useState<string | null>(null);
   const [confirmar, setConfirmar] = useState<string | null>(null);
-  const [conversas, setConversas] = useState<Record<string, Conversa>>({});
-  const [aberto, setAberto] = useState<string | null>(null);
+  const { conversas, aberto, alternar, renovar } = useConversas(verConversa);
   const [, iniciar] = useTransition();
+  // Decidido aqui e ainda não refletido numa consulta que já estava a caminho: não volta para a tela.
+  const decididos = useRef(new Set<string>());
+
+  useRepetir(async () => {
+    const novos = (await listarContatosNovos()).filter((c) => !decididos.current.has(c.id));
+    setLista(novos);
+    renovar(novos);
+  });
 
   if (!lista.length) return null;
 
@@ -93,6 +156,7 @@ export function ContatosNovos({ inicial, compacto }: { inicial: ContatoNovo[]; c
           toast.error(r.erro ?? "Não deu certo agora.");
           return;
         }
+        decididos.current.add(c.id);
         setLista((l) => l.filter((x) => x.id !== c.id));
         toast.success(
           d === "lead" ? "Virou lead. A conversa foi para a ficha e a IA já está lendo." : "Marcado como pessoal. Apagamos o que estava guardado.",
@@ -105,29 +169,10 @@ export function ContatosNovos({ inicial, compacto }: { inicial: ContatoNovo[]; c
       }
     });
 
-  const alternarConversa = (c: ContatoNovo) => {
-    if (aberto === c.id) {
-      setAberto(null);
-      return;
-    }
-    setAberto(c.id);
-    const atual = conversas[c.id];
-    if (atual && atual !== "erro") return;
-    setConversas((v) => ({ ...v, [c.id]: "carregando" }));
-    iniciar(async () => {
-      try {
-        const r = await verConversa(c.id);
-        setConversas((v) => ({ ...v, [c.id]: r.ok ? r.mensagens : "erro" }));
-      } catch {
-        setConversas((v) => ({ ...v, [c.id]: "erro" }));
-      }
-    });
-  };
-
   return (
     <Cartao bloco tour="contatos-novos" className={cn(compacto ? "" : "mb-6")}>
       <TituloBloco icone={UserPlus} titulo="Contatos novos: é lead?" />
-      <p className="mt-3 text-[13px] leading-relaxed text-[#5b7284]">Só você vê. Se for pessoal, apagamos tudo; sem decisão, some em 7 dias.</p>
+      <p className="mt-3 text-[13px] leading-relaxed text-[#5b7284]">Você e os gestores veem. Se for pessoal, apagamos tudo; sem decisão, some em 7 dias.</p>
       <ul className="mt-5 flex flex-col gap-2">
         {lista.map((c) => {
           const ocupadoAqui = ocupado === c.id;
@@ -197,7 +242,7 @@ export function ContatosNovos({ inicial, compacto }: { inicial: ContatoNovo[]; c
                     </button>
                     <button
                       type="button"
-                      onClick={() => alternarConversa(c)}
+                      onClick={() => alternar(c.id)}
                       aria-expanded={conversaAberta}
                       className={cn(BOTAO, "ml-auto px-3 text-[#2a7ca8] hover:bg-[#e7f0f5]")}
                     >
@@ -220,6 +265,93 @@ export function ContatosNovos({ inicial, compacto }: { inicial: ContatoNovo[]; c
       <p className="mt-4 text-[13px] leading-relaxed text-[#5b7284]">
         No WhatsApp Business você também pode marcar a conversa com a etiqueta <strong>Lead OPA</strong> ou <strong>Pessoal</strong>.
       </p>
+    </Cartao>
+  );
+}
+
+/**
+ * Os contatos novos dos outros números, para o gestor: uma linha por corretor com
+ * quantos esperam, e o detalhe atrás do clique. Só leitura: quem decide é o corretor.
+ */
+export function ContatosDaEquipe({ inicial, corretores }: { inicial: ContatoNovoDaEquipe[]; corretores: Record<string, string> }) {
+  const [lista, setLista] = useState(inicial);
+  const [corretorAberto, setCorretorAberto] = useState<string | null>(null);
+  const { conversas, aberto, alternar, renovar } = useConversas(verConversaDaEquipe);
+
+  useRepetir(async () => {
+    const novos = await listarContatosDaEquipe();
+    setLista(novos);
+    renovar(novos);
+  });
+
+  if (!lista.length) return null;
+
+  const porCorretor = new Map<string, ContatoNovoDaEquipe[]>();
+  for (const c of lista) porCorretor.set(c.corretorId, [...(porCorretor.get(c.corretorId) ?? []), c]);
+
+  return (
+    <Cartao bloco className="mb-6">
+      <TituloBloco icone={UsersThree} titulo="Contatos novos da equipe" />
+      <p className="mt-3 text-[13px] leading-relaxed text-[#5b7284]">Esperando cada corretor dizer se é lead. Quem decide é ele.</p>
+      <ul className="mt-5 flex flex-col gap-2">
+        {[...porCorretor].map(([id, contatos]) => {
+          const nome = corretores[id] ?? "Corretor";
+          const expandido = corretorAberto === id;
+          return (
+            <li key={id} className="rounded-[22px] bg-[#f2f6f9] px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setCorretorAberto(expandido ? null : id)}
+                aria-expanded={expandido}
+                className="flex min-h-11 w-full items-center justify-between gap-3 text-left"
+              >
+                <span className="min-w-0 truncate text-[15px] font-semibold text-[#0a2d40]">{nome}</span>
+                <span className="flex shrink-0 items-center gap-2 text-[13px] tabular-nums text-[#5b7284]">
+                  {contatos.length} esperando
+                  {expandido ? <CaretUp className="size-3.5" aria-hidden /> : <CaretDown className="size-3.5" aria-hidden />}
+                </span>
+              </button>
+              {expandido && (
+                <ul className="mt-2 flex flex-col gap-2">
+                  {contatos.map((c) => {
+                    const conversaAberta = aberto === c.id;
+                    const ultima = c.ultimaMensagem;
+                    return (
+                      <li key={c.id} className="rounded-[18px] bg-white px-4 py-3">
+                        <div className="flex items-baseline justify-between gap-3">
+                          <p className="min-w-0 truncate text-[15px] font-semibold text-[#0a2d40]">{c.nome ?? "Sem nome no WhatsApp"}</p>
+                          <span className="shrink-0 text-[12px] tabular-nums text-[#5b7284]">{quando(ultima?.em ?? c.ultimoContatoEm)}</span>
+                        </div>
+                        <p className="truncate text-[13px] text-[#5b7284]">{telefoneLegivel(c.telefone)}</p>
+                        {ultima?.texto && (
+                          <p className="mt-1 truncate text-[14px] text-[#34566b]">
+                            {ultima.direcao === "saida" && <span className="text-[#5b7284]">Corretor: </span>}
+                            {ultima.texto}
+                          </p>
+                        )}
+                        {conversaAberta && (
+                          <div className="mt-3">
+                            <Baloes conversa={conversas[c.id] ?? "carregando"} />
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => alternar(c.id)}
+                          aria-expanded={conversaAberta}
+                          className={cn(BOTAO, "mt-2 px-3 text-[#2a7ca8] hover:bg-[#e7f0f5]")}
+                        >
+                          <ChatCircle className="size-4" aria-hidden />
+                          {conversaAberta ? "Fechar" : "Ver conversa"}
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </li>
+          );
+        })}
+      </ul>
     </Cartao>
   );
 }

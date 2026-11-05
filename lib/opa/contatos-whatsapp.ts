@@ -11,8 +11,9 @@
  *     botão "É lead" no CRM).
  * O resto que chega depois de ligar o número fica "a classificar": desde
  * 02/11/2026 (decisão do Allyson) guarda nome, número e as últimas mensagens,
- * cifrados e só para o dono do número, até ele decidir. "Pessoal" apaga tudo; sem
- * decisão, as mensagens somem sozinhas em 7 dias.
+ * cifrados, até ele decidir. "Pessoal" apaga tudo; sem decisão, as mensagens somem
+ * sozinhas em 7 dias. Desde 05/11/2026 (decisão do Allyson) o gestor também vê esses
+ * contatos e a conversa guardada, só para ler: quem decide é o dono do número.
  *
  * Este arquivo é só regra, sem banco: quem grava é lib/waha/contatos-pessoais.ts.
  */

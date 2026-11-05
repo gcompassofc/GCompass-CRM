@@ -130,7 +130,7 @@ export function MeuWhatsappCliente({ inicial }: { inicial: MeuWhatsapp }) {
 
   return (
     <Cartao bloco tour="whats-cartao" className="mx-auto w-full max-w-3xl">
-      <TituloBloco icone={WhatsappLogo} titulo="O seu número de WhatsApp" sub="Só você vê e mexe nele" />
+      <TituloBloco icone={WhatsappLogo} titulo="O seu número de WhatsApp" sub="Só você mexe nele" />
 
       <div data-tour="whats-estado" className="mt-6 flex flex-wrap items-center gap-2" aria-live="polite">
         {e.estado === "conectado" && (

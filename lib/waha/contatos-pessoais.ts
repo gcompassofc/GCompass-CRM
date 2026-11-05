@@ -938,6 +938,55 @@ export async function contatosAClassificar(
   });
 }
 
+export interface ContatoDaEquipe extends ContatoAClassificar {
+  corretorId: string;
+}
+
+/**
+ * Contatos a classificar dos números da equipe, para o gestor acompanhar (decisão
+ * do Allyson, 05/11/2026). Fora o número de quem pede, que já aparece em "Contatos
+ * novos"; o limite vale por número, para um corretor não esconder os outros.
+ */
+export async function contatosAClassificarDaEquipe(
+  admin: Admin,
+  orgId: string,
+  exceto: string,
+  limitePorNumero: number,
+): Promise<ContatoDaEquipe[]> {
+  const { data } = await admin
+    .from("channel_sessions")
+    .select("id, organization_id, owner_user_id")
+    .eq("organization_id", orgId)
+    .is("archived_at", null);
+  const sessoes = ((data ?? []) as Array<{ id: string; organization_id: string; owner_user_id: string | null }>).filter(
+    (s) => s.owner_user_id && s.owner_user_id !== exceto,
+  );
+  const listas = await Promise.all(
+    sessoes.map(async (s) => {
+      const contatos = await contatosAClassificar(admin, s, limitePorNumero);
+      return contatos.map((c) => ({ ...c, corretorId: s.owner_user_id! }));
+    }),
+  );
+  return listas.flat();
+}
+
+/** O número de uma linha a classificar, dentro da organização informada (o "Ver conversa" do gestor). */
+export async function sessaoDoContatoAClassificar(
+  admin: Admin,
+  orgId: string,
+  linhaId: string,
+): Promise<Pick<SessaoDoCorretor, "id" | "organization_id"> | null> {
+  const { data } = await admin
+    .from("whatsapp_contatos_numero")
+    .select("channel_session_id")
+    .eq("id", linhaId)
+    .eq("organization_id", orgId)
+    .eq("situacao", "a_classificar")
+    .maybeSingle();
+  const l = data as { channel_session_id: string } | null;
+  return l ? { id: l.channel_session_id, organization_id: orgId } : null;
+}
+
 /** As últimas mensagens em espera de um contato (o "Ver conversa"), só do número informado. */
 export async function conversaEmEspera(
   admin: Admin,

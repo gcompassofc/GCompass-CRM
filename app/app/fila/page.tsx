@@ -33,6 +33,7 @@ import {
 } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
 
+import { AtualizaSozinho } from "../_opa/atualiza-sozinho";
 import { CabecalhoOpa, CorpoOpa } from "../_opa/cabecalho";
 import { FotoImovel } from "../_opa/componentes";
 import { IlustraCalma } from "../_opa/ilustracoes";
@@ -268,6 +269,7 @@ export default async function FilaPage({
     <>
       <CabecalhoOpa icone={ListNumbers} titulo="Fila de atendimento" subtitulo="Quem espera há mais tempo fica no topo" />
       <CorpoOpa>
+        <AtualizaSozinho />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <AbasPilula
             itens={[

@@ -23,6 +23,8 @@ import { afinidade, fotoUrl, precoCheio, precoPrincipal } from "@/lib/opa/imovei
 import { pedidoInicial, resumoDoPedidoRadar } from "@/lib/opa/pedido-radar";
 import { AdicionarImovel, CopiarPedidoRadar, PesquisarRadar, RemoverImovel } from "./_imoveis";
 import { ReabrirNegocio } from "./_reabrir";
+import { TipoDoLead } from "./_tipo";
+import { tipoDoFunil } from "@/lib/opa/tipo-lead";
 import { LeadOuPessoal, MarcarPessoal, VoltarParaLead } from "./_pessoal";
 import { MOTIVO_PESSOAL } from "@/lib/opa/contatos-whatsapp";
 import { SeloLendo } from "./_lendo";
@@ -355,6 +357,8 @@ export default async function LeadPage({
             ? `Negócio ganho: VGV ${precoCheio(a.payload.vgv_cents as number)}, comissão ${precoCheio(a.payload.comissao_cents as number)}`
           : a.type === "respondido"
             ? "Corretor marcou como respondido"
+          : a.type === "mudou_de_funil"
+            ? `Passou para o funil ${String(a.payload.para ?? "")}`
           : a.type === "reaberto"
             ? `Negócio reaberto${a.payload.motivo_da_perda ? ` (tinha sido perdido por: ${String(a.payload.motivo_da_perda)})` : ""}`
             : a.type.replace(/_/g, " "),
@@ -430,10 +434,11 @@ export default async function LeadPage({
         {aberto && (
           <>
             <Cartao tour="ficha-etapa" className="flex flex-col gap-3 p-5">
+              {podeEditar && <TipoDoLead leadId={lead.id} atual={tipoDoFunil(funil.slug)} />}
               <p className="flex items-center gap-2 px-1 text-[13px] font-medium text-[#5b7284]">
                 <Target className="size-4" /> Etapa do negócio · toque para mover
               </p>
-              <EtapasClicaveis leadId={lead.id} atual={lead.etapa.id} etapas={etapas} />
+              <EtapasClicaveis key={lead.pipelineId} leadId={lead.id} atual={lead.etapa.id} etapas={etapas} />
             </Cartao>
             {avisoConversa && (
               <p role="alert" className="rounded-2xl bg-[#fdf1e7] px-4 py-3 text-[14px] text-[#7a3f12]">

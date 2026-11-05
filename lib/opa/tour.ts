@@ -102,7 +102,7 @@ export const TOURS: Record<TourId, Tour> = {
     nome: "Ficha do lead",
     rota: "/app/leads",
     passos: [
-      { alvo: "ficha-etapa", titulo: "Etapa do negócio", texto: "Toque numa etapa para mover o lead quando o cliente avança." },
+      { alvo: "ficha-etapa", titulo: "Etapa do negócio", texto: "Toque em Comprador ou Vendedor para acertar o funil do cliente, e numa etapa para mover o lead quando ele avança." },
       { alvo: "ficha-acoes", titulo: "Ações rápidas", texto: "Abrir a conversa, agendar mensagem e registrar visita, tudo daqui." },
       { alvo: "ficha-ligar", titulo: "Ligar em um toque", texto: "O número já vem discado. Depois, registre como foi a ligação." },
       { alvo: "ficha-copiloto", titulo: "Copiloto", texto: "Resume a conversa, sugere o próximo passo e mostra o que preocupa o cliente." },
@@ -196,7 +196,7 @@ export const TOURS: Record<TourId, Tour> = {
         titulo: "Conversas pessoais protegidas",
         texto: "O que é pessoal não é guardado nem lido. A IA acompanha só os leads: use a etiqueta Lead OPA ou o botão É lead.",
       },
-      { alvo: "contatos-novos", titulo: "É lead?", texto: "Quem escreveu e ainda não foi classificado, com a última mensagem. Só você vê. Um toque decide; sem decisão, some em 7 dias." },
+      { alvo: "contatos-novos", titulo: "É lead?", texto: "Quem escreveu e ainda não foi classificado, com a última mensagem. Você e os gestores veem. Um toque decide; sem decisão, some em 7 dias." },
       { alvo: "whats-acao", titulo: "Conectar", texto: "Leia o código com o celular, em Aparelhos conectados no WhatsApp." },
     ],
     vazio: { titulo: "Meu WhatsApp", texto: "Aqui você liga o seu número lendo um código com o celular." },

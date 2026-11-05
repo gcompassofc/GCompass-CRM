@@ -31,6 +31,7 @@ import {
 } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
 
+import { AtualizaSozinho } from "../_opa/atualiza-sozinho";
 import { CabecalhoOpa, CorpoOpa } from "../_opa/cabecalho";
 import { FotoImovel } from "../_opa/componentes";
 import { IlustraConversa } from "../_opa/ilustracoes";
@@ -126,6 +127,7 @@ export default async function LeadsPage({
     <>
       <CabecalhoOpa titulo="Leads" subtitulo="Toque num lead para ver a conversa e o próximo passo" icone={UserPlus} />
       <CorpoOpa>
+        <AtualizaSozinho />
         {/* A busca do topo some abaixo de 1024 px: esta fica na própria tela, em todo tamanho. */}
         <form action="/app/leads" method="get" role="search" data-tour="leads-busca" className="flex items-center gap-2">
           {filtro[0] !== "todos" && <input type="hidden" name="aba" value={filtro[0]} />}

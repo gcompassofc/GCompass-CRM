@@ -9,6 +9,7 @@ import { diaSP, inicioDoDia } from "@/lib/opa/periodo";
 import { createClient } from "@/lib/supabase/server";
 import { ArrowsClockwise, Bell, Buildings, CheckCircle, ListNumbers, UsersThree, XCircle, Kanban } from "@/lib/ui/icons";
 
+import { AtualizaSozinho } from "../_opa/atualiza-sozinho";
 import { CabecalhoOpa, CorpoOpa } from "../_opa/cabecalho";
 import { AbasPilula, BotaoPilula, Chip } from "../_opa/ui";
 import { QuadroOpa, type CartaoQuadro, type ColunaQuadro } from "./_quadro";
@@ -183,6 +184,7 @@ export default async function PipelinePage({
     <>
       <CabecalhoOpa icone={Kanban} titulo="Funis" subtitulo="Arraste o card para mudar de etapa. No celular, toque em Mover." />
       <CorpoOpa largura="max-w-none">
+        <AtualizaSozinho />
         <div data-tour="funil-abas" className="flex flex-wrap items-center justify-between gap-3">
           <AbasPilula
             itens={funis.map((f) => ({
@@ -204,7 +206,8 @@ export default async function PipelinePage({
         </div>
 
         {/* "Mandar para todos" abre um por um no WhatsApp de quem envia; leitura não envia. */}
-        <QuadroOpa colunas={colunas} envio={org.role === "viewer" ? null : { corretor: primeiroNome(user.full_name), filtro: dono }} />
+        {/* O quadro guarda as colunas em estado: entrou ou saiu lead, remonta com a lista nova. Mover um card não muda a chave. */}
+        <QuadroOpa key={colunas.flatMap((c) => c.cartoes.map((x) => x.id)).sort().join()} colunas={colunas} envio={org.role === "viewer" ? null : { corretor: primeiroNome(user.full_name), filtro: dono }} />
 
         <div className="flex flex-wrap items-center gap-2 px-1 text-[13px] text-[#5b7284]">
           <span>Ganho e perdido saem do quadro. Neste mês:</span>

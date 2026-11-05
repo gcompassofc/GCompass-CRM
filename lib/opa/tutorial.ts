@@ -131,6 +131,7 @@ export const PASSOS: Record<VersaoTutorial, PassoTutorial[]> = {
       detalhes: [
         "Ligar: um toque no telefone e a ligação já começa.",
         "Etapa: mude pela ficha ou nos Funis quando o cliente avança.",
+        "Comprador ou vendedor: entrou errado? Um toque na ficha troca o funil, sem apagar o lead.",
         "Kit: escolha o cliente e a situação, e a mensagem sai pronta para mandar.",
       ],
     },
@@ -385,7 +386,7 @@ export const DUVIDAS: Duvida[] = [
     id: "conversa-pessoal",
     pergunta: "O CRM lê minhas conversas pessoais?",
     resposta:
-      "Não. Quem escreve depois que você liga o WhatsApp aparece em Contatos novos, com as últimas mensagens guardadas só para você até decidir: se for pessoal, apagamos tudo, e sem decisão some em 7 dias. A IA só lê quem é lead: veio de anúncio ou do site, foi cadastrado no CRM ou você marcou com a etiqueta Lead OPA ou o botão É lead.",
+      "Não. Quem escreve depois que você liga o WhatsApp aparece em Contatos novos, com as últimas mensagens guardadas até você decidir, visíveis para você e para os gestores: se for pessoal, apagamos tudo, e sem decisão some em 7 dias. A IA só lê quem é lead: veio de anúncio ou do site, foi cadastrado no CRM ou você marcou com a etiqueta Lead OPA ou o botão É lead.",
     tela: "whatsapp",
     href: "/app/meu-whatsapp",
     rotuloLink: "Abrir Meu WhatsApp",

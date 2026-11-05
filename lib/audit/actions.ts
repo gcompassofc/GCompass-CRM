@@ -224,4 +224,6 @@ export type AuditAction =
   | "auth.segundo_fator_alterado"
   /** Código do e-mail/WhatsApp confirmado no login (0125). */
   | "auth.codigo_login_ok"
-  | "auth.codigo_login_falhou";
+  | "auth.codigo_login_falhou"
+  /** Gestor abriu a conversa de um contato a classificar do número de um corretor (05/11/2026). */
+  | "whatsapp.gestor_viu_conversa_a_classificar";
