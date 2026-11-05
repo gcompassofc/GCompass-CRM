@@ -32,6 +32,7 @@ import { RegistrarLigacao } from "./_ligacao";
 import { proximaMensagem } from "@/lib/opa/mensagens";
 import { createClient } from "@/lib/supabase/server";
 import {
+  CaretDown,
   ArrowRight,
   ArrowsClockwise,
   Bed,
@@ -470,6 +471,11 @@ export default async function LeadPage({
               ) : null}
               <RegistrarLigacao leadId={lead.id} tentativas={lead.tentativasLigacao} />
               <AgendarMensagem leadId={lead.id} sugestao={mensagem.texto} />
+              <details className="group relative">
+                <summary className="inline-flex h-11 cursor-pointer list-none items-center gap-2 rounded-full bg-white px-5 text-[14px] font-semibold text-[#0a2d40] hover:bg-[#e7f0f5] [&::-webkit-details-marker]:hidden">
+                  Mais ações <CaretDown className="size-3.5 transition-transform group-open:rotate-180" />
+                </summary>
+                <div className="absolute left-0 z-20 mt-2 flex w-[min(86vw,280px)] flex-col items-stretch gap-2 rounded-[22px] bg-[#edf2f5] p-2 shadow-[0_12px_40px_rgba(9,44,62,0.2)] [&>*]:w-full [&_button]:w-full [&_button]:justify-start [&>a]:justify-start">
               <RegistrarVisita
                 leadId={lead.id}
                 imoveis={disponiveis.map((i) => ({ codigo: i.codigo, titulo: i.titulo }))}
@@ -482,13 +488,14 @@ export default async function LeadPage({
               >
                 <PaperPlaneTilt className="size-4" /> Abrir no kit
               </Link>
-              <span className="mx-1 hidden h-6 w-px bg-[#d5e2ea] sm:block" aria-hidden />
               <GanharNegocio leadId={lead.id} nome={lead.nome} opcoes={opcoesGanho} />
               <PerderNegocio
                 leadId={lead.id}
                 motivos={config.motivos_perda.map((m) => m.motivo).filter((m) => gestorDaTela || lead.proprio || m !== MOTIVO_PESSOAL)}
               />
               {(gestorDaTela || lead.proprio) && <MarcarPessoal leadId={lead.id} />}
+                </div>
+              </details>
             </div>
           </>
         )}

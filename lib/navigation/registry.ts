@@ -2,6 +2,12 @@ import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
 
 import { ROLE_RANK, type Role } from "@/lib/auth/types";
 import {
+  ChatCircle as IconeAtendimento,
+  PaperPlaneTilt as IconeFerramentas,
+  SlidersHorizontal as IconeGestao,
+  UsersThree as IconeClientes,
+} from "@/lib/ui/icons";
+import {
   Bell,
   BookOpen,
   Brain,
@@ -690,14 +696,14 @@ const MENU_CORRETOR = ["/app/hoje", "/app/fila", "/app/inbox", "/app/lembretes",
  * da Fila, para o gestor e para o corretor.
  */
 const ROTULO_CORRETOR: Record<string, string> = {
-  "/app/inbox": "Multi-atendimento",
+  "/app/inbox": "Conversas",
   "/app/lembretes": "Agenda",
   "/app/leads": "Meus leads",
   "/app/fila": "Fila",
   "/app/pipeline": "Funis",
 };
 const ROTULO_GESTOR: Record<string, string> = {
-  "/app/inbox": "Multi-atendimento",
+  "/app/inbox": "Conversas",
   "/app/fila": "Fila da equipe",
   "/app/pipeline": "Funis",
   "/app/imoveis": "Imóveis",
@@ -706,6 +712,39 @@ const ROTULO_GESTOR: Record<string, string> = {
   "/app/membros": "Equipe",
   "/app/webhooks": "Automações",
 };
+
+export interface GrupoMenuOpa {
+  id: string;
+  rotulo: string;
+  icone: NavDestination["icon"];
+  itens: NavDestination[];
+}
+
+/**
+ * Menu em níveis (05/11/2026): módulos no primeiro nível, e só o módulo atual
+ * aberto. Grupo de um item só vira link direto. O papel decide o que aparece; o
+ * servidor continua barrando quem abre o endereço sem permissão.
+ */
+export function gruposImobiliaria(isPlatformAdmin: boolean, role: Role | null): GrupoMenuOpa[] {
+  const gestor = isPlatformAdmin || role === "manager" || role === "admin";
+  const rotulos = gestor ? ROTULO_GESTOR : { ...ROTULO_CORRETOR, "/app/imoveis": "Imóveis" };
+  const achar = (hrefs: string[]) =>
+    hrefs
+      .map((h) => NAV_DESTINATIONS.find((d) => d.href === h))
+      .filter((d): d is NavDestination => !!d && canSee(d, isPlatformAdmin, role))
+      .map((d) => (rotulos[d.href] ? { ...d, label: rotulos[d.href]! } : d));
+  const grupos: GrupoMenuOpa[] = [
+    { id: "inicio", rotulo: "Início", icone: IconeAtendimento, itens: achar(["/app/hoje"]) },
+    { id: "atendimento", rotulo: "Atendimento", icone: IconeAtendimento, itens: achar(["/app/fila", "/app/inbox", "/app/lembretes"]) },
+    { id: "clientes", rotulo: "Clientes", icone: IconeClientes, itens: achar(["/app/leads", "/app/pipeline"]) },
+    { id: "imoveis", rotulo: "Imóveis", icone: IconeAtendimento, itens: achar(["/app/imoveis"]) },
+    { id: "ferramentas", rotulo: "Ferramentas", icone: IconeFerramentas, itens: achar(["/app/kit", "/app/meu-whatsapp"]) },
+  ];
+  if (gestor) {
+    grupos.push({ id: "gestao", rotulo: "Gestão", icone: IconeGestao, itens: achar(["/app/membros", "/app/configuracoes", "/app/webhooks", "/app/conexoes", "/app/integracoes"]) });
+  }
+  return grupos.filter((g) => g.itens.length > 0);
+}
 
 export function menuImobiliaria(
   isPlatformAdmin: boolean,

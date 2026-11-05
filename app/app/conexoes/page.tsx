@@ -141,7 +141,7 @@ export default async function ConexoesPage() {
           Cada corretor conecta o próprio WhatsApp e só vê as conversas dele. O lead do site cai no WhatsApp do corretor da vez.
         </p>
 
-        <div className="grid gap-5 lg:grid-cols-12">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-12 [&>*]:min-w-0">
           {lembretes && (
             <Cartao escuro bloco className="flex flex-col gap-6 lg:col-span-5">
               <TituloBloco icone={Bell} claro titulo={lembretes.display_name ?? "OPA Lembretes"} sub="Avisa a equipe e manda as oportunidades do Radar" />

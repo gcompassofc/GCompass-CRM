@@ -291,10 +291,10 @@
   background: var(--wa-barra) !important;
 }
 
-/* Conversas no celular, tema claro: os tokens --m-* nasceram para o fundo escuro.
+/* Celular, tema claro (todas as telas): os tokens --m-* nasceram para o fundo escuro.
    Sobre o fundo claro da OPA, nomes e título ficavam quase invisíveis (05/11/2026). */
 @media (max-width: 767px) {
-  :root[data-marca="opa"]:not([data-theme="dark"]) .opa-wa {
+  :root[data-marca="opa"]:not([data-theme="dark"]) .mobile-shell {
     --m-bg: #edf2f5;
     --m-surface: #f2f6f9;
     --m-elevated: #ffffff;
@@ -308,4 +308,12 @@
     --m-violet-dim: #e3eff6;
     --m-violet-line: #2a7ca8;
   }
+}
+
+/* Lista compacta do gestor: mais leads na tela (05/11/2026). */
+[data-densidade="compacta"] [data-linha-lead] {
+  padding-block: 2px;
+}
+[data-densidade="compacta"] [data-sub-lead] {
+  display: none;
 }

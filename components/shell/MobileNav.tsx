@@ -1,7 +1,8 @@
 "use client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Buildings, House, List, ListNumbers, Plus } from "@/lib/ui/icons";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { CalendarBlank, ChatCircle, House, List, ListNumbers, MapPin, Plus, UserPlus } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/auth/AuthProvider";
 import { canSee, NAV_DESTINATIONS, perfilAtivo } from "@/lib/navigation/registry";
@@ -58,15 +59,16 @@ function BarraOpa({ onOpenMenu, hidden }: Props) {
   const router = useRouter();
   // A tela com o formulário de novo lead aberto escuta o evento; nas outras
   // (ficha do lead, configurações), vai para o Início e abre lá.
-  const novo = () => {
-    if ((window as { __opaNovoLead?: boolean }).__opaNovoLead) window.dispatchEvent(new Event("opa:novo-lead"));
-    else router.push("/app/hoje?novo=1");
+  const criar = (evento: string, plano: string) => {
+    if ((window as unknown as Record<string, boolean | undefined>)[`__${evento}`]) window.dispatchEvent(new Event(evento));
+    else router.push(plano);
   };
+  const opcao = "min-h-11 gap-3 rounded-2xl px-3 text-[15px] text-[#0a2d40] focus:bg-[#f2f6f9]";
   const itens = [
     { href: "/app/hoje", rotulo: "Início", Icon: House },
     { href: "/app/fila", rotulo: "Fila", Icon: ListNumbers },
     null,
-    { href: "/app/imoveis", rotulo: "Imóveis", Icon: Buildings },
+    { href: "/app/inbox", rotulo: "Conversas", Icon: ChatCircle },
   ];
   return (
     <nav
@@ -81,19 +83,29 @@ function BarraOpa({ onOpenMenu, hidden }: Props) {
       {itens.map((it) => {
         if (!it) {
           return (
-            <button
-              key="novo"
-              type="button"
-              onClick={novo}
-              aria-label="Novo lead"
-              tabIndex={hidden ? -1 : undefined}
-              className="flex flex-col items-center gap-1 text-[11px] font-semibold text-[#12455f]"
-            >
-              <span className="-mt-6 flex size-[52px] items-center justify-center rounded-full bg-[#12455f] text-white shadow-[0_12px_34px_rgba(9,44,62,0.18)]">
-                <Plus size={24} weight="bold" aria-hidden />
-              </span>
-              Novo
-            </button>
+            <DropdownMenu key="novo">
+              <DropdownMenuTrigger
+                aria-label="Criar"
+                tabIndex={hidden ? -1 : undefined}
+                className="flex flex-col items-center gap-1 text-[11px] font-semibold text-[#12455f] outline-none"
+              >
+                <span className="-mt-6 flex size-[52px] items-center justify-center rounded-full bg-[#12455f] text-white shadow-[0_12px_34px_rgba(9,44,62,0.18)]">
+                  <Plus size={24} weight="bold" aria-hidden />
+                </span>
+                Criar
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="top" align="center" sideOffset={10} className="w-56 rounded-[22px] border-0 bg-white p-2 shadow-[0_12px_40px_rgba(9,44,62,0.2)]">
+                <DropdownMenuItem className={opcao} onSelect={() => criar("opa:novo-lead", "/app/hoje?novo=1")}>
+                  <UserPlus size={18} className="text-[#2a7ca8]" aria-hidden /> Novo lead
+                </DropdownMenuItem>
+                <DropdownMenuItem className={opcao} onSelect={() => criar("opa:nova-visita", "/app/hoje?visita=1")}>
+                  <MapPin size={18} className="text-[#2a7ca8]" aria-hidden /> Visita
+                </DropdownMenuItem>
+                <DropdownMenuItem className={opcao} onSelect={() => router.push("/app/lembretes")}>
+                  <CalendarBlank size={18} className="text-[#2a7ca8]" aria-hidden /> Lembrete
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           );
         }
         const ativo = pathname === it.href || pathname.startsWith(`${it.href}/`);

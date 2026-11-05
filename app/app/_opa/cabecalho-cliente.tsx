@@ -121,11 +121,14 @@ export function NovoLead({
   pessoas,
   imoveis,
   variante = "claro",
+  semBotao = false,
 }: {
   gestor: boolean;
   pessoas: PessoaSimples[];
   imoveis: ImovelSimples[];
   variante?: "claro" | "solido";
+  /** Só o formulário: quem abre é o menu Criar ou a busca, pelo evento "opa:novo-lead". */
+  semBotao?: boolean;
 }) {
   const router = useRouter();
   const [aberto, setAberto] = useState(false);
@@ -134,7 +137,9 @@ export function NovoLead({
   useEffect(() => {
     const abrir = () => setAberto(true);
     window.addEventListener("opa:novo-lead", abrir);
-    (window as { __opaNovoLead?: boolean }).__opaNovoLead = true;
+    const janela = window as unknown as Record<string, boolean | undefined>;
+    janela.__opaNovoLead = true;
+    janela["__opa:novo-lead"] = true;
     const p = new URLSearchParams(window.location.search);
     if (p.get("novo") === "1") {
       p.delete("novo");
@@ -143,7 +148,8 @@ export function NovoLead({
     }
     return () => {
       window.removeEventListener("opa:novo-lead", abrir);
-      (window as { __opaNovoLead?: boolean }).__opaNovoLead = false;
+      janela.__opaNovoLead = false;
+      janela["__opa:novo-lead"] = false;
     };
   }, []);
   const [telefone, setTelefone] = useState("");
@@ -157,21 +163,23 @@ export function NovoLead({
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => {
-          setAberto(true);
-          setExistente(null);
-          setTelefone("");
-        }}
-        className={
-          variante === "claro"
-            ? "inline-flex h-11 items-center gap-2 rounded-full bg-[#0a2d40] px-5 text-[14px] font-semibold text-white hover:bg-[#12455f]"
-            : "inline-flex h-11 items-center gap-2 rounded-full bg-[#2a7ca8] px-5 text-[14px] font-semibold text-white hover:bg-[#1f6a93]"
-        }
-      >
-        <Plus className="size-4" weight="bold" /> Novo lead
-      </button>
+      {!semBotao && (
+        <button
+          type="button"
+          onClick={() => {
+            setAberto(true);
+            setExistente(null);
+            setTelefone("");
+          }}
+          className={
+            variante === "claro"
+              ? "inline-flex h-11 items-center gap-2 rounded-full bg-[#0a2d40] px-5 text-[14px] font-semibold text-white hover:bg-[#12455f]"
+              : "inline-flex h-11 items-center gap-2 rounded-full bg-[#2a7ca8] px-5 text-[14px] font-semibold text-white hover:bg-[#1f6a93]"
+          }
+        >
+          <Plus className="size-4" weight="bold" /> Novo lead
+        </button>
+      )}
       <Dialog open={aberto} onOpenChange={setAberto}>
         <DialogContent className="max-w-md [&>*]:min-w-0">
           <DialogHeader>

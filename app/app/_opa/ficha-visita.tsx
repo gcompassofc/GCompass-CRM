@@ -59,12 +59,15 @@ export function FichaVisitaRapida({
   campos,
   imovelFixo,
   variante = "branca",
+  semBotao = false,
 }: {
   imoveis: ImovelParaVisita[];
   campos: CampoVisita[];
   /** Na página do imóvel, o imóvel já vem escolhido. */
   imovelFixo?: string;
   variante?: "branca" | "escura";
+  /** Só o formulário: quem abre é o menu Criar ou a busca, pelo evento "opa:nova-visita". */
+  semBotao?: boolean;
 }) {
   const router = useRouter();
   const [aberto, setAberto] = useState(false);
@@ -85,6 +88,25 @@ export function FichaVisitaRapida({
   const obr = (k: string) => campos.find((c) => c.chave === k)?.obrigatorio ?? false;
   const op = (k: string) => campos.find((c) => c.chave === k)?.opcoes ?? [];
   const rot = (k: string, padrao: string) => campos.find((c) => c.chave === k)?.rotulo ?? padrao;
+
+  // O menu Criar e a busca abrem por aqui; ?visita=1 chega de telas sem este formulário.
+  useEffect(() => {
+    if (imovelFixo) return;
+    const abrir = () => setAberto(true);
+    const janela = window as unknown as Record<string, boolean | undefined>;
+    window.addEventListener("opa:nova-visita", abrir);
+    janela["__opa:nova-visita"] = true;
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("visita") === "1") {
+      p.delete("visita");
+      window.history.replaceState(null, "", `${window.location.pathname}${p.size ? `?${p}` : ""}`);
+      abrir();
+    }
+    return () => {
+      window.removeEventListener("opa:nova-visita", abrir);
+      janela["__opa:nova-visita"] = false;
+    };
+  }, [imovelFixo]);
 
   // Busca de lead com um respiro de 250 ms entre teclas.
   useEffect(() => {
@@ -127,6 +149,7 @@ export function FichaVisitaRapida({
 
   return (
     <>
+      {!semBotao && (
       <button
         type="button"
         onClick={() => {
@@ -142,6 +165,7 @@ export function FichaVisitaRapida({
       >
         <MapPin className="size-4" weight="bold" /> Visita
       </button>
+      )}
       <Dialog open={aberto} onOpenChange={setAberto}>
         <DialogContent className="max-h-[92vh] max-w-xl gap-6 overflow-y-auto rounded-[28px] border-0 bg-white p-7 [&>*]:min-w-0">
           <DialogHeader className="flex-row items-start gap-3 space-y-0 text-left">

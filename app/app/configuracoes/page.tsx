@@ -195,10 +195,10 @@ function OrdemCorretores({
         const p = equipe.get(id);
         const pausado = pausados?.has(id) ?? false;
         return (
-          <li key={id} className={cn(linhaLista, pausado && "opacity-60")}>
+          <li key={id} className={cn(linhaLista, "flex-wrap sm:flex-nowrap", pausado && "opacity-60")}>
             <span className="w-4 text-center text-[13px] font-semibold tabular-nums text-[#5b7284]">{i + 1}</span>
             <Avatar texto={iniciaisDe(p?.nome ?? "?")} foto={p?.foto} tom={id === proximo && qual === "leads" ? "escuro" : "claro"} />
-            <div className="min-w-0 flex-1">
+            <div className="min-w-[55%] flex-1 sm:min-w-0">
               <p className="truncate text-[15px] font-semibold text-[#0a2d40]">{p?.nome ?? "Pessoa removida"}</p>
               {qual === "leads" && (
                 <div className="mt-0.5">
@@ -214,7 +214,7 @@ function OrdemCorretores({
                 </div>
               )}
             </div>
-            <form action={moverNaRoleta} className="flex">
+            <form action={moverNaRoleta} className="ml-auto flex sm:ml-0">
               <input type="hidden" name="roleta" value={qual} />
               <input type="hidden" name="id" value={id} />
               <input type="hidden" name="ordem" value={ordem} />
@@ -245,7 +245,7 @@ function AbaRoleta({ config, equipe }: { config: ConfigOpa; equipe: Map<string, 
     "Lead próprio (link, WhatsApp ou cadastro) fica com o corretor",
     "Cliente da carteira fica com o dono da carteira",
     "Imóvel com captação ativa vai para o captador",
-    "Conversa nova no WhatsApp do corretor: ele classifica",
+    "Conversa no WhatsApp do corretor só entra com a etiqueta Lead OPA",
     "O resto vai para o próximo da roleta",
   ];
 

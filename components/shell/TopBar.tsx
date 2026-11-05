@@ -3,8 +3,10 @@ import { AlertsBell } from "./AlertsBell";
 import { TenantSwitcher } from "./TenantSwitcher";
 import { UserMenu } from "./UserMenu";
 import { SearchTrigger } from "./SearchTrigger";
+import { abrirPaleta } from "./PaletaOpa";
+import { perfilAtivo } from "@/lib/navigation/registry";
 import { Button } from "@/components/ui/button";
-import { List } from "@/lib/ui/icons";
+import { List, MagnifyingGlass } from "@/lib/ui/icons";
 
 interface TopBarProps {
   onOpenMobileNav?: () => void;
@@ -28,7 +30,13 @@ export function TopBar({ onOpenMobileNav }: TopBarProps) {
         <TenantSwitcher />
       </div>
       <div className="flex flex-1 justify-center max-w-[200px] md:max-w-md">
-        <SearchTrigger />
+        {perfilAtivo() === "imobiliaria" ? (
+          <Button variant="outline" size="sm" className="gap-2 text-muted-foreground" onClick={abrirPaleta} aria-label="Buscar ou fazer algo">
+            <MagnifyingGlass size={14} aria-hidden />
+          </Button>
+        ) : (
+          <SearchTrigger />
+        )}
       </div>
       <div className="flex items-center gap-1.5 md:gap-2">
         <AlertsBell />

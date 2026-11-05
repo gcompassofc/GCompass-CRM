@@ -126,7 +126,7 @@ export default async function IntegracoesPage() {
     <>
       <CabecalhoOpa secao="Configuração" titulo="Integrações e API" subtitulo="Meta, sistemas da OPA, API, webhooks e MCP" icone={Plug} equipe={false} />
       <CorpoOpa>
-        <div className="grid items-start gap-5 lg:grid-cols-12">
+        <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-12 [&>*]:min-w-0">
           <Cartao escuro bloco className="flex flex-col gap-5 lg:col-span-7">
             <TituloBloco
               icone={Megaphone}
@@ -141,7 +141,7 @@ export default async function IntegracoesPage() {
             />
             <ul className="flex flex-col gap-2">
               {linhasMeta.map((l) => (
-                <li key={l.etapa} className="flex items-center gap-3 rounded-[18px] bg-white/[0.06] px-4 py-3">
+                <li key={l.etapa} className="flex flex-wrap items-center gap-3 rounded-[18px] bg-white/[0.06] px-4 py-3">
                   <span className="flex-1 text-[14px] text-white/85">{l.etapa}</span>
                   <ArrowRight className="size-4 text-white/40" />
                   <Chip icone={Infinito} tom="acao">
@@ -192,7 +192,7 @@ export default async function IntegracoesPage() {
           </Cartao>
         </div>
 
-        <div className="grid gap-5 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-3 [&>*]:min-w-0">
           {sistemas.map((s) => (
             <Cartao key={s.nome} className="flex flex-col gap-4">
               <IconeRedondo icone={s.I} tom={s.ok ? "acao" : "claro"} tamanho="lg" />
@@ -234,7 +234,7 @@ export default async function IntegracoesPage() {
           </div>
         </Cartao>
 
-        <div className="grid gap-5 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3 [&>*]:min-w-0">
           <Cartao className="flex flex-col gap-4">
             <TituloBloco
               icone={Key}

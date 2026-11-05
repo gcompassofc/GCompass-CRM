@@ -32,6 +32,7 @@ export default async function ImoveisPage({
   if (!org) redirect("/app");
 
   const { regiao, q } = await searchParams;
+  const gestor = user.is_platform_admin || org.role === "manager" || org.role === "admin";
   const [imoveis, leads, config] = await Promise.all([carregarImoveis(org.orgId), carregarLeads(org.orgId), configDaOrg(org.orgId)]);
 
   const busca = (q ?? "").trim().toLowerCase();
@@ -77,7 +78,7 @@ export default async function ImoveisPage({
       />
       <CorpoOpa>
         {/* No celular a lista vem primeiro; o resumo aparece a partir do tablet. */}
-        <div className="hidden gap-5 sm:grid sm:grid-cols-3">
+        {gestor && <div className="hidden gap-5 sm:grid sm:grid-cols-3">
           <CartaoNumero
             icone={HouseLine}
             rotulo="No acervo"
@@ -87,7 +88,7 @@ export default async function ImoveisPage({
           />
           <CartaoNumero icone={UserPlus} rotulo="Com lead interessado" valor={comLead} contexto="imóveis que trouxeram alguém" />
           <CartaoNumero icone={Lock} rotulo="Off market" valor={offMarket} contexto="só por link reservado" />
-        </div>
+        </div>}
 
         <div data-tour="imoveis-regioes" className="flex flex-wrap items-center justify-between gap-3">
           <AbasPilula

@@ -61,6 +61,7 @@ export default async function InicioPage({
                 : "Seu dia, do que pede resposta primeiro"
         }
         icone={Sun}
+        classico
       >
         {gestor && <FiltroPeriodo chave={periodo.chave} rotulo={periodo.rotulo} deDia={periodo.deDia} ateDia={periodo.ateDia} hoje={periodo.hoje} />}
       </CabecalhoOpa>

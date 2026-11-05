@@ -8,6 +8,7 @@ import { createClient } from "@/lib/supabase/server";
 import { AjudaDaTela } from "./ajuda-tela";
 import { BuscaGlobal, FiltroEquipe, NovoLead } from "./cabecalho-cliente";
 import { FichaVisitaRapida } from "./ficha-visita";
+import { BotaoBusca, MenuCriar } from "./menu-criar";
 import { IconeRedondo, type Icone } from "./ui";
 
 /**
@@ -23,6 +24,8 @@ export async function CabecalhoOpa({
   icone,
   equipe = true,
   ferramentas,
+  classico = false,
+  semBusca = false,
   children,
 }: {
   /** "Operação", "Configuração", "Seu espaço" ou o nome do funil. */
@@ -35,6 +38,10 @@ export async function CabecalhoOpa({
   equipe?: boolean;
   /** Busca e "Novo lead". Desligar onde viram ruído (ficha do lead, Kit). */
   ferramentas?: boolean;
+  /** Mantém a barra antiga (busca, Visita e Novo lead): só o Início, por decisão de 05/11/2026. */
+  classico?: boolean;
+  /** A tela já tem a própria busca: não repete a do topo (Ctrl K continua valendo). */
+  semBusca?: boolean;
   /** Ações extras, à esquerda da busca. */
   children?: React.ReactNode;
 }) {
@@ -82,10 +89,11 @@ export async function CabecalhoOpa({
           )}
           {mostrarFerramentas && (
             <>
-              <BuscaGlobal />
-              {atende && config && <FichaVisitaRapida imoveis={paraVisita} campos={config.ficha_visita} />}
+              {classico ? <BuscaGlobal /> : semBusca ? null : <BotaoBusca />}
+              {atende && config && <FichaVisitaRapida imoveis={paraVisita} campos={config.ficha_visita} semBotao={!classico} />}
               <div data-tour="cab-novo-lead" className="flex">
-                <NovoLead gestor={gestor} pessoas={lista} imoveis={acervo} />
+                <NovoLead gestor={gestor} pessoas={lista} imoveis={acervo} semBotao={!classico} />
+                {!classico && atende && <span className="hidden md:inline-flex"><MenuCriar /></span>}
               </div>
             </>
           )}

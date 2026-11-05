@@ -33,6 +33,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { AtualizaSozinho } from "../_opa/atualiza-sozinho";
+import { AbrirLead } from "../_opa/painel-lead";
 import { CabecalhoOpa, CorpoOpa } from "../_opa/cabecalho";
 import { FotoImovel } from "../_opa/componentes";
 import { IlustraCalma } from "../_opa/ilustracoes";
@@ -145,7 +146,7 @@ function CartaoFila({ l, i, im, dono, prazos }: { l: LeadOpa; i: number; im?: Im
   const prox = espera != null ? proximoNaFila(l, prazos) : null;
   return (
     <Cartao tour="fila-item" className="grid gap-5 p-5 md:grid-cols-[minmax(0,1fr)_240px_auto] md:items-center">
-      <Link href={`/app/leads/${l.id}`} className="flex min-w-0 items-center gap-4">
+      <AbrirLead leadId={l.id} className="flex min-w-0 items-center gap-4">
         <div className="relative shrink-0">
           {im ? <FotoImovel imovel={im} className="size-[60px] rounded-[18px]" /> : <Avatar texto={iniciaisDe(l.nome)} className="size-[60px] text-[15px]" />}
           <span
@@ -169,7 +170,7 @@ function CartaoFila({ l, i, im, dono, prazos }: { l: LeadOpa; i: number; im?: Im
           </p>
           <p className="mt-1 truncate text-[13px] text-[#34566b]">{l.conversa?.previa ? `“${l.conversa.previa}”` : "Sem conversa ainda"}</p>
         </div>
-      </Link>
+      </AbrirLead>
 
       <div className="min-w-0">
         {prox ? (

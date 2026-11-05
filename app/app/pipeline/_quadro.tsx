@@ -26,6 +26,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { marcarRespondido, moverEtapa } from "../leads/actions";
+import { AbrirLead } from "../_opa/painel-lead";
 import { EnviarEtapa, type EnvioDaEtapa } from "./_enviar-etapa";
 import { moverCartao } from "./mover";
 
@@ -107,7 +108,7 @@ function useToque(): boolean {
 }
 
 /** `envio` ausente (leitura) = sem o botão "Mandar para todos". */
-export function QuadroOpa({ colunas: inicial, envio }: { colunas: ColunaQuadro[]; envio?: EnvioDaEtapa | null }) {
+export function QuadroOpa({ colunas: inicial, envio, simples = false }: { colunas: ColunaQuadro[]; envio?: EnvioDaEtapa | null; simples?: boolean }) {
   const router = useRouter();
   const [colunas, setColunas] = useState(inicial);
   const [, iniciar] = useTransition();
@@ -156,10 +157,10 @@ export function QuadroOpa({ colunas: inicial, envio }: { colunas: ColunaQuadro[]
                 </div>
               </div>
               <div className="mt-2 flex min-h-7 items-center justify-between gap-2">
-                <span className="text-[12px] text-[#5b7284]">{col.total ? brl(col.total) : ""}</span>
+                <span className="text-[12px] text-[#5b7284]">{!simples && col.total ? brl(col.total) : ""}</span>
                 <div className="flex gap-1">
-                  {col.evento && <SeloEtapa icone={Infinito} titulo={`Envia ao Meta: ${col.evento}`} />}
-                  {col.lembrete && <SeloEtapa icone={Bell} titulo={`Lembrete: ${col.lembrete}`} />}
+                  {!simples && col.evento && <SeloEtapa icone={Infinito} titulo={`Envia ao Meta: ${col.evento}`} />}
+                  {!simples && col.lembrete && <SeloEtapa icone={Bell} titulo={`Lembrete: ${col.lembrete}`} />}
                   {col.trava && <SeloEtapa icone={Lock} titulo="Pede campos confirmados para entrar" />}
                 </div>
               </div>
@@ -187,7 +188,7 @@ export function QuadroOpa({ colunas: inicial, envio }: { colunas: ColunaQuadro[]
                               s.isDragging && "shadow-[0_18px_40px_rgba(9,44,62,0.18)]",
                             )}
                           >
-                            <Link href={`/app/leads/${c.id}`} className="block">
+                            <AbrirLead leadId={c.id} className="block">
                               <p className="flex items-center gap-2 text-[15px] font-semibold text-[#0a2d40]">
                                 <span
                                   className={cn(
@@ -249,7 +250,7 @@ export function QuadroOpa({ colunas: inicial, envio }: { colunas: ColunaQuadro[]
                                     <temp.Icone weight="fill" className="size-3.5" />
                                   </span>
                                 )}
-                                {c.parecidos > 0 && (
+                                {!simples && c.parecidos > 0 && (
                                   <span
                                     title={`${c.parecidos} ${c.parecidos === 1 ? "imóvel parecido" : "imóveis parecidos"} no acervo`}
                                     className="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full bg-[#e7f0f5] px-2 py-1 text-[11px] font-semibold text-[#12455f]"
@@ -258,7 +259,7 @@ export function QuadroOpa({ colunas: inicial, envio }: { colunas: ColunaQuadro[]
                                   </span>
                                 )}
                               </div>
-                            </Link>
+                            </AbrirLead>
                             <footer className="mt-3 flex items-center justify-between gap-2 border-t border-[#eef3f6] pt-3">
                               {c.esperandoMin != null ? (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-[#e7f0f5] px-2 py-1 text-[12px] font-semibold text-[#12455f]">

@@ -1,12 +1,12 @@
 "use client";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 
 import { useAuth } from "@/hooks/auth/AuthProvider";
 import { branding } from "@/lib/branding";
-import { menuImobiliaria, type NavDestination } from "@/lib/navigation/registry";
-import { Question, ShieldCheck, SidebarSimple, SignOut } from "@/lib/ui/icons";
+import { gruposImobiliaria, type GrupoMenuOpa, type NavDestination } from "@/lib/navigation/registry";
+import { CaretDown, Question, ShieldCheck, SidebarSimple, SignOut } from "@/lib/ui/icons";
 import { cn } from "@/lib/utils";
 
 /**
@@ -17,6 +17,9 @@ import { cn } from "@/lib/utils";
  * Recolhe e expande como no Claude e no ChatGPT (pedido do Allyson, 03/11/2026):
  * recolhido, fica só a coluna de ícones e o nome de cada item aparece ao passar
  * o mouse. Quem decide e guarda o estado é o AppShell.
+ *
+ * Desde 05/11/2026 o menu tem níveis: só o módulo atual fica aberto, para a pessoa
+ * não ler 14 itens soltos. Ele nasce aberto, com os nomes: ícone sozinho se decora.
  */
 const PAPEL: Record<string, string> = {
   admin: "Administrador",
@@ -71,13 +74,27 @@ export function SidebarOpa({
   const pathname = usePathname();
   const { user, activeOrg, signOut } = useAuth();
   const [saindo, iniciar] = useTransition();
-  const { principal, configuracao } = menuImobiliaria(user.is_platform_admin, activeOrg?.role ?? null);
+  const grupos = gruposImobiliaria(user.is_platform_admin, activeOrg?.role ?? null);
+  const [escolhido, setEscolhido] = useState<string | null>(null);
+  // Trocou de tela, volta a valer o módulo da tela atual.
+  useEffect(() => setEscolhido(null), [pathname]);
+  const estaAtivo = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
   const nome = user.full_name ?? user.email.split("@")[0] ?? "";
 
-  const item = (d: NavDestination) => {
-    const ativo = pathname === d.href || pathname.startsWith(`${d.href}/`);
+  const contagemFila = (ativo: boolean) =>
+    recolhido ? (
+      // Recolhido, o número vira um ponto no canto do ícone.
+      <span className="absolute left-[30px] top-2 size-2.5 rounded-full bg-[#2a7ca8] ring-2 ring-white" aria-label={`${filaCount} esperando resposta`} />
+    ) : (
+      <span className={cn("min-w-6 shrink-0 rounded-full px-1.5 text-center text-[12px] font-semibold tabular-nums", ativo ? "bg-white text-[#0a2d40]" : "bg-[#2a7ca8] text-white")}>
+        {filaCount}
+      </span>
+    );
+
+  /** Link direto do primeiro nível (Início, Imóveis). */
+  const itemPrincipal = (d: NavDestination) => {
+    const ativo = estaAtivo(d.href);
     const Icon = d.icon;
-    const fila = d.href === "/app/fila" && filaCount > 0;
     return (
       <li key={d.href}>
         <Link
@@ -96,24 +113,65 @@ export function SidebarOpa({
           <Rotulo recolhido={recolhido} className="flex-1">
             {d.label}
           </Rotulo>
-          {fila &&
-            (recolhido ? (
-              // Recolhido, o número vira um ponto no canto do ícone.
-              <span
-                className="absolute left-[30px] top-2 size-2.5 rounded-full bg-[#2a7ca8] ring-2 ring-white"
-                aria-label={`${filaCount} esperando resposta`}
-              />
-            ) : (
-              <span
-                className={cn(
-                  "min-w-6 shrink-0 rounded-full px-1.5 text-center text-[12px] font-semibold tabular-nums",
-                  ativo ? "bg-white text-[#0a2d40]" : "bg-[#2a7ca8] text-white",
-                )}
-              >
-                {filaCount}
-              </span>
-            ))}
         </Link>
+      </li>
+    );
+  };
+
+  /** Módulo com subitens: abre um por vez. Recolhido, o toque abre o menu nesse módulo. */
+  const itemGrupo = (g: GrupoMenuOpa) => {
+    const contem = g.itens.some((d) => estaAtivo(d.href));
+    const aberto = !recolhido && (escolhido ? escolhido === g.id : contem);
+    const Icon = g.icone;
+    const temFila = g.itens.some((d) => d.href === "/app/fila") && filaCount > 0;
+    return (
+      <li key={g.id}>
+        <button
+          type="button"
+          aria-expanded={aberto}
+          title={recolhido ? g.rotulo : undefined}
+          aria-label={recolhido ? g.rotulo : undefined}
+          onClick={() => {
+            if (recolhido) onAlternar?.();
+            setEscolhido(aberto ? "-" : g.id);
+          }}
+          className={cn(
+            "relative flex h-11 w-full items-center gap-3 overflow-hidden rounded-full px-[14px] text-left text-[14px] transition-colors",
+            contem && recolhido ? "bg-[#0a2d40] font-semibold text-white" : contem ? "font-semibold text-[#0a2d40]" : "text-[#34566b]",
+            !(contem && recolhido) && "hover:bg-[#eef3f6] hover:text-[#0a2d40]",
+          )}
+        >
+          <Icon size={20} weight={contem ? "fill" : "regular"} aria-hidden className="shrink-0" />
+          <Rotulo recolhido={recolhido} className="flex-1">
+            {g.rotulo}
+          </Rotulo>
+          {temFila && !aberto && contagemFila(contem && recolhido)}
+          {!recolhido && <CaretDown size={14} aria-hidden className={cn("shrink-0 text-[#5b7284] transition-transform", aberto && "rotate-180")} />}
+        </button>
+        {aberto && (
+          <ul className="mb-1 mt-0.5 space-y-0.5">
+            {g.itens.map((d) => {
+              const ativo = estaAtivo(d.href);
+              return (
+                <li key={d.href}>
+                  <Link
+                    href={d.href}
+                    prefetch
+                    onClick={onNavClick}
+                    aria-current={ativo ? "page" : undefined}
+                    className={cn(
+                      "flex h-11 items-center gap-2 rounded-full pl-[46px] pr-3 text-[14px] transition-colors",
+                      ativo ? "bg-[#0a2d40] font-semibold text-white" : "text-[#34566b] hover:bg-[#eef3f6] hover:text-[#0a2d40]",
+                    )}
+                  >
+                    <span className="min-w-0 flex-1 truncate">{d.label}</span>
+                    {d.href === "/app/fila" && filaCount > 0 && contagemFila(ativo)}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </li>
     );
   };
@@ -172,19 +230,7 @@ export function SidebarOpa({
         </div>
 
         <nav aria-label="Navegação principal" className="flex-1 overflow-y-auto overflow-x-hidden px-2">
-          <ul className="space-y-1">{principal.map(item)}</ul>
-          {configuracao.length > 0 && (
-            <>
-              <div className="mb-2 mt-6 flex h-4 items-center px-[14px]">
-                {recolhido ? (
-                  <span className="block h-px w-5 bg-[#dbe5ec]" aria-hidden />
-                ) : (
-                  <p className="whitespace-nowrap text-[11px] font-semibold uppercase tracking-[0.16em] text-[#8aa3b3]">Configuração</p>
-                )}
-              </div>
-              <ul className="space-y-1">{configuracao.map(item)}</ul>
-            </>
-          )}
+          <ul className="space-y-1">{grupos.map((g) => (g.itens.length === 1 ? itemPrincipal(g.itens[0]!) : itemGrupo(g)))}</ul>
         </nav>
 
         {/* Tutoriais sempre à mão, fora das listas: não disputa com as telas de trabalho. */}

@@ -7,9 +7,10 @@ import { escopoDoFunil } from "@/lib/opa/envio-etapa";
 import { afinidade, precoCurto } from "@/lib/opa/imoveis";
 import { diaSP, inicioDoDia } from "@/lib/opa/periodo";
 import { createClient } from "@/lib/supabase/server";
-import { ArrowsClockwise, Bell, Buildings, CheckCircle, ListNumbers, UsersThree, XCircle, Kanban } from "@/lib/ui/icons";
+import { ArrowsClockwise, Bell, Buildings, CheckCircle, UsersThree, XCircle, Kanban } from "@/lib/ui/icons";
 
 import { AtualizaSozinho } from "../_opa/atualiza-sozinho";
+import { FormatoLeads } from "../leads/_lista";
 import { CabecalhoOpa, CorpoOpa } from "../_opa/cabecalho";
 import { AbasPilula, BotaoPilula, Chip } from "../_opa/ui";
 import { QuadroOpa, type CartaoQuadro, type ColunaQuadro } from "./_quadro";
@@ -195,18 +196,18 @@ export default async function PipelinePage({
             }))}
           />
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex h-11 items-center gap-2 rounded-full bg-white px-4 text-[14px] text-[#5b7284]">
-              <ListNumbers className="size-4 text-[#2a7ca8]" /> Ordem da fila
-            </span>
-            <BotaoPilula href="/app/lembretes" icone={Bell}>
-              Etapas e regras
-            </BotaoPilula>
+            <FormatoLeads atual="funil" corretor={corretor} />
+            {!soDele && (
+              <BotaoPilula href="/app/lembretes" icone={Bell}>
+                Etapas e regras
+              </BotaoPilula>
+            )}
           </div>
         </div>
 
         {/* "Mandar para todos" abre um por um no WhatsApp de quem envia; leitura não envia. */}
         {/* O quadro guarda as colunas em estado: entrou ou saiu lead, remonta com a lista nova. Mover um card não muda a chave. */}
-        <QuadroOpa key={colunas.flatMap((c) => c.cartoes.map((x) => x.id)).sort().join()} colunas={colunas} envio={org.role === "viewer" ? null : { corretor: primeiroNome(user.full_name), filtro: dono }} />
+        <QuadroOpa key={colunas.flatMap((c) => c.cartoes.map((x) => x.id)).sort().join()} colunas={colunas} simples={soDele} envio={org.role === "viewer" ? null : { corretor: primeiroNome(user.full_name), filtro: dono }} />
 
         <div className="flex flex-wrap items-center gap-2 px-1 text-[13px] text-[#5b7284]">
           <span>Ganho e perdido saem do quadro. Neste mês:</span>

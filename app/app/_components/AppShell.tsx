@@ -8,7 +8,9 @@ import { MobileNav } from "@/components/shell/MobileNav";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { ImmersiveViewProvider, useIsImmersive } from "@/lib/ui/immersive-view";
 import { cn } from "@/lib/utils";
+import { PainelLead } from "../_opa/painel-lead";
 import { BoasVindasOpa } from "../_opa/tutorial";
+import { PaletaOpa } from "@/components/shell/PaletaOpa";
 
 interface AppShellProps {
   sidebarCollapsed: boolean;
@@ -25,44 +27,19 @@ function guardarMenu(estado: "aberto" | "recolhido") {
 }
 
 /**
- * Menu da OPA que recolhe e expande (pedido do Allyson, 03/11/2026). Primeiro
- * acesso: abre cheio, recolhe sozinho depois de um instante e mostra o balão
- * de onde abrir. Depois, vale a última escolha da pessoa. Ctrl + B alterna.
+ * Menu da OPA que recolhe e expande (pedido do Allyson, 03/11/2026). Nasce aberto,
+ * com os nomes à vista (05/11/2026); depois, vale a última escolha da pessoa.
+ * Ctrl + B alterna.
  */
 function useMenuOpa(ativo: boolean, inicial: "aberto" | "recolhido" | null) {
   const [recolhido, setRecolhido] = useState(inicial === "recolhido");
-  const [dica, setDica] = useState(false);
 
   const alternar = useCallback(() => {
-    setDica(false);
     setRecolhido((r) => {
       guardarMenu(r ? "aberto" : "recolhido");
       return !r;
     });
   }, []);
-
-  useEffect(() => {
-    if (!ativo || inicial !== null) return;
-    // O tutorial de boas-vindas também abre no primeiro acesso: a apresentação do
-    // menu espera ele (ou qualquer janela) fechar, senão o balão fica por baixo.
-    let recolher: ReturnType<typeof setTimeout> | undefined;
-    let sumir: ReturnType<typeof setTimeout> | undefined;
-    const espera = setInterval(() => {
-      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
-      clearInterval(espera);
-      recolher = setTimeout(() => {
-        setRecolhido(true);
-        setDica(true);
-        guardarMenu("recolhido");
-        sumir = setTimeout(() => setDica(false), 6000);
-      }, 1600);
-    }, 500);
-    return () => {
-      clearInterval(espera);
-      clearTimeout(recolher);
-      clearTimeout(sumir);
-    };
-  }, [ativo, inicial]);
 
   useEffect(() => {
     if (!ativo) return;
@@ -76,7 +53,7 @@ function useMenuOpa(ativo: boolean, inicial: "aberto" | "recolhido" | null) {
     return () => window.removeEventListener("keydown", tecla);
   }, [ativo, alternar]);
 
-  return { recolhido, dica, alternar };
+  return { recolhido, alternar };
 }
 
 export function AppShell({ sidebarCollapsed, filaCount, menuOpa = null, children }: AppShellProps) {
@@ -112,7 +89,7 @@ function AppShellInterno({ sidebarCollapsed, filaCount, menuOpa = null, children
       {/* Desktop Sidebar */}
       <div className="hidden md:block">
         {imobiliaria ? (
-          <SidebarOpa filaCount={filaCount} recolhido={menu.recolhido} onAlternar={menu.alternar} dica={menu.dica} />
+          <SidebarOpa filaCount={filaCount} recolhido={menu.recolhido} onAlternar={menu.alternar} />
         ) : (
           <Sidebar collapsed={sidebarCollapsed} />
         )}
@@ -120,7 +97,7 @@ function AppShellInterno({ sidebarCollapsed, filaCount, menuOpa = null, children
 
       {/* Mobile Drawer */}
       <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-        <SheetContent side="left" className="w-[260px] p-0 border-r">
+        <SheetContent side="left" className="w-[288px] p-0 border-r">
           <SheetTitle className="sr-only">Menu de navegação</SheetTitle>
           {imobiliaria ? (
             <SidebarOpa filaCount={filaCount} onNavClick={() => setMobileNavOpen(false)} />
@@ -175,6 +152,8 @@ function AppShellInterno({ sidebarCollapsed, filaCount, menuOpa = null, children
       <MobileNav onOpenMenu={() => setMobileNavOpen(true)} hidden={emConversa} />
       {/* Tutorial de boas-vindas: abre sozinho no primeiro acesso (perfil imobiliária). */}
       {imobiliaria && <BoasVindasOpa />}
+      {imobiliaria && <PaletaOpa />}
+      {imobiliaria && <PainelLead />}
     </div>
   );
 }
