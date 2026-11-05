@@ -13,7 +13,6 @@ import { ReassignDialog } from "@/components/inbox/ReassignDialog";
 import { SnoozeButton } from "@/components/inbox/SnoozeButton";
 import { CRMSidePanel } from "@/components/inbox/CRMSidePanel";
 import { DadosDoContato, telefoneLegivel } from "@/components/inbox/DadosDoContato";
-import { LeadOuPessoal } from "@/app/app/leads/[id]/_pessoal";
 import { leadPrincipal, useResumoDoContato } from "@/hooks/inbox/useResumoDoContato";
 import { perfilAtivo } from "@/lib/navigation/registry";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -93,9 +92,6 @@ export function ConversationHeader({ conversation, onBack }: Props) {
     conversation.bot_silenced_until !== null && conversation.bot_silenced_until !== undefined;
   const emAtendimentoHumano =
     (silenciada || c?.force_human === true) && status !== "closed" && status !== "archived";
-
-  // "Lead ou pessoal?" logo abaixo do topo, enquanto ninguém respondeu.
-  const perguntar = opa && lead?.status === "open" && lead.classificado?.como !== "lead";
 
   return (
     <>
@@ -357,9 +353,6 @@ export function ConversationHeader({ conversation, onBack }: Props) {
         </SheetContent>
       </Sheet>
     </div>
-    {perguntar && lead && (
-      <LeadOuPessoal key={lead.id} leadId={lead.id} depois="/app/inbox" className="mx-3 my-2 shrink-0" />
-    )}
     </>
   );
 }

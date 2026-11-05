@@ -57,9 +57,9 @@ services:
       retries: 3
       start_period: 20s
   waha:
-    # Core grátis por padrão; troque para devlikeapro/waha-plus via WAHA_IMAGE se
-    # precisar de multi-número/retry/S3 (licença paga).
-    image: ${WAHA_IMAGE:-devlikeapro/waha}
+    # Versão fixa, para nada mudar sem querer. O motor GOWS vale para o contêiner
+    # inteiro: guarda só as etiquetas (CONFIG_DA_SESSAO em lib/waha/client.ts).
+    image: devlikeapro/waha:gows-2026.10.1
     restart: unless-stopped
     environment:
       # Prefixo sha512: faz o WAHA HASHEAR o X-Api-Key recebido e comparar com este
@@ -70,13 +70,17 @@ services:
       # O nome certo é WHATSAPP_HOOK_HMAC_KEY: com WHATSAPP_HOOK_HMAC o WAHA ignora
       # e não assina nada (medido em 30/10/2026, WAHA 2026.9.2 Core).
       WHATSAPP_HOOK_HMAC_KEY: ${WAHA_HMAC_SECRET}
-      # WAHA lê WHATSAPP_DEFAULT_ENGINE (NÃO WAHA_DEFAULT_ENGINE — o nome errado
-      # fazia cair no default WEBJS, engine com browser que trava/corrompe a sessão
-      # quando o WhatsApp Web atualiza; NOWEB é websocket direto, estável e leve).
-      WHATSAPP_DEFAULT_ENGINE: ${WHATSAPP_DEFAULT_ENGINE:-NOWEB}
+      # WAHA lê WHATSAPP_DEFAULT_ENGINE (NÃO WAHA_DEFAULT_ENGINE). No NOWEB sem
+      # armazenamento o evento de etiqueta não sai: ver docs/MIGRAR-WAHA-GOWS.md.
+      WHATSAPP_DEFAULT_ENGINE: GOWS
+      # Sem pedir o histórico completo: as mensagens não são guardadas no WAHA.
+      WAHA_GOWS_DEVICE_REQUIRE_FULL_SYNC: "false"
+      WHATSAPP_SWAGGER_ENABLED: "false"
+      # Sem registro de cada chamada: o endereço pode levar o número do contato.
+      WAHA_LOG_LEVEL: warn
       WAHA_DASHBOARD_ENABLED: "false"    # nunca expor o dashboard num template público
     volumes:
-      - waha-data:/app/.sessions          # sessões pareadas (QR) — perder = re-parear
+      - waha-gows-data:/app/.sessions     # sessões pareadas (QR) — perder = re-parear
       - waha-media:/app/.media
     logging: *default-logging
     networks: [internal]
@@ -165,7 +169,9 @@ services:
     networks: [internal]
 
 volumes:
+  # A sessão antiga (NOWEB) fica em waha-data até a virada estabilizar.
   waha-data:
+  waha-gows-data:
   waha-media:
   caddy-data:
   caddy-config:

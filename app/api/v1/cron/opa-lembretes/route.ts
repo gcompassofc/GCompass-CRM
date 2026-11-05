@@ -22,7 +22,7 @@ import { logger } from "@/lib/logger";
 import { rodarRotinaLembretes } from "@/lib/opa/rotina-lembretes";
 import { mesmoSegredo } from "@/lib/opa/segredos";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { apagarEsperaVencida } from "@/lib/waha/contatos-pessoais";
+import { apagarEsperaVencida, conciliarEtiquetasDosNumeros } from "@/lib/waha/contatos-pessoais";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -45,7 +45,15 @@ async function handle(req: NextRequest): Promise<Response> {
       logger.warn("[opa-lembretes.cron] limpeza das mensagens em espera falhou", { error: String(e), requestId });
       return 0;
     });
-    return ok({ ...resultado, esperaApagadas }, { requestId });
+    // A cada 5 minutos: etiquetas que estão no aparelho e o CRM ainda não sabe.
+    const etiquetasConciliadas =
+      new Date().getMinutes() % 5 === 0
+        ? await conciliarEtiquetasDosNumeros(admin, requestId).catch((e: unknown) => {
+            logger.warn("[opa-lembretes.cron] conciliar etiquetas falhou", { error: String(e), requestId });
+            return 0;
+          })
+        : 0;
+    return ok({ ...resultado, esperaApagadas, etiquetasConciliadas }, { requestId });
   } catch (err) {
     logger.error("[opa-lembretes.cron] falha", { error: String(err), requestId });
     return fail("internal_error", "Falha na rotina de lembretes.", 500, { requestId });

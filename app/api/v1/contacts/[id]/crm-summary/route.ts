@@ -35,7 +35,7 @@ import { createClient } from "@/lib/supabase/server";
 export const dynamic = "force-dynamic";
 
 // `classificado`: só a resposta do "Lead ou pessoal?", não o custom_fields inteiro.
-const LEAD_COLS = "id, title, status, value_cents, currency, updated_at, classificado:custom_fields->classificado";
+const LEAD_COLS = "id, title, status, value_cents, currency, updated_at, classificado:custom_fields->classificado, tags";
 const ORDER_COLS = "id, external_id, status, total_cents, currency, created_at";
 /** Acompanha o que a timeline mostra — `reason` e `actor_kind` inclusive. */
 const ACTIVITY_COLS = "id, type, source_module, performed_at, payload, reason, actor_kind";

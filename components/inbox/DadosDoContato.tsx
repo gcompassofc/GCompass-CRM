@@ -111,7 +111,7 @@ export function DadosDoContato({ conversation }: { conversation: ConversationWit
         />
       </section>
 
-      {lead?.status === "open" && (
+      {lead?.status === "open" && lead.tags?.includes("proprio") && (
         <section className="bg-white px-6 py-4 dark:bg-[#202c33]">
           <MarcarPessoal
             leadId={lead.id}

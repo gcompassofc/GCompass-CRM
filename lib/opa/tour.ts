@@ -194,9 +194,8 @@ export const TOURS: Record<TourId, Tour> = {
       {
         alvo: "whats-protecao",
         titulo: "Conversas pessoais protegidas",
-        texto: "O que é pessoal não é guardado nem lido. A IA acompanha só os leads: use a etiqueta Lead OPA ou o botão É lead.",
+        texto: "Suas conversas ficam fora do CRM. Só entra quem você etiqueta como Lead OPA, quem você cadastra e quem chega de anúncio ou do site.",
       },
-      { alvo: "contatos-novos", titulo: "É lead?", texto: "Quem escreveu e ainda não foi classificado, com a última mensagem. Você e os gestores veem. Um toque decide; sem decisão, some em 7 dias." },
       { alvo: "whats-acao", titulo: "Conectar", texto: "Leia o código com o celular, em Aparelhos conectados no WhatsApp." },
     ],
     vazio: { titulo: "Meu WhatsApp", texto: "Aqui você liga o seu número lendo um código com o celular." },

@@ -11,10 +11,10 @@
  * a classificar não deixa corpo no log, em `messages` nem na IA. Do contato
  * pessoal fica só o índice cego da identidade, para lembrar a decisão.
  *
- * Contato a classificar (decisão do Allyson, 02/11/2026): a mensagem vai cifrada
- * para `whatsapp_mensagens_a_classificar` (migration 0124), que só o servidor lê,
- * para o corretor saber quem é antes de decidir. "É lead" leva essas mensagens
- * para a conversa normal; "Pessoal" apaga; sem decisão, somem em 7 dias.
+ * Contato que não é lead: a mensagem vai cifrada para
+ * `whatsapp_mensagens_a_classificar` (migration 0124), que só o servidor lê e nenhuma
+ * tela mostra (05/11/2026). Virar lead leva essas mensagens para a conversa normal;
+ * "Pessoal" apaga; sem decisão, somem em 7 dias.
  */
 import { createHash } from "node:crypto";
 
@@ -27,7 +27,6 @@ import {
   indiceTelefone,
 } from "@/lib/crypto/dados-pessoais";
 import {
-  CONVERSA_NA_TELA,
   ESPERA_MAX_POR_CONTATO,
   ESPERA_MS,
   ETIQUETAS,
@@ -36,11 +35,11 @@ import {
   chatIgnorado,
   decidir,
   decisaoDoCorretor,
+  ehLeadDaOpa,
   emJanelaDeImportacao,
   etiquetaDe,
   sinalDeEntrada,
   telefoneAlternativo,
-  textoDaEspera,
   tipoEmEspera,
   type OrigemContato,
   type Situacao,
@@ -157,23 +156,24 @@ interface LinhaContato {
   mensagens_ignoradas: number;
   nome_cifrado?: string | null;
   telefone_cifrado?: string | null;
+  decidido_em?: string | null;
 }
 
 async function lerContato(admin: Admin, sessaoId: string, chave: string): Promise<LinhaContato | null> {
   const { data } = await admin
     .from("whatsapp_contatos_numero")
-    .select("id, situacao, mensagens_ignoradas, nome_cifrado, telefone_cifrado")
+    .select("id, situacao, mensagens_ignoradas, nome_cifrado, telefone_cifrado, decidido_em")
     .eq("channel_session_id", sessaoId)
     .eq("chave", chave)
     .maybeSingle();
   return (data as LinhaContato | null) ?? null;
 }
 
-/** O CRM já tem lead aberto para esta pessoa (porta de entrada, cadastro do corretor). */
-async function temLeadNoCrm(admin: Admin, orgId: string, chatId: string): Promise<boolean> {
+/** Os contatos do CRM desta pessoa, pela identidade do WhatsApp ou pelo telefone. */
+async function contatosDoChat(admin: Admin, orgId: string, chatId: string): Promise<string[]> {
   const p = parseChatId(chatId);
   const identidade = p.kind === "phone" ? `phone:${p.phone}` : p.kind === "lid" ? `lid:${p.lid}` : null;
-  if (!identidade) return false;
+  if (!identidade) return [];
   const filtros = [`wa_identity.eq.${identidade}`];
   if (p.kind === "phone" && cifraConfigurada()) filtros.push(`telefone_indice.eq.${indiceTelefone(orgId, p.phone)}`);
   const { data: contatos } = await admin
@@ -182,7 +182,46 @@ async function temLeadNoCrm(admin: Admin, orgId: string, chatId: string): Promis
     .eq("organization_id", orgId)
     .or(filtros.join(","))
     .limit(5);
-  const ids = ((contatos ?? []) as Array<{ id: string }>).map((c) => c.id);
+  return ((contatos ?? []) as Array<{ id: string }>).map((c) => c.id);
+}
+
+/** O lead da OPA desta pessoa, se houver. Encerrado como pessoal pelo gestor não conta. */
+async function leadDaOpaDoChat(admin: Admin, orgId: string, chatId: string): Promise<string | null> {
+  const ids = await contatosDoChat(admin, orgId, chatId);
+  if (!ids.length) return null;
+  const { data } = await admin
+    .from("crm_leads")
+    .select("id, tags, lost_reason")
+    .eq("organization_id", orgId)
+    .in("contact_id", ids);
+  const achado = ((data ?? []) as Array<{ id: string; tags: string[] | null; lost_reason: string | null }>).find(
+    (l) => ehLeadDaOpa(l.tags) && l.lost_reason !== MOTIVO_PESSOAL,
+  );
+  return achado?.id ?? null;
+}
+
+/** "5512...@c.us" a partir de "+5512...". */
+function chatDoTelefone(telefone: string): string {
+  return `${telefone.replace(/\D/g, "")}@c.us`;
+}
+
+/**
+ * O telefone é a identidade do contato: o WhatsApp manda o mesmo cliente ora por
+ * telefone, ora por `@lid`, e sem isto a etiqueta e a mensagem caíam em contatos
+ * diferentes. `@lid` que já é lead continua como está, para não partir a conversa.
+ */
+async function chatCanonico(admin: Admin, sessao: SessaoDoCorretor, chatId: string): Promise<string> {
+  if (parseChatId(chatId).kind !== "lid" || !sessao.waha_session_name) return chatId;
+  const chave = chaveDoChat(sessao.organization_id, chatId);
+  if (chave && (await lerContato(admin, sessao.id, chave))?.situacao === "lead") return chatId;
+  const pn = await getWahaClient()?.telefoneDoLid(sessao.waha_session_name, chatId);
+  const digitos = pn?.match(/^\+?(\d{8,15})/)?.[1];
+  return digitos ? `${digitos}@c.us` : chatId;
+}
+
+/** O CRM já tem lead aberto para esta pessoa (porta de entrada, cadastro do corretor). */
+async function temLeadNoCrm(admin: Admin, orgId: string, chatId: string): Promise<boolean> {
+  const ids = await contatosDoChat(admin, orgId, chatId);
   if (!ids.length) return false;
   const { count } = await admin
     .from("crm_leads")
@@ -276,7 +315,7 @@ async function gravarSituacao(
 }
 
 export function nomeDoPayload(p: WahaPayload): string | null {
-  return p._data?.notifyName ?? p._data?.pushName ?? null;
+  return p._data?.notifyName ?? p._data?.pushName ?? (p._data?.Info?.PushName || null);
 }
 
 /**
@@ -357,14 +396,28 @@ export async function filtrarEventoDoCorretor(
 }
 
 async function filtrarMensagem(admin: Admin, sessao: SessaoDoCorretor, p: WahaPayload, requestId: string): Promise<ResultadoFiltro> {
-  const { chatId, direcao } = chatDaMensagem(p);
+  const daMensagem = chatDaMensagem(p);
+  const direcao = daMensagem.direcao;
+  let chatId = daMensagem.chatId;
   if (chatIgnorado(chatId)) return { acao: "descartar", motivo: "grupo, status ou canal" };
-  const chave = chaveDoChat(sessao.organization_id, chatId);
+  let chave = chaveDoChat(sessao.organization_id, chatId);
   // Formato desconhecido: o ingest emite o aviso e não grava. Sem corpo no log.
   if (!chave) return { acao: "seguir", registrarCorpo: false };
 
-  const linha = await lerContato(admin, sessao.id, chave);
+  let linha = await lerContato(admin, sessao.id, chave);
   if (linha?.situacao === "lead") return SEGUIR;
+
+  // `@lid` com o telefone no payload: segue pelo telefone, inclusive no ingest (ver chatCanonico).
+  const telefoneDoPayload = parseChatId(chatId).kind === "lid" ? telefoneAlternativo(p, direcao) : null;
+  if (telefoneDoPayload) {
+    chatId = chatDoTelefone(telefoneDoPayload);
+    p.from = chatId;
+    if (direcao === "saida") p.to = chatId;
+    chave = chaveDoChat(sessao.organization_id, chatId);
+    if (!chave) return { acao: "seguir", registrarCorpo: false };
+    linha = await lerContato(admin, sessao.id, chave);
+    if (linha?.situacao === "lead") return SEGUIR;
+  }
 
   const d = decidir({
     atual: linha?.situacao ?? null,
@@ -427,29 +480,123 @@ export async function abrirJanelaDeImportacao(admin: Admin, sessao: SessaoDoCorr
   await garantirEtiquetas(admin, sessao);
 }
 
+/** Tipo 16 é a lista interna de leads do WhatsApp: não aceita conversa pela API. */
+const LISTA_INTERNA = 16;
+
 /**
- * Cria "Lead OPA" e "Pessoal" no WhatsApp Business do corretor (uma vez). Conta
- * comum não tem etiqueta: o erro é esperado e o caminho vira o botão no CRM.
+ * Descobre os ids de "Lead OPA" e "Pessoal" no WhatsApp Business do corretor e cria
+ * a que faltar. Conta comum ou NOWEB sem store dá erro: segue sem etiqueta.
+ *
+ * Lista vazia não cria nada. Toda conta Business tem etiquetas de fábrica, então
+ * vazio é sincronização ainda em andamento, e o WAHA numera a nova a partir da
+ * lista: criar agora sobrescreveria a etiqueta 1 do corretor. A rotina tenta de novo.
  */
 async function garantirEtiquetas(admin: Admin, sessao: SessaoDoCorretor): Promise<void> {
   const waha = getWahaClient();
   if (!waha || !sessao.waha_session_name) return;
-  const faltam: Array<["lead" | "pessoal", string]> = [];
-  if (!sessao.etiqueta_lead_id) faltam.push(["lead", ETIQUETAS.lead]);
-  if (!sessao.etiqueta_pessoal_id) faltam.push(["pessoal", ETIQUETAS.pessoal]);
-  for (const [tipo, nome] of faltam) {
-    try {
-      const criada = await waha.createLabel(sessao.waha_session_name, nome, tipo === "lead" ? 1 : 9);
-      if (criada?.id) {
-        await admin
-          .from("channel_sessions")
-          .update(tipo === "lead" ? { etiqueta_lead_id: String(criada.id) } : { etiqueta_pessoal_id: String(criada.id) })
-          .eq("id", sessao.id);
+  let lista: Array<{ id: string; name: string; type?: number | null }>;
+  try {
+    lista = await waha.listLabels(sessao.waha_session_name);
+  } catch (err) {
+    logger.info("contatos-pessoais: etiquetas não listadas", { sessao: sessao.id, erro: String(err).slice(0, 120) });
+    return;
+  }
+  if (!lista.length) return;
+
+  for (const [tipo, nome] of [["lead", ETIQUETAS.lead], ["pessoal", ETIQUETAS.pessoal]] as const) {
+    const candidatas = lista.filter((l) => l.type !== LISTA_INTERNA && etiquetaDe(l.name) === tipo);
+    // O nome exato ganha de "Lead", se o corretor tiver as duas.
+    let id = String((candidatas.find((l) => l.name === nome) ?? candidatas[0])?.id ?? "") || null;
+    if (!id) {
+      try {
+        const criada = await waha.createLabel(sessao.waha_session_name, nome, tipo === "lead" ? 1 : 9);
+        id = criada?.id ? String(criada.id) : null;
+      } catch (err) {
+        logger.info("contatos-pessoais: etiqueta não criada", { sessao: sessao.id, erro: String(err).slice(0, 120) });
       }
+    }
+    const atual = tipo === "lead" ? sessao.etiqueta_lead_id : sessao.etiqueta_pessoal_id;
+    if (!id || id === atual) continue;
+    await admin
+      .from("channel_sessions")
+      .update(tipo === "lead" ? { etiqueta_lead_id: id } : { etiqueta_pessoal_id: id })
+      .eq("id", sessao.id);
+    if (tipo === "lead") sessao.etiqueta_lead_id = id;
+    else sessao.etiqueta_pessoal_id = id;
+  }
+}
+
+/** Quantas conversas etiquetadas cada número leva por rodada (o resto fica para a próxima). */
+const CONCILIAR_POR_RODADA = 20;
+
+/**
+ * Traz para o CRM o que está etiquetado no aparelho e o CRM ainda não sabe. O WAHA
+ * não avisa as etiquetas que já existiam ao conectar, nem o que mudou com o servidor
+ * fora do ar: sem isto, o corretor teria de etiquetar tudo de novo.
+ *
+ * Decisão tomada depois no CRM (ex. "Pessoal", com a etiqueta ainda no aparelho) não
+ * é desfeita aqui. "Pessoal" sem decisão registrada não encerra lead aberto.
+ */
+export async function conciliarEtiquetas(admin: Admin, sessao: SessaoDoCorretor, requestId: string): Promise<number> {
+  const waha = getWahaClient();
+  if (!waha || !sessao.waha_session_name || !sessao.owner_user_id) return 0;
+  await garantirEtiquetas(admin, sessao);
+  const nomeSessao = sessao.waha_session_name;
+  const chatsDe = async (id: string | null | undefined) => {
+    if (!id) return [] as string[];
+    try {
+      const chats = await waha.chatsDaEtiqueta(nomeSessao, id);
+      return chats.map((c) => c.id).filter((c) => typeof c === "string" && !chatIgnorado(c));
     } catch (err) {
-      logger.info("contatos-pessoais: etiqueta não criada (conta comum ou já existe)", { sessao: sessao.id, erro: String(err).slice(0, 120) });
+      logger.info("contatos-pessoais: conversas da etiqueta não listadas", { sessao: sessao.id, erro: String(err).slice(0, 120) });
+      return [];
+    }
+  };
+
+  const leads = await chatsDe(sessao.etiqueta_lead_id);
+  const pessoais = (await chatsDe(sessao.etiqueta_pessoal_id)).filter((c) => !leads.includes(c));
+  let feitas = 0;
+  for (const original of leads) {
+    if (feitas >= CONCILIAR_POR_RODADA) return feitas;
+    const chatId = await chatCanonico(admin, sessao, original);
+    const chave = chaveDoChat(sessao.organization_id, chatId);
+    if (!chave) continue;
+    const linha = await lerContato(admin, sessao.id, chave);
+    if (linha?.situacao === "lead" || linha?.decidido_em) continue;
+    await aplicarDecisao(admin, sessao, chatId, "lead", { origem: "etiqueta", porUserId: sessao.owner_user_id, requestId });
+    feitas++;
+  }
+  for (const original of pessoais) {
+    if (feitas >= CONCILIAR_POR_RODADA) return feitas;
+    const chatId = await chatCanonico(admin, sessao, original);
+    const chave = chaveDoChat(sessao.organization_id, chatId);
+    if (!chave) continue;
+    const linha = await lerContato(admin, sessao.id, chave);
+    if (linha?.situacao === "pessoal" || linha?.decidido_em) continue;
+    if (await temLeadNoCrm(admin, sessao.organization_id, chatId)) continue;
+    await aplicarDecisao(admin, sessao, chatId, "pessoal", { origem: "etiqueta", porUserId: sessao.owner_user_id, requestId });
+    feitas++;
+  }
+  return feitas;
+}
+
+/** Concilia os números de corretor conectados. Erro em um número não para os outros. */
+export async function conciliarEtiquetasDosNumeros(admin: Admin, requestId: string): Promise<number> {
+  const { data } = await admin
+    .from("channel_sessions")
+    .select(COLUNAS_SESSAO)
+    .not("owner_user_id", "is", null)
+    .is("archived_at", null)
+    .eq("status", "WORKING");
+  let feitas = 0;
+  for (const sessao of (data ?? []) as unknown as SessaoDoCorretor[]) {
+    try {
+      feitas += await conciliarEtiquetas(admin, sessao, requestId);
+    } catch (err) {
+      logger.warn("contatos-pessoais: conciliar etiquetas falhou", { sessao: sessao.id, erro: String(err) });
     }
   }
+  return feitas;
 }
 
 function idDaEtiqueta(payload: Record<string, unknown>): { id: string | null; nome: string | null } {
@@ -484,17 +631,19 @@ async function tratarEtiqueta(
   const chatId = typeof payload.chatId === "string" ? payload.chatId : null;
   if (!chatId || chatIgnorado(chatId)) return;
 
-  // O nome vem no evento; logo depois do QR pode vir nulo, aí vale o id guardado.
-  let tipo = etiquetaDe(nome);
-  if (!tipo && id) {
-    if (id === sessao.etiqueta_lead_id) tipo = "lead";
-    else if (id === sessao.etiqueta_pessoal_id) tipo = "pessoal";
+  // No GOWS o evento nunca traz o nome: vale o id guardado. Id desconhecido (a
+  // etiqueta foi criada à mão no aparelho) confere na lista de etiquetas do número.
+  const tipoPeloId = () => (!id ? null : id === sessao.etiqueta_lead_id ? "lead" : id === sessao.etiqueta_pessoal_id ? "pessoal" : null);
+  let tipo = etiquetaDe(nome) ?? tipoPeloId();
+  if (!tipo) {
+    await garantirEtiquetas(admin, sessao);
+    tipo = tipoPeloId();
   }
   if (!tipo) return;
   if (tipo === "lead" && id && !sessao.etiqueta_lead_id) {
     await admin.from("channel_sessions").update({ etiqueta_lead_id: id }).eq("id", sessao.id);
   }
-  await aplicarDecisao(admin, sessao, chatId, tipo, { origem: "etiqueta", porUserId: sessao.owner_user_id ?? null, requestId });
+  await aplicarDecisao(admin, sessao, await chatCanonico(admin, sessao, chatId), tipo, { origem: "etiqueta", porUserId: sessao.owner_user_id ?? null, requestId });
 }
 
 /**
@@ -510,10 +659,33 @@ export async function aplicarDecisao(
   sessao: SessaoDoCorretor,
   chatId: string,
   nova: "lead" | "pessoal",
-  o: { origem: OrigemContato; porUserId: string | null; requestId: string; nome?: string | null },
+  o: {
+    origem: OrigemContato;
+    porUserId: string | null;
+    requestId: string;
+    nome?: string | null;
+    /** Quem chama já conferiu que pode: gestor, ou lead próprio do corretor. */
+    pessoalAutorizado?: boolean;
+  },
 ): Promise<void> {
   const chave = chaveDoChat(sessao.organization_id, chatId);
   if (!chave) return;
+  // Lead da OPA não vira pessoal pela etiqueta do aparelho: nada se apaga e o prazo segue.
+  if (nova === "pessoal" && !o.pessoalAutorizado) {
+    const daOpa = await leadDaOpaDoChat(admin, sessao.organization_id, chatId);
+    if (daOpa) {
+      await admin.from("crm_lead_activities").insert({
+        organization_id: sessao.organization_id,
+        lead_id: daOpa,
+        source_module: "opa",
+        type: "pessoal_recusado",
+        payload: { origem: o.origem },
+        actor_kind: "system",
+        reason: "Tentaram marcar como pessoal um lead que veio por ação da OPA. O lead continua aberto.",
+      });
+      return;
+    }
+  }
   const linha = await lerContato(admin, sessao.id, chave);
   const efeito = decisaoDoCorretor(nova);
   const { promoveu, id } = await gravarSituacao(
@@ -861,143 +1033,6 @@ async function lerEspera(
   return ((data ?? []) as LinhaEspera[]).reverse();
 }
 
-/** Uma mensagem em espera aberta para a tela do dono do número. */
-export interface MensagemEmEspera {
-  id: string;
-  direcao: "entrada" | "saida";
-  /** Texto, ou o marcador da mídia ("[áudio]", "[foto]"...) com a legenda. */
-  texto: string;
-  em: string;
-}
-
-function abrirEspera(org: string, m: LinhaEspera): MensagemEmEspera {
-  return { id: m.id, direcao: m.direcao, texto: textoDaEspera(m.tipo, aberto(org, "mensagem", m.corpo_cifrado)), em: m.mensagem_em };
-}
-
-export interface ContatoAClassificar {
-  id: string;
-  nome: string | null;
-  telefone: string | null;
-  ultimoContatoEm: string | null;
-  mensagens: number;
-  ultimaMensagem: MensagemEmEspera | null;
-}
-
-/** Contatos a classificar do número do corretor, com nome, telefone e a última mensagem abertos para a tela. */
-export async function contatosAClassificar(
-  admin: Admin,
-  sessao: Pick<SessaoDoCorretor, "id" | "organization_id">,
-  limite: number,
-): Promise<ContatoAClassificar[]> {
-  const { data } = await admin
-    .from("whatsapp_contatos_numero")
-    .select("id, nome_cifrado, telefone_cifrado, ultimo_contato_em, mensagens_ignoradas")
-    .eq("channel_session_id", sessao.id)
-    .eq("situacao", "a_classificar")
-    .order("ultimo_contato_em", { ascending: false })
-    .limit(limite);
-  const org = sessao.organization_id;
-  const linhas = (data ?? []) as Array<{
-    id: string;
-    nome_cifrado: string | null;
-    telefone_cifrado: string | null;
-    ultimo_contato_em: string | null;
-    mensagens_ignoradas: number;
-  }>;
-
-  // A espera de todos de uma vez (no máximo 20 por contato): a última e a contagem.
-  const porContato = new Map<string, LinhaEspera[]>();
-  if (linhas.length) {
-    const { data: espera } = await admin
-      .from(ESPERA)
-      .select(COLUNAS_ESPERA)
-      .eq("channel_session_id", sessao.id)
-      .in(
-        "contato_numero_id",
-        linhas.map((l) => l.id),
-      )
-      .order("mensagem_em", { ascending: false });
-    for (const m of (espera ?? []) as Array<LinhaEspera & { contato_numero_id: string }>) {
-      const lista = porContato.get(m.contato_numero_id) ?? [];
-      lista.push(m);
-      porContato.set(m.contato_numero_id, lista);
-    }
-  }
-
-  return linhas.map((l) => {
-    const guardadas = porContato.get(l.id) ?? [];
-    const ultima = guardadas[0];
-    return {
-      id: l.id,
-      nome: aberto(org, "nome", l.nome_cifrado),
-      telefone: aberto(org, "telefone", l.telefone_cifrado),
-      ultimoContatoEm: l.ultimo_contato_em,
-      mensagens: guardadas.length || l.mensagens_ignoradas,
-      ultimaMensagem: ultima ? abrirEspera(org, ultima) : null,
-    };
-  });
-}
-
-export interface ContatoDaEquipe extends ContatoAClassificar {
-  corretorId: string;
-}
-
-/**
- * Contatos a classificar dos números da equipe, para o gestor acompanhar (decisão
- * do Allyson, 05/11/2026). Fora o número de quem pede, que já aparece em "Contatos
- * novos"; o limite vale por número, para um corretor não esconder os outros.
- */
-export async function contatosAClassificarDaEquipe(
-  admin: Admin,
-  orgId: string,
-  exceto: string,
-  limitePorNumero: number,
-): Promise<ContatoDaEquipe[]> {
-  const { data } = await admin
-    .from("channel_sessions")
-    .select("id, organization_id, owner_user_id")
-    .eq("organization_id", orgId)
-    .is("archived_at", null);
-  const sessoes = ((data ?? []) as Array<{ id: string; organization_id: string; owner_user_id: string | null }>).filter(
-    (s) => s.owner_user_id && s.owner_user_id !== exceto,
-  );
-  const listas = await Promise.all(
-    sessoes.map(async (s) => {
-      const contatos = await contatosAClassificar(admin, s, limitePorNumero);
-      return contatos.map((c) => ({ ...c, corretorId: s.owner_user_id! }));
-    }),
-  );
-  return listas.flat();
-}
-
-/** O número de uma linha a classificar, dentro da organização informada (o "Ver conversa" do gestor). */
-export async function sessaoDoContatoAClassificar(
-  admin: Admin,
-  orgId: string,
-  linhaId: string,
-): Promise<Pick<SessaoDoCorretor, "id" | "organization_id"> | null> {
-  const { data } = await admin
-    .from("whatsapp_contatos_numero")
-    .select("channel_session_id")
-    .eq("id", linhaId)
-    .eq("organization_id", orgId)
-    .eq("situacao", "a_classificar")
-    .maybeSingle();
-  const l = data as { channel_session_id: string } | null;
-  return l ? { id: l.channel_session_id, organization_id: orgId } : null;
-}
-
-/** As últimas mensagens em espera de um contato (o "Ver conversa"), só do número informado. */
-export async function conversaEmEspera(
-  admin: Admin,
-  sessao: Pick<SessaoDoCorretor, "id" | "organization_id">,
-  contatoNumeroId: string,
-  limite = CONVERSA_NA_TELA,
-): Promise<MensagemEmEspera[]> {
-  const org = sessao.organization_id;
-  return (await lerEspera(admin, sessao, contatoNumeroId, limite)).map((m) => abrirEspera(org, m));
-}
-
 /**
  * Sem decisão do corretor, a conversa guardada some em 7 dias (decisão de
  * 02/11/2026). Chamada pela rotina de minuto em minuto (/api/v1/cron/opa-lembretes):
@@ -1022,27 +1057,6 @@ export async function resumoDoNumero(admin: Admin, sessaoId: string): Promise<{ 
   };
   const [pessoais, aClassificar, leads] = await Promise.all([contar("pessoal"), contar("a_classificar"), contar("lead")]);
   return { pessoais, aClassificar, leads };
-}
-
-/** O chat guardado (cifrado) de uma linha a classificar, para o botão do CRM agir. */
-export async function chatDaLinha(
-  admin: Admin,
-  sessao: Pick<SessaoDoCorretor, "id" | "organization_id">,
-  linhaId: string,
-): Promise<{ chatId: string | null; nome: string | null } | null> {
-  const { data } = await admin
-    .from("whatsapp_contatos_numero")
-    .select("chat_cifrado, nome_cifrado")
-    .eq("id", linhaId)
-    .eq("channel_session_id", sessao.id)
-    .maybeSingle();
-  const l = data as { chat_cifrado: string | null; nome_cifrado: string | null } | null;
-  if (!l) return null;
-  const org = sessao.organization_id;
-  return {
-    chatId: l.chat_cifrado && cifraConfigurada() ? decifrar(l.chat_cifrado, { org, campo: "telefone" }) : null,
-    nome: l.nome_cifrado && cifraConfigurada() ? decifrar(l.nome_cifrado, { org, campo: "nome" }) : null,
-  };
 }
 
 /** Fecha a janela de importação depois de 15 min (marca quando os pessoais pararam de entrar sozinhos). */

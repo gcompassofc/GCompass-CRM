@@ -116,15 +116,6 @@ export interface LeadOpa {
   pedidoRadar: PedidoRadarSalvo | null;
 }
 
-/**
- * A pergunta "Lead ou pessoal?" aparece no lead aberto que tem conversa de
- * WhatsApp no CRM e que ninguém confirmou ainda. Lead de formulário sem conversa
- * não pergunta: veio de quem pediu contato.
- */
-export function perguntarLeadOuPessoal(l: Pick<LeadOpa, "status" | "classificado" | "conversa">): boolean {
-  return l.status === "open" && l.classificado === null && Boolean(l.conversa?.id);
-}
-
 export const ROTULO_ORIGEM: Record<string, string> = {
   meta: "Formulário Meta",
   site: "Site",

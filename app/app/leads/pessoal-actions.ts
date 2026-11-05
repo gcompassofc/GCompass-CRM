@@ -9,7 +9,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { avisarMudancaDeEtapa } from "@/lib/opa/eventos-lead";
 import { normalizarWhatsapp } from "@/lib/auth/segundo-fator";
 import { aplicarDecisao, chatDoContato, numeroDoCorretor, sessaoPorId } from "@/lib/waha/contatos-pessoais";
-import { MOTIVO_PESSOAL } from "@/lib/opa/contatos-whatsapp";
+import { ehLeadDaOpa, MOTIVO_PESSOAL } from "@/lib/opa/contatos-whatsapp";
 
 /**
  * Lead que era contato pessoal, e o caminho de volta (pedido do Allyson, 03/11/2026).
@@ -32,7 +32,7 @@ async function contexto(leadId: string) {
   const admin = createAdminClient();
   const { data } = await admin
     .from("crm_leads")
-    .select("id, owner_user_id, contact_id, pipeline_id, stage_id, status, lost_reason")
+    .select("id, owner_user_id, contact_id, pipeline_id, stage_id, status, lost_reason, tags")
     .eq("organization_id", org.orgId)
     .eq("id", leadId)
     .maybeSingle();
@@ -44,12 +44,13 @@ async function contexto(leadId: string) {
     stage_id: string;
     status: string;
     lost_reason: string | null;
+    tags: string[] | null;
   } | null;
   if (!lead) return { erro: "Lead não encontrado." } as const;
   const gestor = user.is_platform_admin || org.role === "manager" || org.role === "admin";
   if (!gestor && lead.owner_user_id !== user.id) return { erro: "Só o corretor do lead ou o gestor pode fazer isso." } as const;
   if (org.role === "viewer") return { erro: "Seu acesso é só de leitura." } as const;
-  return { user, org, admin, lead } as const;
+  return { user, org, admin, lead, gestor } as const;
 }
 
 /** A conversa de WhatsApp do lead: o número do dono do lead primeiro. */
@@ -81,8 +82,12 @@ async function conversaDoLead(
 export async function marcarLeadComoPessoal(leadId: string): Promise<Resultado> {
   const c = await contexto(leadId);
   if ("erro" in c) return { ok: false, erro: c.erro! };
-  const { admin, org, user, lead } = c;
+  const { admin, org, user, lead, gestor } = c;
   if (lead.status !== "open") return { ok: false, erro: "Este lead já está encerrado." };
+  // Lead que veio por ação da OPA: só o gestor encerra como pessoal (05/11/2026).
+  if (!gestor && ehLeadDaOpa(lead.tags)) {
+    return { ok: false, erro: "Este lead veio por ação da OPA. Se for mesmo pessoal, peça ao gestor." };
+  }
 
   const conversa = await conversaDoLead(admin, org.orgId, lead);
   if (conversa) {
@@ -90,6 +95,7 @@ export async function marcarLeadComoPessoal(leadId: string): Promise<Resultado> 
       origem: "corretor",
       porUserId: user.id,
       requestId: randomUUID(),
+      pessoalAutorizado: true,
     });
   }
 
@@ -222,51 +228,5 @@ export async function numeroViraLead(numero: string): Promise<Resultado> {
   revalidatePath("/app/hoje");
   revalidatePath("/app/leads");
   revalidatePath("/app/meu-whatsapp");
-  return { ok: true };
-}
-
-/**
- * "É lead" da pergunta "Lead ou pessoal?" (pedido do Allyson, 03/11/2026): o
- * corretor confirma que a conversa é de cliente. Grava a resposta no lead (a
- * pergunta some de todas as telas) e põe a etiqueta "Lead OPA" no WhatsApp.
- */
-export async function confirmarLead(leadId: string): Promise<Resultado> {
-  const c = await contexto(leadId);
-  if ("erro" in c) return { ok: false, erro: c.erro! };
-  const { admin, org, user, lead } = c;
-  if (lead.status !== "open") return { ok: false, erro: "Este lead já está encerrado." };
-
-  const { data } = await admin
-    .from("crm_leads")
-    .select("custom_fields")
-    .eq("organization_id", org.orgId)
-    .eq("id", leadId)
-    .maybeSingle();
-  const cf = ((data as { custom_fields: Record<string, unknown> | null } | null)?.custom_fields ?? {}) as Record<string, unknown>;
-  const agora = new Date().toISOString();
-  const { error } = await admin
-    .from("crm_leads")
-    .update({ custom_fields: { ...cf, classificado: { como: "lead", em: agora, por: user.id } } })
-    .eq("organization_id", org.orgId)
-    .eq("id", leadId);
-  if (error) return { ok: false, erro: "Não consegui salvar. Tente de novo." };
-
-  const conversa = await conversaDoLead(admin, org.orgId, lead);
-  if (conversa) {
-    try {
-      await aplicarDecisao(admin, conversa.sessao, conversa.chatId, "lead", {
-        origem: "corretor",
-        porUserId: user.id,
-        requestId: randomUUID(),
-      });
-    } catch {
-      // A resposta já está salva no lead; a etiqueta do WhatsApp é melhor esforço.
-    }
-  }
-  revalidatePath(`/app/leads/${leadId}`);
-  revalidatePath("/app/hoje");
-  revalidatePath("/app/fila");
-  revalidatePath("/app/pipeline");
-  revalidatePath("/app/leads");
   return { ok: true };
 }

@@ -167,10 +167,6 @@ const {
   aplicarDecisao,
   apagarEsperaVencida,
   chaveDoChat,
-  contatosAClassificar,
-  contatosAClassificarDaEquipe,
-  conversaEmEspera,
-  sessaoDoContatoAClassificar,
 } = await import(
   "@/lib/waha/contatos-pessoais"
 );
@@ -324,66 +320,5 @@ describe("Pessoal e limpeza de 7 dias", () => {
     tabela(ESPERA)[2]!.created_at = "2026-11-09T12:00:00.000Z";
     expect(await apagarEsperaVencida(A, agora)).toBe(1);
     expect(tabela(ESPERA).map((m) => m.id)).toEqual(["e2", "e3"]);
-  });
-});
-
-describe("Tela Contatos novos", () => {
-  it("mostra nome, telefone e a última mensagem (mídia como marcador)", async () => {
-    semear("5512999990000@c.us", { telefone: "+5512999990000" });
-    const [c] = await contatosAClassificar(A, SESSAO, 20);
-    expect(c).toMatchObject({ id: "linha-1", nome: "Marina", telefone: "+5512999990000", mensagens: 3 });
-    expect(c?.ultimaMensagem).toMatchObject({ direcao: "entrada", texto: "[áudio]" });
-  });
-
-  it("sem nome nem telefone (número oculto), a tela recebe null e escreve o aviso", async () => {
-    semear("250302204792918@lid", { nome: null });
-    const [c] = await contatosAClassificar(A, SESSAO, 20);
-    expect(c).toMatchObject({ nome: null, telefone: null });
-  });
-
-  it("Ver conversa abre as últimas, da mais velha para a mais nova, só do número de quem pediu", async () => {
-    semear("5512999990000@c.us");
-    const conversa = await conversaEmEspera(A, SESSAO, "linha-1", 2);
-    expect(conversa.map((m) => m.texto)).toEqual(["Oi! Te mando as fotos", "[áudio]"]);
-    expect(await conversaEmEspera(A, { ...SESSAO, id: "sessao-de-outro" }, "linha-1")).toEqual([]);
-  });
-});
-
-describe("Contatos novos da equipe (gestor, 05/11/2026)", () => {
-  const sessoes = () => {
-    tabela("channel_sessions").push(
-      { id: SESSAO.id, organization_id: ORG, owner_user_id: "corretor-1", archived_at: null },
-      { id: "sessao-gestor", organization_id: ORG, owner_user_id: "gestor-1", archived_at: null },
-      { id: "sessao-sem-dono", organization_id: ORG, owner_user_id: null, archived_at: null },
-      { id: "sessao-arquivada", organization_id: ORG, owner_user_id: "corretor-2", archived_at: "2026-11-01T00:00:00Z" },
-      { id: "sessao-outra-org", organization_id: "org-2", owner_user_id: "corretor-3", archived_at: null },
-    );
-  };
-
-  it("traz os contatos dos corretores com o dono, sem o próprio número nem outra organização", async () => {
-    semear("5512999990000@c.us", { telefone: "+5512999990000" });
-    sessoes();
-    tabela("whatsapp_contatos_numero").push(
-      { id: "linha-gestor", organization_id: ORG, channel_session_id: "sessao-gestor", situacao: "a_classificar", mensagens_ignoradas: 0 },
-      { id: "linha-outra-org", organization_id: "org-2", channel_session_id: "sessao-outra-org", situacao: "a_classificar", mensagens_ignoradas: 0 },
-    );
-    const lista = await contatosAClassificarDaEquipe(A, ORG, "gestor-1", 20);
-    expect(lista.map((c) => c.id)).toEqual(["linha-1"]);
-    expect(lista[0]).toMatchObject({ corretorId: "corretor-1", nome: "Marina" });
-  });
-
-  it("contato marcado como pessoal sai da lista do gestor", async () => {
-    semear("5512999990000@c.us");
-    sessoes();
-    await decidir("5512999990000@c.us", "pessoal");
-    expect(await contatosAClassificarDaEquipe(A, ORG, "gestor-1", 20)).toEqual([]);
-  });
-
-  it("Ver conversa do gestor acha o número só dentro da organização e só enquanto espera decisão", async () => {
-    semear("5512999990000@c.us");
-    expect(await sessaoDoContatoAClassificar(A, ORG, "linha-1")).toEqual({ id: SESSAO.id, organization_id: ORG });
-    expect(await sessaoDoContatoAClassificar(A, "org-2", "linha-1")).toBeNull();
-    await decidir("5512999990000@c.us", "lead");
-    expect(await sessaoDoContatoAClassificar(A, ORG, "linha-1")).toBeNull();
   });
 });

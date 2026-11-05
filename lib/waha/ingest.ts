@@ -47,6 +47,9 @@ export interface WahaPayload {
     pushName?: string;
     /** NOWEB: o conteúdo real (imageMessage, stickerMessage, …) — fonte do tipo. */
     message?: Record<string, unknown>;
+    /** GOWS: dados da mensagem (nome, chat, telefone alternativo) e o conteúdo. */
+    Info?: { PushName?: string; SenderAlt?: string; RecipientAlt?: string } & Record<string, unknown>;
+    Message?: Record<string, unknown>;
   } & Record<string, unknown>;
 }
 
@@ -217,7 +220,7 @@ const NOWEB_MESSAGE_KEY_TYPE: Record<string, string> = {
 
 export function resolveMessageType(p: WahaPayload): string {
   if (p.type) return mapWahaMessageType(p.type);
-  const msg = p._data?.message;
+  const msg = p._data?.message ?? p._data?.Message;
   if (msg && typeof msg === "object") {
     for (const [key, mapped] of Object.entries(NOWEB_MESSAGE_KEY_TYPE)) {
       if (key in msg) return mapped;
@@ -235,7 +238,7 @@ export function resolveMessageType(p: WahaPayload): string {
 }
 
 function notifyNameOf(p: WahaPayload): string | null {
-  return p._data?.notifyName ?? p._data?.pushName ?? null;
+  return p._data?.notifyName ?? p._data?.pushName ?? (p._data?.Info?.PushName || null);
 }
 
 /**

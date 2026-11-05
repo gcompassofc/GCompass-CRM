@@ -4,12 +4,12 @@ import {
   JANELA_IMPORTACAO_MS,
   chatIgnorado,
   decidir,
+  ehLeadDaOpa,
   decisaoDoCorretor,
   emJanelaDeImportacao,
   etiquetaDe,
   sinalDeEntrada,
   telefoneAlternativo,
-  textoDaEspera,
   tipoEmEspera,
   type EntradaDecisao,
 } from "./contatos-whatsapp";
@@ -33,13 +33,8 @@ describe("decidir: pessoal, lead ou a classificar", () => {
     expect(decidir({ ...base, atual: "pessoal" })).toEqual({ situacao: "pessoal", origem: null, gravar: false, virouLead: false });
   });
 
-  it("pessoal com sinal de anúncio ou site só vai para o corretor decidir, sem guardar", () => {
-    expect(decidir({ ...base, atual: "pessoal", sinal: SITE })).toEqual({
-      situacao: "a_classificar",
-      origem: "site",
-      gravar: false,
-      virouLead: false,
-    });
+  it("sinal de anúncio ou site ganha de pessoal: marcar o número antes não segura o lead da OPA", () => {
+    expect(decidir({ ...base, atual: "pessoal", sinal: SITE })).toMatchObject({ situacao: "lead", origem: "site", gravar: true, virouLead: true });
   });
 
   it("contato novo com sinal de anúncio vira lead na hora", () => {
@@ -72,10 +67,24 @@ describe("sinais de anúncio e do site", () => {
     expect(sinalDeEntrada({ body: "Olá! Quero saber mais sobre o imóvel Casa no Perequê." })).toEqual({ origem: "site", imovelCodigo: null });
   });
 
-  it("anúncio de clique para o WhatsApp: externalAdReply ou ctwaClid no _data, em qualquer profundidade", () => {
-    const _data = { message: { extendedTextMessage: { contextInfo: { externalAdReply: { sourceUrl: "https://fb.me/x" } } } } };
-    expect(sinalDeEntrada({ body: "oi", _data })).toEqual({ origem: "campanha", imovelCodigo: null });
-    expect(sinalDeEntrada({ body: "oi", _data: { ctwaClid: "abc" } })?.origem).toBe("campanha");
+  it("anúncio de clique para o WhatsApp, nas grafias dos dois motores", () => {
+    const noweb = { message: { extendedTextMessage: { contextInfo: { conversionSource: "FB_Ads", externalAdReply: { sourceType: "ad", ctwaClid: "abc" } } } } };
+    expect(sinalDeEntrada({ body: "oi", _data: noweb })).toEqual({ origem: "campanha", imovelCodigo: null });
+    expect(sinalDeEntrada({ body: "oi", _data: { Message: { extendedTextMessage: { contextInfo: { CtwaClid: "abc" } } } } })?.origem).toBe("campanha");
+    expect(sinalDeEntrada({ body: "oi", _data: { externalAdReply: { sourceType: "AD" } } })?.origem).toBe("campanha");
+    expect(sinalDeEntrada({ body: "oi", _data: { entryPointConversionSource: "ctwa_ad" } })?.origem).toBe("campanha");
+  });
+
+  it("marca que aparece em conversa comum não é anúncio", () => {
+    for (const _data of [
+      { entryPointConversionSource: "global_search_new_chat" },
+      { conversionSource: "contact_card" },
+      { entryPointConversionSource: "click_to_chat_link" },
+      { externalAdReply: { sourceType: "link", sourceUrl: "https://exemplo.com" } },
+      { referral: { source: "x" } },
+    ]) {
+      expect(sinalDeEntrada({ body: "oi", _data })).toBeNull();
+    }
   });
 
   it("conversa comum não tem sinal (nem chave vazia de anúncio)", () => {
@@ -126,14 +135,7 @@ describe("decisão do corretor (botão ou etiqueta) e desfazer", () => {
   });
 });
 
-describe("conversa em espera (0124): o que a tela mostra", () => {
-  it("mídia vira marcador, com a legenda quando há", () => {
-    expect(textoDaEspera("audio", null)).toBe("[áudio]");
-    expect(textoDaEspera("image", "Fachada da casa")).toBe("[foto] Fachada da casa");
-    expect(textoDaEspera("document", "  ")).toBe("[documento]");
-    expect(textoDaEspera("text", "Oi, tudo bem?")).toBe("Oi, tudo bem?");
-  });
-
+describe("conversa em espera (0124)", () => {
   it("reação e tipo desconhecido não entram na espera", () => {
     expect(tipoEmEspera("text")).toBe(true);
     expect(tipoEmEspera("audio")).toBe(true);
@@ -150,6 +152,10 @@ describe("telefone de contato com número oculto (@lid), sem o store do WAHA", (
     );
     expect(telefoneAlternativo({ _data: { key: { senderPn: "5512988887777@s.whatsapp.net" } } }, "entrada")).toBe("+5512988887777");
     expect(telefoneAlternativo({ _data: { senderPn: "5512988887777@c.us" } }, "entrada")).toBe("+5512988887777");
+    // GOWS: o telefone vem em Info.SenderAlt (entrada) e Info.RecipientAlt (saída).
+    expect(telefoneAlternativo({ _data: { Info: { Chat: "250302204792918@lid", SenderAlt: "5512988887777@s.whatsapp.net" } } }, "entrada")).toBe("+5512988887777");
+    expect(telefoneAlternativo({ _data: { Info: { Chat: "250302204792918@lid", RecipientAlt: "5512988887777@s.whatsapp.net" } } }, "saida")).toBe("+5512988887777");
+    expect(telefoneAlternativo({ _data: { Info: { SenderAlt: "5512988887777@s.whatsapp.net" } } }, "saida")).toBeNull();
     // Sufixo de aparelho (":12") do Baileys não atrapalha.
     expect(telefoneAlternativo({ _data: { key: { participantPn: "5512988887777:12@s.whatsapp.net" } } }, "entrada")).toBe("+5512988887777");
   });
@@ -170,5 +176,14 @@ describe("telefone de contato com número oculto (@lid), sem o store do WAHA", (
   it("na saída não usa senderPn: seria o telefone do próprio corretor", () => {
     expect(telefoneAlternativo({ _data: { key: { senderPn: "5512911112222@s.whatsapp.net" } } }, "saida")).toBeNull();
     expect(telefoneAlternativo({ _data: { key: { remoteJidAlt: "5512988887777@s.whatsapp.net" } } }, "saida")).toBe("+5512988887777");
+  });
+});
+
+describe("lead da OPA", () => {
+  it("é tudo o que não tem a etiqueta proprio", () => {
+    expect(ehLeadDaOpa(["pago"])).toBe(true);
+    expect(ehLeadDaOpa(["organico"])).toBe(true);
+    expect(ehLeadDaOpa(null)).toBe(true);
+    expect(ehLeadDaOpa(["organico", "proprio"])).toBe(false);
   });
 });

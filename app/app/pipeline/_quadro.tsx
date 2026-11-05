@@ -27,7 +27,6 @@ import { cn } from "@/lib/utils";
 
 import { marcarRespondido, moverEtapa } from "../leads/actions";
 import { EnviarEtapa, type EnvioDaEtapa } from "./_enviar-etapa";
-import { LeadOuPessoal } from "../leads/[id]/_pessoal";
 import { moverCartao } from "./mover";
 
 export interface CartaoQuadro {
@@ -46,8 +45,6 @@ export interface CartaoQuadro {
   lembretesDesligados: boolean;
   parecidos: number;
   esperandoMin: number | null;
-  /** Mostra o "Lead ou pessoal?" no cartão (lib/opa/dados.ts, perguntarLeadOuPessoal). */
-  perguntar: boolean;
   /** Valor do negócio, para o total da etapa acompanhar o card que muda de coluna (F7). */
   valorCents: number;
   dono: string | null;
@@ -262,7 +259,6 @@ export function QuadroOpa({ colunas: inicial, envio }: { colunas: ColunaQuadro[]
                                 )}
                               </div>
                             </Link>
-                            {c.perguntar && <LeadOuPessoal leadId={c.id} variante="pilulas" className="mt-3" />}
                             <footer className="mt-3 flex items-center justify-between gap-2 border-t border-[#eef3f6] pt-3">
                               {c.esperandoMin != null ? (
                                 <span className="inline-flex items-center gap-1 rounded-full bg-[#e7f0f5] px-2 py-1 text-[12px] font-semibold text-[#12455f]">

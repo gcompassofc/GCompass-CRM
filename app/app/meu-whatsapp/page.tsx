@@ -5,8 +5,6 @@ import { podeMexerNoNumero } from "@/lib/channels/dono";
 import { WhatsappLogo } from "@/lib/ui/icons";
 
 import { CabecalhoOpa, CorpoOpa } from "../_opa/cabecalho";
-import { ContatosNovos } from "../_opa/contatos-novos";
-import { listarContatosNovos } from "../_opa/contatos-novos-actions";
 import { estadoMeuWhatsapp } from "./actions";
 import { MeuWhatsappCliente } from "./_cliente";
 import { NumeroViraLead } from "./_virar-lead";
@@ -23,14 +21,13 @@ export default async function MeuWhatsappPage() {
     redirect("/app/hoje");
   }
 
-  const [inicial, contatosNovos] = await Promise.all([estadoMeuWhatsapp(), listarContatosNovos()]);
+  const inicial = await estadoMeuWhatsapp();
 
   return (
     <>
       <CabecalhoOpa secao="Seu espaço" titulo="Meu WhatsApp" subtitulo="Conecte o seu número e veja se ele está no ar" icone={WhatsappLogo} equipe={false} ferramentas={false} />
       <CorpoOpa>
         <div className="mx-auto flex w-full max-w-3xl flex-col gap-6">
-          <ContatosNovos inicial={contatosNovos} compacto />
           <MeuWhatsappCliente inicial={inicial} />
           <NumeroViraLead />
         </div>

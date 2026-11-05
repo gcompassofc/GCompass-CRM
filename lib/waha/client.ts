@@ -8,6 +8,19 @@
  * stored in container env). Plaintext-then-hash is NOT used in this version.
  * So WAHA_API_KEY in .env.local IS the hex hash.
  */
+/**
+ * Configuração de toda sessão nova (decisão do Allyson, 05/11/2026). Vale no motor
+ * GOWS: guarda só as etiquetas no servidor do WAHA, nunca as mensagens nem a agenda.
+ * Sem essas etiquetas guardadas, o CRM não acha as que já existiam ao conectar.
+ * Grupo, status, canal e lista de transmissão nem viram evento.
+ */
+export const CONFIG_DA_SESSAO = {
+  gows: {
+    storage: { messages: false, groups: false, chats: false, labels: true, contacts: false, messageSecrets: false },
+  },
+  ignore: { status: true, groups: true, channels: true, broadcast: true },
+} as const;
+
 export class WahaClient {
   constructor(
     private readonly baseUrl: string,
@@ -25,7 +38,7 @@ export class WahaClient {
     const createRes = await fetch(`${this.baseUrl}/api/sessions`, {
       method: "POST",
       headers: { "X-Api-Key": this.apiKey, "Content-Type": "application/json" },
-      body: JSON.stringify({ name, config: {} }),
+      body: JSON.stringify({ name, config: CONFIG_DA_SESSAO }),
     });
     if (!createRes.ok && createRes.status !== 422 && createRes.status !== 409) {
       const body = await createRes.text().catch(() => "");
@@ -165,10 +178,9 @@ export class WahaClient {
    * Cria uma etiqueta no WhatsApp Business do número. Conta comum não tem
    * etiqueta e devolve erro: quem chama trata como "não deu" e segue.
    *
-   * Listar conversas e etiquetas (`GET /chats`, `GET /labels`) NÃO é usado de
-   * propósito: no NOWEB exige o store ligado, que grava as mensagens do aparelho
-   * (inclusive as pessoais) no disco do servidor. Os eventos de etiqueta chegam
-   * pela conexão, sem store.
+   * Atenção: no NOWEB sem store isto falha, e o evento de etiqueta também não sai
+   * (o WAHA consulta o store para montá-lo). Por isso o motor passou a ser o GOWS,
+   * com só as etiquetas guardadas (CONFIG_DA_SESSAO).
    */
   async createLabel(session: string, name: string, color = 0): Promise<{ id: string; name: string }> {
     const res = await fetch(`${this.baseUrl}/api/${encodeURIComponent(session)}/labels`, {
@@ -183,10 +195,29 @@ export class WahaClient {
     return (await res.json()) as { id: string; name: string };
   }
 
+  /** Etiquetas do número. Falha no NOWEB sem store; quem chama trata como "não deu". */
+  async listLabels(session: string): Promise<Array<{ id: string; name: string; type?: number | null }>> {
+    return this.getJson(`/api/${encodeURIComponent(session)}/labels`);
+  }
+
+  /** Conversas que têm esta etiqueta, inclusive as etiquetadas antes de o número conectar. */
+  async chatsDaEtiqueta(session: string, labelId: string): Promise<Array<{ id: string }>> {
+    return this.getJson(`/api/${encodeURIComponent(session)}/labels/${encodeURIComponent(labelId)}/chats`);
+  }
+
+  /** Telefone de um contato `@lid`, quando o WhatsApp informa. Sem resposta, null. */
+  async telefoneDoLid(session: string, lid: string): Promise<string | null> {
+    try {
+      const r = await this.getJson<{ pn?: string | null }>(`/api/${encodeURIComponent(session)}/lids/${encodeURIComponent(lid)}`);
+      return r.pn ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   /**
    * Põe etiquetas numa conversa do WhatsApp Business (`PUT /labels/chats/{chat}`).
-   * Atenção: a lista SUBSTITUI as etiquetas da conversa. Sem o store do NOWEB não
-   * dá para ler as que já existem, então quem chama manda só a etiqueta da decisão
+   * Atenção: a lista SUBSTITUI as etiquetas da conversa. Quem chama manda só a etiqueta da decisão
    * (Lead OPA ou Pessoal). Conta comum devolve erro: quem chama segue sem ela.
    */
   async setChatLabels(session: string, chatId: string, labelIds: string[]): Promise<void> {

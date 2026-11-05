@@ -49,12 +49,15 @@ function Protecao({ p }: { p?: MeuWhatsapp["protecao"] }) {
     <div data-tour="whats-protecao" className="rounded-[24px] bg-[#f2f6f9] p-5">
       <p className="flex items-start gap-3 text-[15px] font-semibold text-[#0a2d40]">
         <Lock className="mt-0.5 size-5 shrink-0" aria-hidden />
-        {p.pessoais} {p.pessoais === 1 ? "contato pessoal protegido" : "contatos pessoais protegidos"}. A IA só lê seus leads.
+        Suas conversas ficam fora do CRM. A IA só lê seus leads.
       </p>
       <p className="mt-1 pl-8 text-[13px] leading-relaxed text-[#5b7284]">
-        {p.separando
-          ? "Separando agora: nos primeiros 15 minutos, o que aparece é tratado como conversa que já estava no seu celular."
-          : `${p.leads} ${p.leads === 1 ? "lead acompanhado" : "leads acompanhados"}${p.aClassificar ? `, ${p.aClassificar} esperando você dizer se é lead` : ""}.`}
+        Só entra quem você etiqueta como Lead OPA, quem você cadastra e quem chega de anúncio ou do site. {p.leads}{" "}
+        {p.leads === 1 ? "lead acompanhado" : "leads acompanhados"}.
+      </p>
+      <p className="mt-2 pl-8 text-[13px] leading-relaxed text-[#5b7284]">
+        Para trazer o começo da conversa quando alguém vira lead, as últimas mensagens de quem ainda não é lead ficam guardadas e
+        cifradas por até 7 dias. Nenhuma tela mostra. Grupos não são guardados.
       </p>
       <details className="mt-4 pl-8">
         <summary className="cursor-pointer text-[14px] font-semibold text-[#2a7ca8]">Como marcar um lead pelo WhatsApp</summary>
@@ -69,8 +72,8 @@ function Protecao({ p }: { p?: MeuWhatsapp["protecao"] }) {
         <p className="mt-3 text-[13px] leading-relaxed text-[#5b7284]">
           {p.etiquetas
             ? "As etiquetas Lead OPA e Pessoal já estão no seu WhatsApp Business."
-            : "Não achei as etiquetas no seu WhatsApp. Se for o WhatsApp Business, crie Lead OPA e Pessoal em Ferramentas, Etiquetas. No WhatsApp comum, use os botões É lead e Pessoal aqui no CRM."}{" "}
-          Lead que chega de anúncio, do site ou que você cadastra no CRM entra sozinho.
+            : "Não achei as etiquetas no seu WhatsApp. Se for o WhatsApp Business, crie Lead OPA e Pessoal em Ferramentas, Etiquetas. No WhatsApp comum, cadastre o número do cliente aqui no CRM."}{" "}
+          Lead de anúncio ou do site entra sozinho e é da OPA: só o gestor pode marcar como pessoal.
         </p>
       </details>
     </div>
@@ -107,7 +110,7 @@ export function MeuWhatsappCliente({ inicial }: { inicial: MeuWhatsapp }) {
 
   // Avisa a mudança que importa: o número entrou no ar ou caiu.
   useEffect(() => {
-    if (anterior.current !== "conectado" && e.estado === "conectado") toast.success("WhatsApp conectado. Suas conversas já chegam aqui.");
+    if (anterior.current !== "conectado" && e.estado === "conectado") toast.success("WhatsApp conectado.");
     if (anterior.current === "conectado" && e.estado === "caiu") toast.error("Seu WhatsApp desconectou. Toque em Reconectar.");
     anterior.current = e.estado;
   }, [e.estado]);

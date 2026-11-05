@@ -237,6 +237,19 @@ export async function registrarLeadDoContato(
   return { leadId, novo: true };
 }
 
+/** O contato já teve lead da OPA dentro da janela de volta (config.volta_dias)? */
+async function jaFoiDaOpa(admin: SupabaseClient, orgId: string, contactId: string): Promise<boolean> {
+  const { volta_dias } = await carregarConfig(admin, orgId);
+  const limite = new Date(Date.now() - volta_dias * 86_400_000).toISOString();
+  const { data } = await admin
+    .from("crm_leads")
+    .select("tags, created_at")
+    .eq("organization_id", orgId)
+    .eq("contact_id", contactId)
+    .gte("created_at", limite);
+  return ((data ?? []) as Array<{ tags: string[] | null }>).some((l) => !(l.tags ?? []).includes("proprio"));
+}
+
 async function criarLead(
   admin: SupabaseClient,
   orgId: string,
@@ -249,10 +262,13 @@ async function criarLead(
   extra: Record<string, unknown>,
 ): Promise<string> {
   const { pipelineId, etapaId } = await funilCompradores(admin, orgId);
+  // Quem já chegou por ação da OPA não vira próprio num cadastro novo (05/11/2026):
+  // sem isto, bastava encerrar o lead e cadastrar o número de novo para fugir do repasse.
+  const proprio = Boolean(e.proprio) && !(await jaFoiDaOpa(admin, orgId, contactId));
   const tags = [
     e.origem === "meta" ? "pago" : "organico",
     ...(im?.off_market ? ["off-market-comprador"] : []),
-    ...(e.proprio ? ["proprio"] : []),
+    ...(proprio ? ["proprio"] : []),
   ];
   const { data, error } = await admin
     .from("crm_leads")

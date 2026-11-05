@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
+import { ehLeadDaOpa, MOTIVO_PESSOAL } from "@/lib/opa/contatos-whatsapp";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { analisarLead } from "@/lib/opa/analisar";
 import { mesclarCampos, type OpcoesMescla } from "@/lib/opa/campos";
@@ -26,6 +27,11 @@ async function contexto() {
   const org = await resolveActiveOrg(user);
   if (!org) throw new Error("Sem organização ativa.");
   return { user, org, supabase: await createClient() };
+}
+
+/** Gestor pode mexer no prazo e encerrar como pessoal; o corretor, só no lead que ele trouxe. */
+function ehGestor(ctx: { user: { is_platform_admin?: boolean | null }; org: { role: string } }): boolean {
+  return Boolean(ctx.user.is_platform_admin) || ctx.org.role === "manager" || ctx.org.role === "admin";
 }
 
 async function gravarCampo(leadId: string, campo: string, valor: string) {
@@ -310,8 +316,38 @@ export async function marcarRespondido(formData: FormData) {
   const leadId = String(formData.get("leadId") ?? "");
   const { user, org, supabase } = await contexto();
   if (org.role === "viewer") throw new Error("Seu acesso é só de leitura.");
-  const { data: lead } = await supabase.from("crm_leads").select("contact_id").eq("organization_id", org.orgId).eq("id", leadId).maybeSingle();
+  const { data: lead } = await supabase
+    .from("crm_leads")
+    .select("contact_id, tags, created_at")
+    .eq("organization_id", org.orgId)
+    .eq("id", leadId)
+    .maybeSingle();
   if (!lead) throw new Error("Lead não encontrado.");
+  // Lead da OPA de quem tem o WhatsApp ligado: a resposta aparece sozinha. O "Respondi"
+  // sem mensagem nenhuma parava o prazo e segurava o lead (05/11/2026).
+  const dados = lead as { contact_id: string | null; tags: string[] | null; created_at: string };
+  if (!ehGestor({ user, org }) && ehLeadDaOpa(dados.tags) && dados.contact_id) {
+    const admin = createAdminClient();
+    const { data: numero } = await admin
+      .from("channel_sessions")
+      .select("id")
+      .eq("organization_id", org.orgId)
+      .eq("owner_user_id", user.id)
+      .eq("status", "WORKING")
+      .is("archived_at", null)
+      .maybeSingle();
+    if (numero) {
+      const { data: saida } = await admin
+        .from("conversations")
+        .select("id")
+        .eq("organization_id", org.orgId)
+        .eq("contact_id", dados.contact_id)
+        .gt("last_outbound_at", dados.created_at)
+        .limit(1)
+        .maybeSingle();
+      if (!saida) throw new Error("Responda o cliente pelo WhatsApp: a resposta é registrada sozinha.");
+    }
+  }
   const agora = new Date().toISOString();
   const { error } = await supabase.from("crm_lead_activities").insert({
     organization_id: org.orgId,
@@ -369,6 +405,13 @@ export async function salvarCamposCorretor(formData: FormData) {
 export async function alternarLembretes(formData: FormData) {
   const leadId = String(formData.get("leadId") ?? "");
   const desligar = (await lerCampo<boolean>(leadId, "lembretes_desligados")) !== true;
+  if (desligar) {
+    const ctx = await contexto();
+    const { data } = await ctx.supabase.from("crm_leads").select("tags").eq("organization_id", ctx.org.orgId).eq("id", leadId).maybeSingle();
+    if (!ehGestor(ctx) && ehLeadDaOpa((data as { tags: string[] | null } | null)?.tags)) {
+      throw new Error("Este lead veio por ação da OPA: só o gestor desliga os avisos.");
+    }
+  }
   await mudarCampos(leadId, { lembretes_desligados: desligar, lembretes_desligados_em: desligar ? new Date().toISOString() : null });
   revalidatePath(`/app/leads/${leadId}`);
   revalidatePath("/app/lembretes");
@@ -477,15 +520,18 @@ export async function perderNegocio(formData: FormData): Promise<ResultadoEtapa>
   const leadId = String(formData.get("leadId") ?? "");
   const motivo = String(formData.get("motivo") ?? "").trim();
   if (!motivo) return { ok: false, erro: "Escolha o motivo." };
-  const { org, supabase } = await contexto();
+  const { user, org, supabase } = await contexto();
   const { data: lead } = await supabase
     .from("crm_leads")
-    .select("pipeline_id")
+    .select("pipeline_id, tags")
     .eq("organization_id", org.orgId)
     .eq("id", leadId)
     .maybeSingle();
   if (!lead) return { ok: false, erro: "Lead não encontrado." };
   const pipelineId = (lead as { pipeline_id: string }).pipeline_id;
+  if (motivo === MOTIVO_PESSOAL && !ehGestor({ user, org }) && ehLeadDaOpa((lead as { tags: string[] | null }).tags)) {
+    return { ok: false, erro: "Este lead veio por ação da OPA. Se for mesmo pessoal, peça ao gestor." };
+  }
 
   // A base só aceita motivo cadastrado no funil (fn_validate_lost_reason_required).
   // Os motivos moram em Configurações > Motivos de perda: sincroniza antes de gravar.

@@ -37,8 +37,20 @@ async function cifrar() {
   }
 }
 
+/** Lembretes e, a cada 5 minutos, as etiquetas que estão no aparelho e o CRM ainda não sabe. */
+async function lembretes() {
+  try {
+    const r = await fetch(`${base}/api/v1/cron/opa-lembretes`, { headers: { Authorization: `Bearer ${segredo}` } });
+    const d = (await r.json().catch(() => ({})))?.data ?? {};
+    if (!r.ok || d.etiquetasConciliadas) console.info(new Date().toLocaleTimeString("pt-BR"), "etiquetas", r.status, d.etiquetasConciliadas ?? "");
+  } catch {
+    // o tick do copiloto já avisa quando o app não responde
+  }
+}
+
 async function tick() {
   await cifrar();
+  await lembretes();
   try {
     const r = await fetch(`${base}/api/v1/cron/opa-copiloto`, {
       headers: { Authorization: `Bearer ${segredo}` },

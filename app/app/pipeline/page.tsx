@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { carregarConfig } from "@/lib/opa/config";
-import { carregarEquipe, carregarImoveis, carregarLeads, filtrarCorretor, perguntarLeadOuPessoal, primeiroNome, ROTULO_ORIGEM, type LeadOpa } from "@/lib/opa/dados";
+import { carregarEquipe, carregarImoveis, carregarLeads, filtrarCorretor, primeiroNome, ROTULO_ORIGEM, type LeadOpa } from "@/lib/opa/dados";
 import { escopoDoFunil } from "@/lib/opa/envio-etapa";
 import { afinidade, precoCurto } from "@/lib/opa/imoveis";
 import { diaSP, inicioDoDia } from "@/lib/opa/periodo";
@@ -169,7 +169,6 @@ export default async function PipelinePage({
           lembretesDesligados: l.lembretesDesligados,
           parecidos,
           esperandoMin: l.conversa?.esperandoMin ?? null,
-          perguntar: perguntarLeadOuPessoal(l),
           valorCents: l.valorCents ?? 0,
           dono: equipe.get(l.donoId ?? "")?.nome.split(" ")[0] ?? null,
         };

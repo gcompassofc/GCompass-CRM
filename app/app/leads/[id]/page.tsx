@@ -12,7 +12,6 @@ import {
   carregarImoveis,
   carregarLeads,
   diagnosticoCompleto,
-  perguntarLeadOuPessoal,
   primeiroNome,
   ROTULO_ORIGEM,
   tempoCurto,
@@ -25,7 +24,7 @@ import { AdicionarImovel, CopiarPedidoRadar, PesquisarRadar, RemoverImovel } fro
 import { ReabrirNegocio } from "./_reabrir";
 import { TipoDoLead } from "./_tipo";
 import { tipoDoFunil } from "@/lib/opa/tipo-lead";
-import { LeadOuPessoal, MarcarPessoal, VoltarParaLead } from "./_pessoal";
+import { MarcarPessoal, VoltarParaLead } from "./_pessoal";
 import { MOTIVO_PESSOAL } from "@/lib/opa/contatos-whatsapp";
 import { SeloLendo } from "./_lendo";
 import { MontarSelecao } from "./_selecao";
@@ -429,7 +428,6 @@ export default async function LeadPage({
         </div>
 
         {/* Logo de cara: "Lead ou pessoal?" até alguém responder. */}
-        {perguntarLeadOuPessoal(lead) && <LeadOuPessoal leadId={lead.id} depois="/app/hoje" />}
 
         {aberto && (
           <>
@@ -486,8 +484,11 @@ export default async function LeadPage({
               </Link>
               <span className="mx-1 hidden h-6 w-px bg-[#d5e2ea] sm:block" aria-hidden />
               <GanharNegocio leadId={lead.id} nome={lead.nome} opcoes={opcoesGanho} />
-              <PerderNegocio leadId={lead.id} motivos={config.motivos_perda.map((m) => m.motivo)} />
-              <MarcarPessoal leadId={lead.id} />
+              <PerderNegocio
+                leadId={lead.id}
+                motivos={config.motivos_perda.map((m) => m.motivo).filter((m) => gestorDaTela || lead.proprio || m !== MOTIVO_PESSOAL)}
+              />
+              {(gestorDaTela || lead.proprio) && <MarcarPessoal leadId={lead.id} />}
             </div>
           </>
         )}
@@ -793,12 +794,14 @@ export default async function LeadPage({
                     {lead.lembretesDesligados ? <BellSlash className="size-5 text-[#5b7284]" /> : <Bell className="size-5 text-[#2a7ca8]" />}
                     {lead.lembretesDesligados ? "Avisos desligados" : "OPA Lembretes avisa nos prazos"}
                   </p>
-                  <FormComRetorno action={alternarLembretes} sucesso={lead.lembretesDesligados ? "Avisos ligados." : "Avisos desligados."}>
-                    <input type="hidden" name="leadId" value={lead.id} />
-                    <BotaoEnvio className="inline-flex h-11 items-center gap-1.5 rounded-full bg-[#eef3f6] px-4 text-[13px] font-semibold text-[#0a2d40] hover:bg-[#e7f0f5]">
-                      {lead.lembretesDesligados ? "Ligar" : "Desligar"}
-                    </BotaoEnvio>
-                  </FormComRetorno>
+                  {(gestorDaTela || lead.proprio || lead.lembretesDesligados) && (
+                    <FormComRetorno action={alternarLembretes} sucesso={lead.lembretesDesligados ? "Avisos ligados." : "Avisos desligados."}>
+                      <input type="hidden" name="leadId" value={lead.id} />
+                      <BotaoEnvio className="inline-flex h-11 items-center gap-1.5 rounded-full bg-[#eef3f6] px-4 text-[13px] font-semibold text-[#0a2d40] hover:bg-[#e7f0f5]">
+                        {lead.lembretesDesligados ? "Ligar" : "Desligar"}
+                      </BotaoEnvio>
+                    </FormComRetorno>
+                  )}
                 </div>
               </Cartao>
             </div>

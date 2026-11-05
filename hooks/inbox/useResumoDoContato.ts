@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "@/lib/api/client";
 
 export interface ResumoLead {
+  tags?: string[] | null;
   id: string;
   title: string;
   status: string;

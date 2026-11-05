@@ -7,8 +7,6 @@ import { Sun } from "@/lib/ui/icons";
 
 import { CabecalhoOpa, CorpoOpa } from "../_opa/cabecalho";
 import { AtualizaSozinho } from "../_opa/atualiza-sozinho";
-import { ContatosDaEquipe, ContatosNovos } from "../_opa/contatos-novos";
-import { listarContatosDaEquipe, listarContatosNovos } from "../_opa/contatos-novos-actions";
 import { FiltroPeriodo } from "../_opa/periodo";
 import { VisaoCorretor, VisaoGestor } from "./_visoes";
 
@@ -34,16 +32,12 @@ export default async function InicioPage({
   const gestor = org.role === "manager" || org.role === "admin";
   const filtroFila = params.fila === "atrasados" || params.fila === "novos" ? params.fila : "todos";
 
-  const [leadsTodos, imoveis, equipe, vendasTodas, liberado, contatosNovos, contatosDaEquipe] = await Promise.all([
+  const [leadsTodos, imoveis, equipe, vendasTodas, liberado] = await Promise.all([
     carregarLeads(org.orgId),
     carregarImoveis(org.orgId),
     carregarEquipe(org.orgId),
     gestor ? carregarVendas(org.orgId, new Date(periodo.de).toISOString(), new Date(periodo.ate).toISOString()) : Promise.resolve([] as Venda[]),
     gestor ? gerenteVeReceita(org.orgId) : Promise.resolve(false),
-    // Do WhatsApp da própria pessoa (corretor ou gestor que atende): quem escreveu e ainda não foi classificado.
-    listarContatosNovos(),
-    // O gestor acompanha também os dos outros números, só para ler.
-    gestor ? listarContatosDaEquipe() : Promise.resolve([]),
   ]);
   const leads = filtrarCorretor(leadsTodos, corretor);
   const vendas = filtrarCorretor(vendasTodas, corretor);
@@ -72,8 +66,6 @@ export default async function InicioPage({
       </CabecalhoOpa>
       <CorpoOpa>
         <AtualizaSozinho />
-        <ContatosNovos inicial={contatosNovos} />
-        {gestor && <ContatosDaEquipe inicial={contatosDaEquipe} corretores={Object.fromEntries([...equipe].map(([id, p]) => [id, p.nome]))} />}
         {gestor ? (
           <VisaoGestor
             leads={leads}
