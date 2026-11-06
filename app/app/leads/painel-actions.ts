@@ -8,6 +8,8 @@ import { createClient } from "@/lib/supabase/server";
 export interface ResumoDoLead {
   id: string;
   nome: string;
+  /** Viewer só lê: o lápis do nome nem aparece. */
+  podeEditar: boolean;
   proprio: boolean;
   origem: string;
   telefone: string | null;
@@ -54,6 +56,7 @@ export async function resumoDoLead(leadId: string): Promise<ResumoDoLead | null>
   return {
     id: lead.id,
     nome: lead.nome,
+    podeEditar: org.role !== "viewer",
     proprio: lead.proprio,
     origem: ROTULO_ORIGEM[lead.origem.canal ?? ""] ?? lead.origem.canal ?? "Origem",
     telefone: lead.telefone ?? null,

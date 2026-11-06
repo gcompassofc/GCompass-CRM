@@ -242,37 +242,44 @@ export async function mudarTipoDoLead(formData: FormData): Promise<ResultadoEtap
 }
 
 /**
- * Mudar o nome do lead pela ficha (pedido do Allyson, 06/11/2026). O nome é da
- * pessoa, então muda no contato e no título de todos os negócios dela que a
- * sessão enxerga. Com `display_name` preenchido o WhatsApp não troca o nome de
- * volta: `fn_upsert_wa_contact` só escreve ali quando está vazio. O gatilho da
- * 0116 põe o contato de novo na fila da cifra. O nome antigo não vai para o
- * histórico, que ficaria com o dado pessoal fora do contato.
+ * Mudar o nome pela ficha, pelo painel lateral ou pela conversa (pedido do Allyson,
+ * 06/11/2026). Chega `leadId` ou, da conversa, `contatoId`: o contato pode ainda não
+ * ter lead. O nome é da pessoa, então muda no contato e no título de todos os
+ * negócios dela que a sessão enxerga. Com `display_name` preenchido o WhatsApp não
+ * troca o nome de volta: `fn_upsert_wa_contact` só escreve ali quando está vazio. O
+ * gatilho da 0116 põe o contato de novo na fila da cifra. O nome antigo não vai para
+ * o histórico, que ficaria com o dado pessoal fora do contato.
  */
 export async function mudarNomeDoLead(formData: FormData): Promise<ResultadoEtapa> {
   const leadId = String(formData.get("leadId") ?? "");
+  const contatoPedido = String(formData.get("contatoId") ?? "");
   const nome = limparNomeDoLead(formData.get("nome"));
   const { user, org, supabase } = await contexto();
   if (org.role === "viewer") return { ok: false, erro: "Seu acesso é só de leitura." };
   if (!nome) return { ok: false, erro: "Escreva um nome com pelo menos 2 letras." };
 
-  const { data: lido } = await supabase
-    .from("crm_leads")
-    .select("id, title, contact_id")
-    .eq("organization_id", org.orgId)
-    .eq("id", leadId)
-    .maybeSingle();
-  if (!lido) return { ok: false, erro: "Lead não encontrado." };
-  const lead = lido as { id: string; title: string; contact_id: string | null };
+  let contatoId: string | null = contatoPedido || null;
+  let negocios: Array<{ id: string; title: string }> = [];
+  if (!contatoId) {
+    const { data: lido } = await supabase
+      .from("crm_leads")
+      .select("id, title, contact_id")
+      .eq("organization_id", org.orgId)
+      .eq("id", leadId)
+      .maybeSingle();
+    if (!lido) return { ok: false, erro: "Lead não encontrado." };
+    const lead = lido as { id: string; title: string; contact_id: string | null };
+    contatoId = lead.contact_id;
+    negocios = [lead];
+  }
 
-  let negocios: Array<{ id: string; title: string }> = [lead];
   let contatoMudou = false;
-  if (lead.contact_id) {
+  if (contatoId) {
     const { data: contato } = await supabase
       .from("contacts")
       .select("name, display_name, is_anonymized")
       .eq("organization_id", org.orgId)
-      .eq("id", lead.contact_id)
+      .eq("id", contatoId)
       .maybeSingle();
     if (!contato) return { ok: false, erro: "Contato não encontrado." };
     const c = contato as { name: string | null; display_name: string | null; is_anonymized: boolean };
@@ -283,7 +290,7 @@ export async function mudarNomeDoLead(formData: FormData): Promise<ResultadoEtap
       .from("crm_leads")
       .select("id, title")
       .eq("organization_id", org.orgId)
-      .eq("contact_id", lead.contact_id);
+      .eq("contact_id", contatoId);
     if (erroLista) return { ok: false, erro: erroParaTela(erroLista) };
     negocios = (dele ?? []) as Array<{ id: string; title: string }>;
   }
@@ -298,7 +305,7 @@ export async function mudarNomeDoLead(formData: FormData): Promise<ResultadoEtap
       .from("contacts")
       .update({ name: nome, display_name: nome })
       .eq("organization_id", org.orgId)
-      .eq("id", lead.contact_id!)
+      .eq("id", contatoId!)
       .select("id");
     if (error) return { ok: false, erro: erroParaTela(error) };
     if (!mudou?.length) return { ok: false, erro: "Você não tem permissão para mudar este contato." };
@@ -308,18 +315,23 @@ export async function mudarNomeDoLead(formData: FormData): Promise<ResultadoEtap
     if (error) return { ok: false, erro: erroParaTela(error) };
   }
 
-  const { error: erroHistorico } = await supabase.from("crm_lead_activities").insert({
-    organization_id: org.orgId,
-    lead_id: leadId,
-    contact_id: lead.contact_id,
-    source_module: "opa",
-    type: "nome_alterado",
-    payload: {},
-    performed_at: new Date().toISOString(),
-    performed_by_user_id: user.id,
-  });
-  if (erroHistorico) console.error("[mudarNomeDoLead] histórico não gravado", { leadId, code: erroHistorico.code });
-  revalidatePath(`/app/leads/${leadId}`);
+  if (negocios.length > 0) {
+    const agora = new Date().toISOString();
+    const { error: erroHistorico } = await supabase.from("crm_lead_activities").insert(
+      negocios.map((n) => ({
+        organization_id: org.orgId,
+        lead_id: n.id,
+        contact_id: contatoId,
+        source_module: "opa",
+        type: "nome_alterado",
+        payload: {},
+        performed_at: agora,
+        performed_by_user_id: user.id,
+      })),
+    );
+    if (erroHistorico) console.error("[mudarNomeDoLead] histórico não gravado", { code: erroHistorico.code });
+  }
+  for (const n of negocios) revalidatePath(`/app/leads/${n.id}`);
   revalidatePath("/app/leads");
   revalidatePath("/app/pipeline");
   revalidatePath("/app/fila");

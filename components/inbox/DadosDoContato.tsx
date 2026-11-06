@@ -10,6 +10,7 @@ import { corDoAvatar, iniciais } from "@/lib/inbox/temperatura";
 import { activityLabel } from "@/lib/leads/activity-vocabulary";
 import { leadPrincipal, useResumoDoContato } from "@/hooks/inbox/useResumoDoContato";
 import { ConversationTagsEditor } from "./ConversationTagsEditor";
+import { MudarNomeNaConversa } from "./MudarNomeNaConversa";
 import { MarcarPessoal } from "@/app/app/leads/[id]/_pessoal";
 import type { ConversationWithContact } from "@/hooks/inbox/useConversationsRealtime";
 
@@ -53,7 +54,10 @@ export function DadosDoContato({ conversation }: { conversation: ConversationWit
             {iniciais(nome, c?.phone_number ?? "?")}
           </AvatarFallback>
         </Avatar>
-        <h2 className="mt-3 text-[22px] font-normal text-[#111b21] dark:text-[#e9edef]">{nome}</h2>
+        <div className="mt-3 flex items-center justify-center gap-1">
+          <h2 className="min-w-0 break-words text-[22px] font-normal text-[#111b21] dark:text-[#e9edef]">{nome}</h2>
+          <MudarNomeNaConversa contato={c} className="text-[#667781] dark:text-[#8696a0]" />
+        </div>
         {fone && <p className="text-[15px] text-[#667781] dark:text-[#8696a0]">{fone}</p>}
 
         <div className="mt-4 flex gap-3">

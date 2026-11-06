@@ -9,6 +9,7 @@ import { useClaimConversation } from "@/hooks/inbox/useClaimConversation";
 import { useReleaseConversation } from "@/hooks/inbox/useReleaseConversation";
 import { useCloseConversation } from "@/hooks/inbox/useCloseConversation";
 import { useResumeAiAttendance } from "@/hooks/inbox/useResumeAiAttendance";
+import { MudarNomeNaConversa } from "@/components/inbox/MudarNomeNaConversa";
 import { ReassignDialog } from "@/components/inbox/ReassignDialog";
 import { SnoozeButton } from "@/components/inbox/SnoozeButton";
 import { CRMSidePanel } from "@/components/inbox/CRMSidePanel";
@@ -159,6 +160,7 @@ export function ConversationHeader({ conversation, onBack }: Props) {
                 {displayName}
               </h2>
             )}
+            {opa && <MudarNomeNaConversa contato={c} className="-my-1 size-8 text-[#667781] dark:text-[#8696a0]" />}
             <Badge variant="outline" className="h-4 px-1.5 text-[10px] shrink-0 max-md:hidden">
               {STATUS_LABEL[status] ?? status}
             </Badge>

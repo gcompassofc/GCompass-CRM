@@ -59,8 +59,8 @@ function banco({ lead, contato, outrosLeads = [], contatoSemPermissao }: Cenario
         };
         return c;
       },
-      insert: async (v: Record<string, unknown>) => {
-        gravado.atividades.push(v);
+      insert: async (v: Array<Record<string, unknown>>) => {
+        gravado.atividades.push(...v);
         return { error: null };
       },
     }),
@@ -74,9 +74,9 @@ const comoPapel = (role: Role) => {
   vi.mocked(resolveActiveOrg).mockResolvedValue({ orgId: ORG, role } as never);
 };
 
-const form = (nome = "Mariana Souza") => {
+const form = (nome = "Mariana Souza", campo = "leadId", id = LEAD) => {
   const fd = new FormData();
-  fd.set("leadId", LEAD);
+  fd.set(campo, id);
   fd.set("nome", nome);
   return fd;
 };
@@ -133,6 +133,31 @@ describe("mudarNomeDoLead", () => {
     expect(await mudarNomeDoLead(form())).toEqual({ ok: true });
     expect(g.contato).toBeUndefined();
     expect(g.titulos.get(LEAD)).toBe("Mariana Souza · CA007");
+  });
+
+  it("pela conversa, muda o contato e os negócios dele, com histórico em cada um", async () => {
+    comoPapel("agent");
+    const g = banco({ outrosLeads: [{ id: "antigo", title: "Mari · CA001" }] });
+    expect(await mudarNomeDoLead(form("Mariana Souza", "contatoId", "c1"))).toEqual({ ok: true });
+    expect(g.contato).toEqual({ name: "Mariana Souza", display_name: "Mariana Souza" });
+    expect(g.titulos.get(LEAD)).toBe("Mariana Souza · CA007");
+    expect(g.titulos.get("antigo")).toBe("Mariana Souza · CA001");
+    expect(g.atividades.map((a) => a.lead_id)).toEqual([LEAD, "antigo"]);
+  });
+
+  it("pela conversa, contato que ainda não virou lead muda sem histórico", async () => {
+    comoPapel("agent");
+    const g = banco({ lead: null });
+    expect(await mudarNomeDoLead(form("Mariana Souza", "contatoId", "c1"))).toEqual({ ok: true });
+    expect(g.contato).toEqual({ name: "Mariana Souza", display_name: "Mariana Souza" });
+    expect(g.atividades).toHaveLength(0);
+  });
+
+  it("pela conversa, contato que a pessoa não enxerga não muda", async () => {
+    comoPapel("agent");
+    const g = banco({ contato: null });
+    expect(await mudarNomeDoLead(form("Mariana Souza", "contatoId", "c9"))).toEqual({ ok: false, erro: "Contato não encontrado." });
+    expect(g.contato).toBeUndefined();
   });
 
   it("quem só lê não muda", async () => {

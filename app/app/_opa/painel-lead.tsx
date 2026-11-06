@@ -11,6 +11,7 @@ import { CaretRight, ChatCircle, ClockCounterClockwise, Phone, Sparkle } from "@
 import { moverEtapa } from "../leads/actions";
 import { resumoDoLead, type ResumoDoLead } from "../leads/painel-actions";
 import { AgendarMensagem } from "../leads/[id]/_componentes";
+import { MudarNome } from "../leads/[id]/_nome";
 import { RegistrarLigacao } from "../leads/[id]/_ligacao";
 
 const PEDIR = "opa:abrir-lead";
@@ -135,9 +136,14 @@ export function PainelLead() {
   return (
     <Sheet open={aberto} onOpenChange={setAberto}>
       <SheetContent side="right" className="w-full gap-0 overflow-y-auto border-0 bg-[#edf2f5] p-5 sm:max-w-[460px]">
-        <SheetTitle className="pr-10 text-[24px] font-semibold leading-tight tracking-[-0.02em] text-[#0a2d40]">
-          {lead?.nome ?? (carregando ? "Abrindo..." : "Lead")}
-        </SheetTitle>
+        <div className="flex items-center gap-1 pr-10">
+          <SheetTitle className="min-w-0 break-words text-[24px] font-semibold leading-tight tracking-[-0.02em] text-[#0a2d40]">
+            {lead?.nome ?? (carregando ? "Abrindo..." : "Lead")}
+          </SheetTitle>
+          {lead?.podeEditar && (
+            <MudarNome lapis leadId={lead.id} atual={lead.nome} className="text-[#5b7284]" onSalvo={(nome) => setLead((l) => (l ? { ...l, nome } : l))} />
+          )}
+        </div>
         {lead && (
           <div className="mt-4 flex flex-col gap-4">
             <p className="flex flex-wrap items-center gap-2 text-[13px]">

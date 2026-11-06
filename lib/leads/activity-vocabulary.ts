@@ -34,10 +34,12 @@ export type ActivityType =
   | "reactivation_expired"
   | "followup_scheduled"
   | "followup_cancelled"
-  | "demand_closed";
+  | "demand_closed"
+  | "nome_alterado";
 
 export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   stage_changed: "Mudou de estágio",
+  nome_alterado: "Nome alterado",
   note: "Anotação",
   ai_turn: "Atendimento da IA",
   send_vetoed: "Envio bloqueado",
