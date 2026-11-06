@@ -22,6 +22,7 @@ import { afinidade, fotoUrl, precoCheio, precoPrincipal } from "@/lib/opa/imovei
 import { pedidoInicial, resumoDoPedidoRadar } from "@/lib/opa/pedido-radar";
 import { AdicionarImovel, CopiarPedidoRadar, PesquisarRadar, RemoverImovel } from "./_imoveis";
 import { ReabrirNegocio } from "./_reabrir";
+import { MudarNome } from "./_nome";
 import { TipoDoLead } from "./_tipo";
 import { tipoDoFunil } from "@/lib/opa/tipo-lead";
 import { MarcarPessoal, VoltarParaLead } from "./_pessoal";
@@ -359,6 +360,8 @@ export default async function LeadPage({
             ? "Corretor marcou como respondido"
           : a.type === "mudou_de_funil"
             ? `Passou para o funil ${String(a.payload.para ?? "")}`
+          : a.type === "nome_alterado"
+            ? "Nome do lead alterado"
           : a.type === "reaberto"
             ? `Negócio reaberto${a.payload.motivo_da_perda ? ` (tinha sido perdido por: ${String(a.payload.motivo_da_perda)})` : ""}`
             : a.type.replace(/_/g, " "),
@@ -398,7 +401,9 @@ export default async function LeadPage({
         icone={IdentificationCard}
         equipe={false}
         ferramentas={false}
-      />
+      >
+        {podeEditar && <MudarNome leadId={lead.id} atual={lead.nome} />}
+      </CabecalhoOpa>
       <CorpoOpa>
         {/* Selos: o que diferencia este lead, num olhar. */}
         <div className="flex flex-wrap items-center gap-2">

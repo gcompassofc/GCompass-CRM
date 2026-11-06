@@ -11,6 +11,7 @@ import { CAMPOS } from "@/lib/opa/copiloto";
 import { CAMPOS_DIAGNOSTICO } from "@/lib/opa/dados";
 import { diaSP } from "@/lib/opa/periodo";
 import { avisarMudancaDeEtapa, avisarTagsNovas, etapaAtual } from "@/lib/opa/eventos-lead";
+import { limparNomeDoLead, tituloComNovoNome } from "@/lib/opa/nome-lead";
 import { ehTipoDeLead, TIPOS_DE_LEAD } from "@/lib/opa/tipo-lead";
 import { conferirDataETexto, faltaNaFicha } from "@/lib/opa/visita";
 import { pedidoRadarSchema, resumoDoPedidoRadar } from "@/lib/opa/pedido-radar";
@@ -237,6 +238,93 @@ export async function mudarTipoDoLead(formData: FormData): Promise<ResultadoEtap
   revalidatePath("/app/pipeline");
   revalidatePath("/app/fila");
   revalidatePath("/app/hoje");
+  return { ok: true };
+}
+
+/**
+ * Mudar o nome do lead pela ficha (pedido do Allyson, 06/11/2026). O nome é da
+ * pessoa, então muda no contato e no título de todos os negócios dela que a
+ * sessão enxerga. Com `display_name` preenchido o WhatsApp não troca o nome de
+ * volta: `fn_upsert_wa_contact` só escreve ali quando está vazio. O gatilho da
+ * 0116 põe o contato de novo na fila da cifra. O nome antigo não vai para o
+ * histórico, que ficaria com o dado pessoal fora do contato.
+ */
+export async function mudarNomeDoLead(formData: FormData): Promise<ResultadoEtapa> {
+  const leadId = String(formData.get("leadId") ?? "");
+  const nome = limparNomeDoLead(formData.get("nome"));
+  const { user, org, supabase } = await contexto();
+  if (org.role === "viewer") return { ok: false, erro: "Seu acesso é só de leitura." };
+  if (!nome) return { ok: false, erro: "Escreva um nome com pelo menos 2 letras." };
+
+  const { data: lido } = await supabase
+    .from("crm_leads")
+    .select("id, title, contact_id")
+    .eq("organization_id", org.orgId)
+    .eq("id", leadId)
+    .maybeSingle();
+  if (!lido) return { ok: false, erro: "Lead não encontrado." };
+  const lead = lido as { id: string; title: string; contact_id: string | null };
+
+  let negocios: Array<{ id: string; title: string }> = [lead];
+  let contatoMudou = false;
+  if (lead.contact_id) {
+    const { data: contato } = await supabase
+      .from("contacts")
+      .select("name, display_name, is_anonymized")
+      .eq("organization_id", org.orgId)
+      .eq("id", lead.contact_id)
+      .maybeSingle();
+    if (!contato) return { ok: false, erro: "Contato não encontrado." };
+    const c = contato as { name: string | null; display_name: string | null; is_anonymized: boolean };
+    if (c.is_anonymized) return { ok: false, erro: "Este contato foi anonimizado a pedido dele (LGPD)." };
+    contatoMudou = c.name !== nome || c.display_name !== nome;
+
+    const { data: dele, error: erroLista } = await supabase
+      .from("crm_leads")
+      .select("id, title")
+      .eq("organization_id", org.orgId)
+      .eq("contact_id", lead.contact_id);
+    if (erroLista) return { ok: false, erro: erroParaTela(erroLista) };
+    negocios = (dele ?? []) as Array<{ id: string; title: string }>;
+  }
+
+  const titulos = negocios
+    .map((n) => ({ id: n.id, title: tituloComNovoNome(n.title, nome), antes: n.title }))
+    .filter((n) => n.title !== n.antes);
+  if (!contatoMudou && titulos.length === 0) return { ok: true };
+
+  if (contatoMudou) {
+    const { data: mudou, error } = await supabase
+      .from("contacts")
+      .update({ name: nome, display_name: nome })
+      .eq("organization_id", org.orgId)
+      .eq("id", lead.contact_id!)
+      .select("id");
+    if (error) return { ok: false, erro: erroParaTela(error) };
+    if (!mudou?.length) return { ok: false, erro: "Você não tem permissão para mudar este contato." };
+  }
+  for (const n of titulos) {
+    const { error } = await supabase.from("crm_leads").update({ title: n.title }).eq("organization_id", org.orgId).eq("id", n.id);
+    if (error) return { ok: false, erro: erroParaTela(error) };
+  }
+
+  const { error: erroHistorico } = await supabase.from("crm_lead_activities").insert({
+    organization_id: org.orgId,
+    lead_id: leadId,
+    contact_id: lead.contact_id,
+    source_module: "opa",
+    type: "nome_alterado",
+    payload: {},
+    performed_at: new Date().toISOString(),
+    performed_by_user_id: user.id,
+  });
+  if (erroHistorico) console.error("[mudarNomeDoLead] histórico não gravado", { leadId, code: erroHistorico.code });
+  revalidatePath(`/app/leads/${leadId}`);
+  revalidatePath("/app/leads");
+  revalidatePath("/app/pipeline");
+  revalidatePath("/app/fila");
+  revalidatePath("/app/hoje");
+  revalidatePath("/app/inbox");
   return { ok: true };
 }
 
