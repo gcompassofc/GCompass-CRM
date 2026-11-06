@@ -22,6 +22,7 @@ import { afinidade, fotoUrl, precoCheio, precoPrincipal } from "@/lib/opa/imovei
 import { pedidoInicial, resumoDoPedidoRadar } from "@/lib/opa/pedido-radar";
 import { AdicionarImovel, CopiarPedidoRadar, PesquisarRadar, RemoverImovel } from "./_imoveis";
 import { ReabrirNegocio } from "./_reabrir";
+import { ExcluirLead } from "./_excluir";
 import { MudarNome } from "./_nome";
 import { TipoDoLead } from "./_tipo";
 import { tipoDoFunil } from "@/lib/opa/tipo-lead";
@@ -403,6 +404,7 @@ export default async function LeadPage({
         ferramentas={false}
       >
         {podeEditar && <MudarNome leadId={lead.id} atual={lead.nome} />}
+        {(org.role === "admin" || user.is_platform_admin) && <ExcluirLead leadId={lead.id} nome={lead.nome} />}
       </CabecalhoOpa>
       <CorpoOpa>
         {/* Selos: o que diferencia este lead, num olhar. */}

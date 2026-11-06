@@ -1,7 +1,10 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
+
 import { revalidatePath } from "next/cache";
 
+import { audit } from "@/lib/audit";
 import { ehLeadDaOpa, MOTIVO_PESSOAL } from "@/lib/opa/contatos-whatsapp";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { analisarLead } from "@/lib/opa/analisar";
@@ -332,6 +335,43 @@ export async function mudarNomeDoLead(formData: FormData): Promise<ResultadoEtap
     if (erroHistorico) console.error("[mudarNomeDoLead] histórico não gravado", { code: erroHistorico.code });
   }
   for (const n of negocios) revalidatePath(`/app/leads/${n.id}`);
+  revalidatePath("/app/leads");
+  revalidatePath("/app/pipeline");
+  revalidatePath("/app/fila");
+  revalidatePath("/app/hoje");
+  revalidatePath("/app/inbox");
+  return { ok: true };
+}
+
+/**
+ * Excluir o lead de vez, só o administrador (pedido do Allyson, 06/11/2026; regra da
+ * 0120). Usa a sessão de quem pediu: a RLS confere o papel de novo. Atividades,
+ * visitas, lembretes e eventos da Meta vão junto, por cascata; contato e conversa
+ * ficam. A auditoria guarda quem excluiu e o id, sem o nome da pessoa.
+ */
+export async function excluirLead(formData: FormData): Promise<ResultadoEtapa> {
+  const leadId = String(formData.get("leadId") ?? "");
+  const { user, org, supabase } = await contexto();
+  if (org.role !== "admin" && !user.is_platform_admin) return { ok: false, erro: "Só o administrador pode excluir lead." };
+
+  const { data, error } = await supabase
+    .from("crm_leads")
+    .delete()
+    .eq("organization_id", org.orgId)
+    .eq("id", leadId)
+    .select("id");
+  if (error) return { ok: false, erro: erroParaTela(error) };
+  if (!data?.length) return { ok: false, erro: "Lead não encontrado ou sem permissão para excluir." };
+
+  await audit({
+    action: "lead.deleted",
+    actorUserId: user.id,
+    organizationId: org.orgId,
+    resourceType: "crm_lead",
+    resourceId: leadId,
+    requestId: randomUUID(),
+    metadata: {},
+  });
   revalidatePath("/app/leads");
   revalidatePath("/app/pipeline");
   revalidatePath("/app/fila");
