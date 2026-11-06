@@ -4,6 +4,7 @@
 import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
 
+import { comDonos } from "@/lib/opa/com-donos";
 import { ApiError } from "@/lib/api/types";
 import { fail, ok } from "@/lib/api/wrappers";
 import { loadAuthUser, resolveActiveOrg } from "@/lib/auth/server";
@@ -87,7 +88,7 @@ export async function GET(req: NextRequest): Promise<Response> {
       },
       qsParsed.data,
     );
-    return ok(conversations, { requestId, meta: { cursor, has_more } });
+    return ok(await comDonos(activeOrg.orgId, conversations), { requestId, meta: { cursor, has_more } });
   } catch (err) {
     if (err instanceof ApiError) {
       return fail(err.code, err.message, err.status, { requestId });

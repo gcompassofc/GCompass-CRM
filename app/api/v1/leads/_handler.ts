@@ -279,6 +279,9 @@ export async function createLeadHandler(
     .select(LEAD_COLS)
     .single();
 
+  if ((insErr as { hint?: string } | null)?.hint === "lead_duplicado") {
+    throw new ApiError(409, "lead_duplicado", undefined, ctx.requestId, insErr!.message);
+  }
   if (insErr || !lead) {
     throw new ApiError(
       500,

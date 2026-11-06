@@ -264,6 +264,16 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     perfil: "imobiliaria",
   },
   {
+    href: "/app/duplicados",
+    label: "Duplicados",
+    description: "O mesmo número com mais de um corretor ou mais de um lead.",
+    icon: UsersThree,
+    group: "crm",
+    sidebar: true,
+    minRole: "manager",
+    perfil: "imobiliaria",
+  },
+  {
     href: "/app/membros",
     label: "Membros",
     description: "Quem está na equipe, o papel de cada um e o que cada papel pode fazer.",
@@ -741,7 +751,7 @@ export function gruposImobiliaria(isPlatformAdmin: boolean, role: Role | null): 
     { id: "ferramentas", rotulo: "Ferramentas", icone: IconeFerramentas, itens: achar(["/app/kit", "/app/meu-whatsapp"]) },
   ];
   if (gestor) {
-    grupos.push({ id: "gestao", rotulo: "Gestão", icone: IconeGestao, itens: achar(["/app/membros", "/app/configuracoes", "/app/webhooks", "/app/conexoes", "/app/integracoes"]) });
+    grupos.push({ id: "gestao", rotulo: "Gestão", icone: IconeGestao, itens: achar(["/app/membros", "/app/duplicados", "/app/configuracoes", "/app/webhooks", "/app/conexoes", "/app/integracoes"]) });
   }
   return grupos.filter((g) => g.itens.length > 0);
 }

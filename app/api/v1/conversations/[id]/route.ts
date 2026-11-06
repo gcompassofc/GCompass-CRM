@@ -5,6 +5,7 @@
 import { randomUUID } from "node:crypto";
 import { type NextRequest } from "next/server";
 
+import { comDonos } from "@/lib/opa/com-donos";
 import { ApiError } from "@/lib/api/types";
 import { ok, fail } from "@/lib/api/wrappers";
 import { requireRole } from "@/lib/auth/require-role";
@@ -58,7 +59,8 @@ export async function GET(_req: NextRequest, ctx: RouteCtx): Promise<Response> {
       },
       id,
     );
-    return ok(conv, { requestId });
+    const [comDono] = await comDonos(activeOrg.orgId, [conv]);
+    return ok(comDono ?? conv, { requestId });
   } catch (err) {
     if (err instanceof ApiError) {
       return fail(err.code, err.message, err.status, { requestId });

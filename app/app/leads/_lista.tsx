@@ -147,11 +147,14 @@ export function ListaDoGestor({
   children,
   corretores,
   etapasPorLead,
+  podeExcluir,
 }: {
   children: React.ReactNode;
   corretores: Array<{ id: string; nome: string }>;
   /** Etapas do funil de cada lead visível, para mover em lote só dentro do mesmo funil. */
   etapasPorLead: Record<string, Array<{ id: string; nome: string }>>;
+  /** Só o administrador; a rota e a RLS repetem a regra. */
+  podeExcluir?: boolean;
 }) {
   const router = useRouter();
   const [ids, setIds] = useState<string[]>([]);
@@ -175,16 +178,20 @@ export function ListaDoGestor({
     }
   };
 
+  // A rota aceita 50 por vez: marcar a tela toda precisa de mais de uma chamada.
   const enviar = (corpo: Record<string, unknown>, feito: string) =>
     iniciar(async () => {
-      const res = await fetch("/api/v1/leads/bulk", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...corpo, lead_ids: ids }),
-      }).catch(() => null);
-      if (!res?.ok) {
-        toast.error("Não deu para aplicar nos leads marcados. Tente de novo.");
-        return;
+      for (let i = 0; i < ids.length; i += 50) {
+        const res = await fetch("/api/v1/leads/bulk", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...corpo, lead_ids: ids.slice(i, i + 50) }),
+        }).catch(() => null);
+        if (!res?.ok) {
+          toast.error("Não deu para aplicar em todos os leads marcados. Atualize a página e confira.");
+          router.refresh();
+          return;
+        }
       }
       toast.success(feito);
       setIds([]);
@@ -246,6 +253,24 @@ export function ListaDoGestor({
                 </option>
               ))}
             </select>
+          )}
+          <button type="button" onClick={() => setIds(Object.keys(etapasPorLead))} className="inline-flex h-11 items-center rounded-full px-3 text-[14px] font-medium hover:bg-white/10">
+            Marcar todos ({Object.keys(etapasPorLead).length})
+          </button>
+          {podeExcluir && (
+            <button
+              type="button"
+              disabled={pendente}
+              className="inline-flex h-11 items-center rounded-full bg-[#fdecea] px-4 text-[14px] font-semibold text-[#b3261e] hover:bg-[#fbdcd8] disabled:opacity-60"
+              onClick={() => {
+                const n = ids.length;
+                if (confirm(`Excluir ${n} ${n === 1 ? "lead" : "leads"}? Não dá para desfazer. O histórico, as visitas e os lembretes vão junto. Contato e conversa continuam.`)) {
+                  enviar({ action: "delete" }, `${n} ${n === 1 ? "lead excluído" : "leads excluídos"}.`);
+                }
+              }}
+            >
+              Excluir
+            </button>
           )}
           <button type="button" onClick={() => setIds([])} className="inline-flex h-11 items-center rounded-full px-3 text-[14px] font-medium hover:bg-[#12455f]">
             Limpar

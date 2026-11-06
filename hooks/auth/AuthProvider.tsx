@@ -95,6 +95,8 @@ const ACTION_MIN_ROLE: Record<string, Role> = {
   "contact.delete": "manager",
   // OPA: excluir lead só o administrador (a rota e a RLS repetem a regra).
   "lead.delete": "admin",
+  // Apaga do CRM, não do WhatsApp (a rota e a RLS repetem a regra).
+  "conversation.delete": "admin",
   "pipeline.view": "viewer",
   "pipeline.create": "manager",
   "pipeline.move_card": "agent",

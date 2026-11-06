@@ -46,6 +46,7 @@ export {
   Trash,
   PencilSimple,
   MagnifyingGlass,
+  Star,
   Pause,
   Play,
   SkipForward,

@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { useRealtimeChannel } from "@/hooks/realtime/useRealtimeChannel";
 import { apiClient } from "@/lib/api/client";
 import { showApiError } from "@/components/feedback/ApiErrorToast";
+import type { DonosDaConversa } from "@/lib/opa/donos-da-conversa";
 import type { Conversation } from "@/lib/types/messaging";
 
 export interface ContactSummary {
@@ -29,6 +30,8 @@ export interface ContactSummary {
 
 export type ConversationWithContact = Conversation & {
   contacts?: ContactSummary | null;
+  /** De quem é o número: só no perfil imobiliária (lib/opa/donos-da-conversa.ts). */
+  donos?: DonosDaConversa | null;
 };
 
 export interface ConversationsFilters {

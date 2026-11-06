@@ -334,6 +334,7 @@ export default async function LeadsPage({
           <ListaDoGestor
             corretores={[...equipe.values()].filter((p) => p.papel !== "viewer").map((p) => ({ id: p.id, nome: p.nome }))}
             etapasPorLead={Object.fromEntries(visiveis.map((l) => [l.id, etapasDoFunil.get(l.pipelineId) ?? []]))}
+            podeExcluir={Boolean(user.is_platform_admin) || org.role === "admin"}
           >
             {conteudoLista}
           </ListaDoGestor>

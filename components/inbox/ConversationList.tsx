@@ -1,6 +1,8 @@
 "use client";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { usePermission } from "@/hooks/auth/AuthProvider";
+import { useExcluirConversas } from "@/hooks/inbox/useExcluirConversas";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ConversationListItem } from "./ConversationListItem";
 import { EmptyInbox } from "@/components/empty";
@@ -30,6 +32,10 @@ export function ConversationList({
   onVisibleChange,
 }: Props) {
   const q = useConversationsRealtime(filters, orgId);
+  const podeExcluir = usePermission("conversation.delete");
+  const excluir = useExcluirConversas();
+  const [marcando, setMarcando] = useState(false);
+  const [marcadas, setMarcadas] = useState<string[]>([]);
 
   // Fila (G5-03): a lista já vem ordenada por tempo de espera (server), então a
   // posição é o índice na lista visível. Só mostramos posição/espera nessa visão.
@@ -85,14 +91,46 @@ export function ConversationList({
 
   return (
     <div className="flex h-full flex-col">
+      {podeExcluir && (
+        <div className="flex flex-wrap items-center gap-2 border-b border-border px-3 py-2 text-[13px]">
+          {marcando ? (
+            <>
+              <strong className="font-semibold">{marcadas.length} marcadas</strong>
+              <button type="button" className="font-medium text-[#1f6a93]" onClick={() => setMarcadas(items.map((i) => i.id))}>Marcar todas</button>
+              <button
+                type="button"
+                disabled={marcadas.length === 0 || excluir.isPending}
+                className="ml-auto rounded-full bg-[#fdecea] px-3 py-1 font-semibold text-[#b3261e] disabled:opacity-50"
+                onClick={() => {
+                  const n = marcadas.length;
+                  if (!confirm(`Excluir ${n} ${n === 1 ? "conversa" : "conversas"} do CRM? Não dá para desfazer. No WhatsApp dos corretores elas continuam, e se a pessoa escrever de novo a conversa volta.`)) return;
+                  excluir.mutate(marcadas, {
+                    onSuccess: () => {
+                      setMarcadas([]);
+                      setMarcando(false);
+                    },
+                  });
+                }}
+              >
+                {excluir.isPending ? "Excluindo…" : "Excluir"}
+              </button>
+              <button type="button" className="font-medium text-muted-foreground" onClick={() => { setMarcando(false); setMarcadas([]); }}>Cancelar</button>
+            </>
+          ) : (
+            <button type="button" className="font-medium text-muted-foreground hover:text-foreground" onClick={() => setMarcando(true)}>Selecionar várias</button>
+          )}
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto">
         {items.map((c, i) => (
           <ConversationListItem
             key={c.id}
             conversation={c}
             isSelected={c.id === selectedId}
-            onSelect={onSelect}
+            onSelect={marcando ? (id) => setMarcadas((a) => (a.includes(id) ? a.filter((x) => x !== id) : [...a, id])) : onSelect}
             queuePosition={isQueue ? i + 1 : undefined}
+            marcando={marcando}
+            marcada={marcadas.includes(c.id)}
           />
         ))}
         {q.hasNextPage && (

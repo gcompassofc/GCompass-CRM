@@ -293,6 +293,15 @@ async function criarLead(
     })
     .select("id")
     .single();
+  // A trava da 0129 barrou: a pessoa já tem lead aberto (entrada simultânea ou o mesmo número
+  // em outro contato). O lead que entrou não se perde: fica o que já existe.
+  if ((error as { hint?: string } | null)?.hint === "lead_duplicado") {
+    const { data: existente } = await admin.rpc("fn_lead_aberto_da_pessoa" as never, { p_org: orgId, p_contato: contactId } as never);
+    if (existente) {
+      console.info("[entrada] lead duplicado evitado", { orgId, contactId });
+      return existente as unknown as string;
+    }
+  }
   if (error) throw new Error(`entrada: lead: ${error.message}`);
   const leadId = (data as { id: string }).id;
   // Automações (webhook e regras) disparam também para lead que entra pela OPA.

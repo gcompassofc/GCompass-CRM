@@ -161,6 +161,11 @@ export function ConversationHeader({ conversation, onBack }: Props) {
               </h2>
             )}
             {opa && <MudarNomeNaConversa contato={c} className="-my-1 size-8 text-[#667781] dark:text-[#8696a0]" />}
+            {opa && (conversation.donos?.corretores.length ?? 0) > 1 && (
+              <button type="button" onClick={() => setCrmPanelOpen(true)} className="shrink-0 rounded-full bg-[#fdf1d6] px-2 py-0.5 text-[11px] font-semibold text-[#7d5300] hover:brightness-95">
+                {conversation.donos!.corretores.length} corretores neste número
+              </button>
+            )}
             <Badge variant="outline" className="h-4 px-1.5 text-[10px] shrink-0 max-md:hidden">
               {STATUS_LABEL[status] ?? status}
             </Badge>
@@ -182,7 +187,17 @@ export function ConversationHeader({ conversation, onBack }: Props) {
           {opa && phone ? (
             <p className="mt-0.5 truncate text-[13px] text-[#667781] dark:text-[#8696a0]">
               {telefoneLegivel(phone)}
-              {lead ? " · toque no nome para abrir a ficha" : ""}
+              {conversation.donos?.responsavel ? (
+                <>
+                  {" · "}
+                  <span className="font-medium text-[#111b21] dark:text-[#e9edef]">Responsável: {conversation.donos.responsavel.nome}</span>
+                  {conversation.donos.principal && conversation.donos.principal.id !== conversation.donos.responsavel.id
+                    ? ` · Principal: ${conversation.donos.principal.nome}`
+                    : ""}
+                </>
+              ) : lead ? (
+                " · toque no nome para abrir a ficha"
+              ) : null}
             </p>
           ) : phone && (
             <p className="mt-0.5 hidden sm:flex items-center gap-1 text-[11px] text-muted-foreground max-md:mt-px max-md:flex max-md:text-[11.5px] max-md:text-[var(--m-text-2)]">

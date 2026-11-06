@@ -1,7 +1,7 @@
 "use client";
 import { format, formatDistanceToNowStrict } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Robot } from "@/lib/ui/icons";
+import { Check, Robot } from "@/lib/ui/icons";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -14,6 +14,9 @@ interface Props {
   onSelect: (id: string) => void;
   /** Posição 1-based na fila (G5-03). Presente só na visão Fila. */
   queuePosition?: number;
+  /** Administrador marcando várias: o clique marca em vez de abrir. */
+  marcando?: boolean;
+  marcada?: boolean;
 }
 
 const STATUS_DOT: Record<string, string> = {
@@ -58,6 +61,8 @@ export function ConversationListItem({
   isSelected,
   onSelect,
   queuePosition,
+  marcando,
+  marcada,
 }: Props) {
   const c = conversation.contacts ?? null;
   const displayName =
@@ -89,9 +94,16 @@ export function ConversationListItem({
         "md:rounded-none rounded-2xl md:border-b border-b-0 md:px-3 px-2.5",
         "max-md:border-transparent max-md:active:bg-[var(--m-hover)]",
         isSelected && "bg-accent/60 max-md:bg-[var(--m-hover)]",
+        marcada && "bg-[#e4eefb]",
       )}
       aria-current={isSelected ? "true" : undefined}
+      aria-pressed={marcando ? Boolean(marcada) : undefined}
     >
+      {marcando && (
+        <span aria-hidden className={cn("mt-2.5 flex size-5 shrink-0 items-center justify-center rounded-md border-2", marcada ? "border-[#2a78d6] bg-[#2a78d6] text-white" : "border-[#b9cfdb] bg-white text-transparent")}>
+          <Check className="size-3.5" weight="bold" />
+        </span>
+      )}
       <div className="relative shrink-0">
         <Avatar
           className="h-10 w-10 max-md:h-[46px] max-md:w-[46px]"
@@ -175,6 +187,14 @@ export function ConversationListItem({
           )}
         </div>
 
+        {conversation.donos?.responsavel && (
+          <p className="mt-1 flex min-w-0 items-center gap-1.5 text-[12px] text-[#34566b] max-md:text-[var(--m-text-2)]">
+            <span className="truncate font-medium">{conversation.donos.responsavel.nome}</span>
+            {conversation.donos.corretores.length > 1 && (
+              <span className="shrink-0 rounded-full bg-[#fdf1d6] px-1.5 text-[11px] font-semibold text-[#7d5300]">{conversation.donos.corretores.length} corretores</span>
+            )}
+          </p>
+        )}
         <div className="mt-1.5 flex flex-wrap items-center gap-1 max-md:mt-[7px] max-md:gap-1.5">
           {visibleTags.map((t) => (
             <Badge

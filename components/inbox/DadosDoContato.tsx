@@ -1,5 +1,8 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useAuth, usePermission } from "@/hooks/auth/AuthProvider";
+import { useExcluirConversas } from "@/hooks/inbox/useExcluirConversas";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -42,6 +45,12 @@ export function DadosDoContato({ conversation }: { conversation: ConversationWit
   const resumo = useResumoDoContato(c?.id ?? null);
   const lead = leadPrincipal(resumo.data?.leads);
   const atividades = resumo.data?.activities.slice(0, 5) ?? [];
+  const router = useRouter();
+  const podeExcluir = usePermission("conversation.delete");
+  const { activeOrg } = useAuth();
+  const gestor = activeOrg?.role === "manager" || activeOrg?.role === "admin";
+  const excluir = useExcluirConversas();
+  const donos = conversation.donos ?? null;
 
   return (
     <div className="flex min-h-full flex-col gap-2 bg-[#f0f2f5] pb-8 dark:bg-[#111b21]">
@@ -77,6 +86,25 @@ export function DadosDoContato({ conversation }: { conversation: ConversationWit
           )}
         </div>
       </section>
+
+      {donos && donos.corretores.length > 0 && (
+        <section className={`px-6 py-4 ${donos.corretores.length > 1 ? "bg-[#fdf1d6] dark:bg-[#202c33]" : "bg-white dark:bg-[#202c33]"}`}>
+          <p className="text-[14px] text-[#667781] dark:text-[#8696a0]">{donos.corretores.length > 1 ? "Este número fala com mais de um corretor" : "Corretor"}</p>
+          <ul className="mt-1 flex flex-col gap-1.5">
+            {donos.corretores.map((k) => (
+              <li key={k.id} className="text-[15px] text-[#111b21] dark:text-[#e9edef]">
+                {k.nome}
+                {k.principal && <span className="ml-1.5 rounded-full bg-[#e5f3ea] px-2 py-0.5 text-[11px] font-semibold text-[#1d6b43]">Principal</span>}
+                {donos.responsavel?.id === k.id && <span className="ml-1.5 rounded-full bg-[#e7f0f5] px-2 py-0.5 text-[11px] font-semibold text-[#12455f]">Responsável</span>}
+                <span className="block text-[12px] text-[#667781] dark:text-[#8696a0]">Primeira conversa em {format(new Date(k.desde), "dd/MM/yy HH:mm", { locale: ptBR })}</span>
+              </li>
+            ))}
+          </ul>
+          {donos.corretores.length > 1 && gestor && (
+            <Link href="/app/duplicados" className="mt-2 inline-block text-[13px] font-semibold text-[#7d5300] underline">Ver em Duplicados</Link>
+          )}
+        </section>
+      )}
 
       <section className="bg-white px-6 py-4 dark:bg-[#202c33]">
         <p className="text-[14px] text-[#667781] dark:text-[#8696a0]">Lead</p>
@@ -142,6 +170,22 @@ export function DadosDoContato({ conversation }: { conversation: ConversationWit
               </li>
             ))}
           </ul>
+        </section>
+      )}
+      {podeExcluir && (
+        <section className="bg-white px-6 py-4 dark:bg-[#202c33]">
+          <button
+            type="button"
+            disabled={excluir.isPending}
+            className="flex w-full items-center gap-3 text-left text-[15px] text-[#ea0038] hover:opacity-80 disabled:opacity-50"
+            onClick={() => {
+              if (!confirm("Excluir esta conversa do CRM? Não dá para desfazer. No WhatsApp do corretor ela continua, e se a pessoa escrever de novo a conversa volta.")) return;
+              excluir.mutate([conversation.id], { onSuccess: () => router.push("/app/inbox") });
+            }}
+          >
+            {excluir.isPending ? "Excluindo…" : "Excluir conversa do CRM"}
+          </button>
+          <p className="mt-1 text-[12px] text-[#667781] dark:text-[#8696a0]">Só o administrador. Não apaga do WhatsApp. O lead e o contato ficam.</p>
         </section>
       )}
     </div>
