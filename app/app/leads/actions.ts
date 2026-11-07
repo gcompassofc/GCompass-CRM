@@ -710,6 +710,8 @@ export async function perderNegocio(formData: FormData): Promise<ResultadoEtapa>
     })
     .eq("id", leadId);
   if (error) return { ok: false, erro: erroParaTela(error) };
+  // Em que etapa ele estava: base do "perdidos por etapa" do dashboard (#564).
+  if (antesDePerder) await mesclarCampos(supabase, leadId, { perdido_na_etapa: antesDePerder }, { orgId: org.orgId }).catch(() => undefined);
   await avisarMudancaDeEtapa(admin, org.orgId, leadId, antesDePerder, "opa.perdeu");
   revalidatePath(`/app/leads/${leadId}`);
   revalidatePath("/app/pipeline");
