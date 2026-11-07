@@ -37,6 +37,7 @@ import {
   type CanalDeAvisos,
   type ResultadoAviso,
 } from "./aviso-whatsapp";
+import { avancarRespondidos } from "./avanco";
 import { boasVindasEnviadaEm, esperaDesde, esperaEmMinutos, minutosUteis, saidaDoCorretor } from "./atendimento";
 import { carregarConfig, type ConfigOpa } from "./config";
 import { carregarEquipe, type Pessoa } from "./dados";
@@ -71,9 +72,11 @@ export interface ResultadoRotina {
   escaladas: number;
   parados: number;
   semNumero: number;
+  /** Cards que andaram sozinhos para Primeiro contato (lib/opa/avanco.ts). */
+  avancos: number;
 }
 
-const vazio = (): ResultadoRotina => ({ lembretes: 0, avisos: 0, repasses: 0, escaladas: 0, parados: 0, semNumero: 0 });
+const vazio = (): ResultadoRotina => ({ lembretes: 0, avisos: 0, repasses: 0, escaladas: 0, parados: 0, semNumero: 0, avancos: 0 });
 
 type Admin = SupabaseClient;
 
@@ -588,6 +591,12 @@ export async function rodarRotinaLembretes(admin: Admin, agora = Date.now()): Pr
       const gestores = gerentes.length ? gerentes : [...equipe.values()].filter((p) => p.papel === "admin");
       const c: Contexto = { admin, orgId, config, equipe, canal, agora, r, gestores, feitos: new Set(), repassados: new Map(), avisoSaiu: new Set() };
 
+      // Lead respondido sai de "Lead recebido" para "Primeiro contato" antes da fila olhar (07/11/2026).
+      try {
+        r.avancos += await avancarRespondidos(admin, orgId, agora);
+      } catch (e) {
+        logger.warn("[opa-lembretes] falha no avanço de etapa", { orgId, error: String(e) });
+      }
       await processarFila(c, agora);
 
       // Negócio parado: de dez em dez minutos, no horário comercial de dia aberto.

@@ -9,6 +9,7 @@ import { ehLeadDaOpa, MOTIVO_PESSOAL } from "@/lib/opa/contatos-whatsapp";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { analisarLead } from "@/lib/opa/analisar";
 import { boasVindasEnviadaEm } from "@/lib/opa/atendimento";
+import { avancarEtapa } from "@/lib/opa/avanco";
 import { mesclarCampos, type OpcoesMescla } from "@/lib/opa/campos";
 import { carregarConfig } from "@/lib/opa/config";
 import { CAMPOS } from "@/lib/opa/copiloto";
@@ -80,6 +81,9 @@ export async function confirmarSugestao(formData: FormData) {
     .from("copiloto_sugestoes")
     .update({ status: "aceita", valor, decidido_por: user.id, decidido_em: new Date().toISOString() })
     .eq("id", s.id);
+  // Quarto campo confirmado: o card vai sozinho para "Diagnóstico feito".
+  await avancarEtapa(createAdminClient(), org.orgId, s.lead_id, "diagnostico_completo");
+  revalidatePath("/app/pipeline");
   revalidatePath(`/app/leads/${s.lead_id}`);
   revalidatePath("/app/hoje");
 }
@@ -108,8 +112,18 @@ export async function editarCampo(formData: FormData) {
   if (!leadId || !campo) return;
   if (!valor && !antes) return { ok: true as const, aviso: "O campo está vazio: nada mudou." };
   await gravarCampo(leadId, campo, valor);
+  if (valor) {
+    const { org } = await contexto();
+    const foi = await avancarEtapa(createAdminClient(), org.orgId, leadId, "diagnostico_completo");
+    revalidatePath(`/app/leads/${leadId}`);
+    if (foi) {
+      revalidatePath("/app/pipeline");
+      return { ok: true as const, aviso: "Diagnóstico completo: o card foi para Diagnóstico feito." };
+    }
+    return;
+  }
   revalidatePath(`/app/leads/${leadId}`);
-  if (!valor) return { ok: true as const, aviso: "Campo apagado." };
+  return { ok: true as const, aviso: "Campo apagado." };
 }
 
 export async function reanalisar(formData: FormData) {
@@ -506,6 +520,8 @@ export async function marcarRespondido(formData: FormData) {
   });
   if (error) throw new Error(erroParaTela(error));
   await mudarCampos(leadId, { respondido_em: agora });
+  await avancarEtapa(createAdminClient(), org.orgId, leadId, "primeira_resposta", { como: "respondi" });
+  revalidatePath("/app/pipeline");
   revalidatePath("/app/fila");
   revalidatePath("/app/hoje");
   revalidatePath(`/app/leads/${leadId}`);
@@ -828,6 +844,11 @@ export async function registrarLigacao(leadId: string, resultado: ResultadoLigac
     ultima_ligacao: { em: agora, resultado },
     tentativas_ligacao: tentativas,
   });
+  // Ligação atendida (ou com pedido de retorno) é primeiro contato; a não atendida, não.
+  if (resultado !== "nao_atendeu") {
+    await avancarEtapa(createAdminClient(), org.orgId, leadId, "primeira_resposta", { como: "ligacao" });
+    revalidatePath("/app/pipeline");
+  }
   revalidatePath("/app/fila");
   revalidatePath("/app/hoje");
   revalidatePath(`/app/leads/${leadId}`);
@@ -942,4 +963,32 @@ export async function anotarNoLead(formData: FormData) {
   if (error) throw new Error(erroParaTela(error));
   await supabase.from("crm_leads").update({ last_activity_at: agora }).eq("organization_id", org.orgId).eq("id", leadId);
   revalidatePath(`/app/leads/${leadId}`);
+}
+
+/**
+ * Seleção enviada pela ficha ("Montar seleção" > WhatsApp): fica no histórico com os
+ * imóveis e leva o card para "Seleção enviada" se ele estiver antes e o diagnóstico
+ * estiver completo (07/11/2026).
+ */
+export async function marcarSelecaoEnviada(leadId: string, codigos: string[]): Promise<{ ok: boolean; etapa?: string | null }> {
+  const { user, org, supabase } = await contexto();
+  if (org.role === "viewer") return { ok: false };
+  const lista = (Array.isArray(codigos) ? codigos : []).map((c) => String(c).slice(0, 30)).slice(0, 3);
+  const { data: lead } = await supabase.from("crm_leads").select("contact_id").eq("organization_id", org.orgId).eq("id", leadId).maybeSingle();
+  if (!lead) return { ok: false };
+  await supabase.from("crm_lead_activities").insert({
+    organization_id: org.orgId,
+    lead_id: leadId,
+    contact_id: (lead as { contact_id: string | null }).contact_id,
+    source_module: "opa",
+    type: "selecao_enviada",
+    payload: { imoveis: lista },
+    performed_at: new Date().toISOString(),
+    performed_by_user_id: user.id,
+    actor_kind: "user",
+  });
+  const etapa = await avancarEtapa(createAdminClient(), org.orgId, leadId, "selecao_enviada", { imoveis: lista });
+  revalidatePath(`/app/leads/${leadId}`);
+  if (etapa) revalidatePath("/app/pipeline");
+  return { ok: true, etapa };
 }

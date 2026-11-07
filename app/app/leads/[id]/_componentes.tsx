@@ -55,7 +55,7 @@ function CabecaDialogo({
 // ---------------------------------------------------------------- mensagem pronta
 
 /** A próxima mensagem num balão de WhatsApp, com botões redondos Copiar e WhatsApp. */
-export function MensagemPronta({ texto, telefone }: { texto: string; telefone: string | null }) {
+export function MensagemPronta({ texto, telefone, aoAbrirWhatsapp }: { texto: string; telefone: string | null; aoAbrirWhatsapp?: () => void }) {
   const [copiado, setCopiado] = useState(false);
   const wa = telefone ? `https://wa.me/${telefone.replace(/\D/g, "")}?text=${encodeURIComponent(texto)}` : null;
 
@@ -89,6 +89,7 @@ export function MensagemPronta({ texto, telefone }: { texto: string; telefone: s
             href={wa}
             target="_blank"
             rel="noreferrer"
+            onClick={aoAbrirWhatsapp}
             title="Abrir no WhatsApp"
             aria-label="Abrir no WhatsApp"
             className="flex size-11 items-center justify-center rounded-full bg-[#25d366] text-white hover:brightness-105"

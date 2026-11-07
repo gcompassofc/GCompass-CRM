@@ -379,8 +379,10 @@ export default async function LeadPage({
     ...((atividadesRaw ?? []) as Array<{ type: string; payload: Record<string, unknown>; performed_at: string; reason: string | null }>).map((a) => ({
       em: a.performed_at,
       texto:
-        a.type === "boas_vindas_enviada" || a.type === "boas_vindas_nao_enviada" || a.type === "lead_do_whatsapp"
+        a.type === "boas_vindas_enviada" || a.type === "boas_vindas_nao_enviada" || a.type === "lead_do_whatsapp" || a.type === "etapa_automatica"
           ? (a.reason ?? a.type.replace(/_/g, " "))
+          : a.type === "selecao_enviada"
+            ? `Seleção enviada pelo WhatsApp${Array.isArray(a.payload.imoveis) && a.payload.imoveis.length ? `: ${(a.payload.imoveis as string[]).join(", ")}` : ""}`
           : a.type === "lead_voltou"
           ? `Voltou por outro formulário (${a.payload.vez}º), sem roleta`
           : a.type === "ligacao"
@@ -1227,6 +1229,7 @@ export default async function LeadPage({
               {combinam.length === 0 && <Vazio ilustracao={<IlustraCasa />} titulo={`Nada no acervo acima de ${config.cruzamento.minimo}`} texto="Quando entrar um imóvel parecido com o que ele procura, ele aparece aqui." />}
               {aberto && (
                 <MontarSelecao
+                  leadId={lead.id}
                   nome={lead.nome}
                   telefone={lead.telefone}
                   inegociavel={lead.campos.inegociavel ?? null}

@@ -4,6 +4,9 @@ import { useMemo, useState } from "react";
 
 import { Check, Lock } from "@/lib/ui/icons";
 import { mensagemSelecao, type ItemSelecao } from "@/lib/opa/mensagens";
+import { toast } from "sonner";
+
+import { marcarSelecaoEnviada } from "../actions";
 
 import { MensagemPronta } from "./_componentes";
 
@@ -12,11 +15,13 @@ import { MensagemPronta } from "./_componentes";
  * mensagem só, no tom do Kit. Off market sai sem link nem valor.
  */
 export function MontarSelecao({
+  leadId,
   nome,
   telefone,
   inegociavel,
   itens,
 }: {
+  leadId: string;
   nome: string;
   telefone: string | null;
   inegociavel: string | null;
@@ -65,7 +70,16 @@ export function MontarSelecao({
       </ul>
       {texto ? (
         <div className="mt-4">
-          <MensagemPronta texto={texto} telefone={telefone} />
+          <MensagemPronta
+            texto={texto}
+            telefone={telefone}
+            aoAbrirWhatsapp={() => {
+              // Registra a seleção e, se der, leva o card para "Seleção enviada". Não segura o WhatsApp.
+              void marcarSelecaoEnviada(leadId, marcados).then((r) => {
+                if (r.etapa) toast.success("Seleção registrada: o card foi para Seleção enviada.");
+              });
+            }}
+          />
         </div>
       ) : (
         <p className="mt-4 text-[13px] text-[#5b7284]">Marque pelo menos um imóvel.</p>
