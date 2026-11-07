@@ -7,6 +7,7 @@ import { CheckCircle, Clock, Info, Kanban, ShieldCheck, Users, WhatsappLogo, Wif
 
 import { CabecalhoOpa, CorpoOpa } from "../_opa/cabecalho";
 import { Avatar, BotaoPilula, Cartao, CartaoNumero, Chip, TituloBloco, iniciaisDe } from "../_opa/ui";
+import { RemoverMembro } from "./_remover";
 import { TrocarPapel } from "./_trocar-papel";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +37,7 @@ const MATRIZ: Array<[string, string, string, string]> = [
   ["Conectar WhatsApp", "sim", "só o seu", "só o seu"],
   ["Convidar membros", "sim", "só corretores", "nao"],
   ["Trocar o papel de alguém da equipe", "sim", "nao", "nao"],
+  ["Remover alguém da equipe", "sim", "nao", "nao"],
   ["Excluir lead (o pedido vem do corretor)", "sim", "nao", "nao"],
   ["Repassar oportunidade de captação", "sim", "sim", "devolve as suas"],
   ["Exportar leads", "sim", "nao", "nao"],
@@ -68,16 +70,21 @@ interface Membro {
   acesso: string;
   whatsapp: "conectado" | "desconectado" | "sem";
   foto: string | null;
+  /** Leads abertos de que a pessoa é dona (para a remoção dizer para onde vão). */
+  leadsAbertos: number;
 }
 
 async function carregarMembros(orgId: string): Promise<Membro[]> {
   const admin = createAdminClient();
   // Uma chamada ao auth para a equipe toda, em vez de uma por pessoa.
-  const [{ data: membros }, numeros, { data: lista }] = await Promise.all([
+  const [{ data: membros }, numeros, { data: lista }, { data: abertos }] = await Promise.all([
     admin.from("user_organizations").select("user_id, role").eq("organization_id", orgId).is("revoked_at", null),
     listarNumerosDaEquipe(admin, orgId),
     admin.auth.admin.listUsers({ perPage: 1000 }),
+    admin.from("crm_leads").select("owner_user_id").eq("organization_id", orgId).eq("status", "open").not("owner_user_id", "is", null).limit(20000),
   ]);
+  const leadsPorDono = new Map<string, number>();
+  for (const l of (abertos ?? []) as Array<{ owner_user_id: string }>) leadsPorDono.set(l.owner_user_id, (leadsPorDono.get(l.owner_user_id) ?? 0) + 1);
   const porId = new Map((lista?.users ?? []).map((u) => [u.id, u]));
 
   return ((membros ?? []) as Array<{ user_id: string; role: string }>)
@@ -97,6 +104,7 @@ async function carregarMembros(orgId: string): Promise<Membro[]> {
         acesso: ultimoAcesso(u?.last_sign_in_at),
         whatsapp: sessao ? (sessao.status === "WORKING" ? "conectado" : "desconectado") : "sem",
         foto: (u?.user_metadata?.avatar_url as string | undefined) || null,
+        leadsAbertos: leadsPorDono.get(m.user_id) ?? 0,
       } as Membro;
     })
     .sort((a, b) => (ORDEM[a.papel] ?? 9) - (ORDEM[b.papel] ?? 9) || a.nome.localeCompare(b.nome));
@@ -114,6 +122,9 @@ export default async function MembrosPage() {
   // Só o administrador troca papel (a rota confere de novo). O próprio papel fica fixo,
   // para ninguém se trancar fora sem querer.
   const podeTrocar = (m: Membro) => org.role === "admin" && m.id !== user.id && m.papel in PAPEL;
+  // Remover: mesma regra (só administrador, nunca a si mesmo); o último administrador a ação barra.
+  const podeRemover = (m: Membro) => org.role === "admin" && m.id !== user.id;
+  const destinosDe = (m: Membro) => membros.filter((x) => x.id !== m.id && x.papel !== "viewer").map((x) => ({ id: x.id, nome: x.nome }));
 
   return (
     <>
@@ -135,7 +146,7 @@ export default async function MembrosPage() {
           <TituloBloco icone={Users} titulo="Quem está na equipe" sub="Papel, pipelines, WhatsApp e último acesso" />
           {org.role === "admin" ? (
             <p className="mt-4 flex items-center gap-2 text-[13px] text-[#5b7284]">
-              <Info className="size-4 shrink-0 text-[#2a7ca8]" /> Para mudar o papel de alguém, escolha na lista e toque em Salvar.
+              <Info className="size-4 shrink-0 text-[#2a7ca8]" /> Para mudar o papel de alguém, escolha na lista e toque em Salvar. Para tirar alguém da equipe, toque na lixeira.
             </p>
           ) : null}
           <ul className="mt-5 flex flex-col gap-2">
@@ -172,6 +183,9 @@ export default async function MembrosPage() {
                 <Chip icone={Clock} tom="neutro">
                   {m.acesso}
                 </Chip>
+                {podeRemover(m) && (
+                  <RemoverMembro userId={m.id} nome={m.nome} leadsAbertos={m.leadsAbertos} temWhatsapp={m.whatsapp !== "sem"} destinos={destinosDe(m)} />
+                )}
               </li>
             ))}
           </ul>
