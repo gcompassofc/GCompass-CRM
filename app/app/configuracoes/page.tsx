@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { carregarConfig, type CampoLead, type ConfigOpa, type GrupoEtiqueta } from "@/lib/opa/config";
+import { MODELO_BOAS_VINDAS, montarBoasVindas, VARIAVEIS_BOAS_VINDAS } from "@/lib/opa/boas-vindas-texto";
 import { carregarEquipe, type Pessoa } from "@/lib/opa/dados";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -25,6 +26,7 @@ import {
   Tag,
   Target,
   Trash,
+  WhatsappLogo,
   X,
   XCircle,
 } from "@/lib/ui/icons";
@@ -40,6 +42,8 @@ import {
   adicionarMotivo,
   alternarMotivoDefinitivo,
   alternarNaRoleta,
+  alternarBoasVindas,
+  salvarAssinaturas,
   alternarObrigatorioVisita,
   moverCampo,
   moverNaRoleta,
@@ -49,6 +53,7 @@ import {
   removerMotivo,
   salvarCaptacao,
   salvarHorario,
+  salvarModeloBoasVindas,
   salvarPrazos,
 } from "./actions";
 
@@ -100,7 +105,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
         />
 
         {aba === "roleta" && <AbaRoleta config={config} equipe={equipe} />}
-        {aba === "mensagens" && <AbaMensagens />}
+        {aba === "mensagens" && <AbaMensagens config={config} equipe={equipe} />}
         {aba === "etiquetas" && <AbaEtiquetas config={config} orgId={org.orgId} />}
         {aba === "campos" && <AbaCampos config={config} />}
         {aba === "visita" && <AbaVisita config={config} />}
@@ -238,6 +243,8 @@ function AbaRoleta({ config, equipe }: { config: ConfigOpa; equipe: Map<string, 
   // Sem ordem salva, a roleta começa pelos atendentes (como o seed e a porta de entrada fazem).
   const atendentes = [...equipe.values()].filter((p) => p.papel === "agent").map((p) => p.id);
   const roleta = config.roleta.length ? config.roleta : atendentes;
+  // Quem atende e ainda não está na ordem: aparece desligado, com o interruptor para entrar.
+  const fora = [...equipe.values()].filter((p) => p.papel !== "viewer" && !roleta.includes(p.id));
   const ordemCaptacao = config.captacao.ordem.length ? config.captacao.ordem : roleta;
   const pausados = new Set(config.roleta_pausados);
   const prioridade = [
@@ -262,6 +269,27 @@ function AbaRoleta({ config, equipe }: { config: ConfigOpa; equipe: Map<string, 
           <div className="mt-5">
             <OrdemCorretores ids={roleta} equipe={equipe} qual="leads" pausados={pausados} ultimo={config.roleta_ultimo} />
           </div>
+          {fora.length > 0 && (
+            <div className="mt-5 border-t border-[#e7eef2] pt-5">
+              <p className="text-[13px] font-semibold text-[#5b7284]">Fora da roleta · ligue para entrar no fim da fila</p>
+              <ul className="mt-3 flex flex-col gap-2">
+                {fora.map((p) => (
+                  <li key={p.id} className={cn(linhaLista, "opacity-80")}>
+                    <Avatar texto={iniciaisDe(p.nome)} foto={p.foto} tom="claro" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-[15px] font-semibold text-[#0a2d40]">{p.nome}</p>
+                      <span className="text-[12px] text-[#5b7284]">não recebe lead da roleta</span>
+                    </div>
+                    <form action={alternarNaRoleta}>
+                      <input type="hidden" name="id" value={p.id} />
+                      <input type="hidden" name="ordem" value={roleta.join(",")} />
+                      <Interruptor ligado={false} rotulo="Colocar na roleta" />
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </Cartao>
 
         <Cartao bloco tour="roleta-prazos">
@@ -360,9 +388,99 @@ function AbaRoleta({ config, equipe }: { config: ConfigOpa; equipe: Map<string, 
 
 // ---------------------------------------------------------------- mensagens
 
-function AbaMensagens() {
+function AbaMensagens({ config, equipe }: { config: ConfigOpa; equipe: Map<string, Pessoa> }) {
+  // Quem pode receber lead da roleta: a assinatura de cada um.
+  const naRoleta = (config.roleta.length ? config.roleta : [...equipe.values()].filter((p) => p.papel === "agent").map((p) => p.id))
+    .map((id) => equipe.get(id))
+    .filter((p): p is Pessoa => Boolean(p));
+  const exemplo = montarBoasVindas({
+    modelo: config.boas_vindas.modelo,
+    nomeLead: "Aristides",
+    corretor: "Marco",
+    imovelCodigo: "CA006944",
+    canal: "meta",
+    publicado: true,
+  });
   return (
-    <Cartao bloco className="max-w-3xl">
+    <div className="flex max-w-3xl flex-col gap-5">
+    <Cartao bloco>
+      <TituloBloco
+        icone={WhatsappLogo}
+        titulo="Boas-vindas ao lead de formulário"
+        sub="Sai do WhatsApp do corretor da vez, em até um minuto, assinada com o nome dele"
+        acao={
+          <form action={alternarBoasVindas}>
+            <Interruptor ligado={config.boas_vindas.ligada} rotulo={config.boas_vindas.ligada ? "Desligar a boas-vindas" : "Ligar a boas-vindas"} />
+          </form>
+        }
+      />
+      <div className="mt-5 rounded-[20px] bg-[#e7f6ee] px-4 py-3 text-[14px] leading-relaxed text-[#0a2d40]">{exemplo}</div>
+      <ul className="mt-4 flex flex-col gap-2 text-[13px] text-[#34566b]">
+        <li className="flex items-start gap-2">
+          <Info className="mt-0.5 size-4 shrink-0 text-[#2a7ca8]" /> Só para lead novo do formulário do anúncio ou do site. Quem volta, quem já conversa com o corretor e contato particular não recebem.
+        </li>
+        <li className="flex items-start gap-2">
+          <Info className="mt-0.5 size-4 shrink-0 text-[#2a7ca8]" /> Nunca sai por outro número: sem o WhatsApp do corretor conectado, não manda e o motivo fica no histórico do lead.
+        </li>
+        <li className="flex items-start gap-2">
+          <Info className="mt-0.5 size-4 shrink-0 text-[#2a7ca8]" /> Não conta como resposta: o prazo de primeiro atendimento continua valendo.
+        </li>
+      </ul>
+      {naRoleta.length > 0 && (
+        <FormComRetorno action={salvarAssinaturas} sucesso="Assinaturas salvas." className="mt-5 flex flex-col gap-3">
+          <p className="text-[13px] font-semibold text-[#5b7284]">Como cada corretor assina (&ldquo;Aqui é ...&rdquo;)</p>
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {naRoleta.map((p) => (
+              <li key={p.id} className="flex items-center gap-2.5 rounded-[18px] bg-[#f2f6f9] px-3 py-2">
+                <Avatar texto={iniciaisDe(p.nome)} foto={p.foto} tom="claro" />
+                <label className="min-w-0 flex-1">
+                  <span className="block truncate text-[12px] text-[#5b7284]">{p.nome}</span>
+                  <input
+                    name={`assina_${p.id}`}
+                    defaultValue={config.boas_vindas.assinaturas[p.id] ?? ""}
+                    placeholder={p.nome.split(" ")[0]}
+                    maxLength={40}
+                    className="h-9 w-full rounded-full bg-white px-3 text-[14px] font-semibold text-[#0a2d40] outline-none focus:ring-2 focus:ring-[#8fc4dd]"
+                  />
+                </label>
+              </li>
+            ))}
+          </ul>
+          <div>
+            <button type="submit" className={botaoPrimario}>
+              Salvar assinaturas
+            </button>
+          </div>
+        </FormComRetorno>
+      )}
+      <FormComRetorno action={salvarModeloBoasVindas} sucesso="Texto salvo." className="mt-5 flex flex-col gap-3">
+        <label className="text-[13px] font-semibold text-[#5b7284]" htmlFor="modelo-boas-vindas">
+          Texto (vazio usa o texto da casa)
+        </label>
+        <textarea
+          id="modelo-boas-vindas"
+          name="modelo"
+          rows={4}
+          maxLength={600}
+          defaultValue={config.boas_vindas.modelo}
+          placeholder={MODELO_BOAS_VINDAS}
+          className="w-full resize-y rounded-[18px] bg-[#f2f6f9] px-4 py-3 text-[14px] text-[#0a2d40] outline-none placeholder:text-[#8aa0ae] focus:ring-2 focus:ring-[#8fc4dd]"
+        />
+        <div className="flex flex-wrap gap-1.5">
+          {VARIAVEIS_BOAS_VINDAS.map(([v, d]) => (
+            <span key={v} title={d} className="rounded-full bg-[#eef3f6] px-2.5 py-1 font-mono text-[11px] text-[#34566b]">
+              {v}
+            </span>
+          ))}
+        </div>
+        <div>
+          <button type="submit" className={botaoPrimario}>
+            Salvar texto
+          </button>
+        </div>
+      </FormComRetorno>
+    </Cartao>
+    <Cartao bloco>
       <TituloBloco icone={PaperPlaneTilt} titulo="Mensagens padrão" sub="Vêm do Kit de Atendimento OPA (26/10/2026)" />
       <div className="mt-5 flex flex-wrap gap-1.5">
         {["Atendimento em 6 etapas", "Resgate", "Áudios", "Objeções"].map((t) => (
@@ -385,6 +503,7 @@ function AbaMensagens() {
         </BotaoPilula>
       </div>
     </Cartao>
+    </div>
   );
 }
 

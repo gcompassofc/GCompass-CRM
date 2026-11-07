@@ -116,6 +116,16 @@ export interface ConfigOpa {
   /** Volta ao mesmo corretor se ganho ou perdido há menos disso. */
   volta_dias: number;
   gerente_ve_receita: boolean;
+  /**
+   * Boas-vindas ao lead de formulário pelo WhatsApp do corretor da vez (#498, D6).
+   * Modelo vazio = o texto da casa (lib/opa/boas-vindas-texto.ts).
+   */
+  boas_vindas: {
+    ligada: boolean;
+    modelo: string;
+    /** Como cada corretor assina (id -> nome). Vazio = primeiro nome do perfil. Ex.: Paulo Martin assina "Martin". */
+    assinaturas: Record<string, string>;
+  };
 }
 
 // ---------------------------------------------------------------- padrões do protótipo
@@ -284,6 +294,7 @@ export const PADRAO: ConfigOpa = {
   cruzamento: { pesos: { bairro: 30, preco: 25, suites: 20, atributos: 15, demanda: 10 }, minimo: 60 },
   volta_dias: 90,
   gerente_ve_receita: false,
+  boas_vindas: { ligada: true, modelo: "", assinaturas: {} },
 };
 
 // ---------------------------------------------------------------- leitura e gravação
@@ -301,6 +312,7 @@ export function mesclarConfig(salvo: Partial<ConfigOpa> | null | undefined): Con
       ...(s.cruzamento ?? {}),
       pesos: { ...PADRAO.cruzamento.pesos, ...(s.cruzamento?.pesos ?? {}) },
     },
+    boas_vindas: { ...PADRAO.boas_vindas, ...(s.boas_vindas ?? {}), assinaturas: { ...(s.boas_vindas?.assinaturas ?? {}) } },
   };
 }
 

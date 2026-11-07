@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { carregarConfig } from "@/lib/opa/config";
-import { carregarEquipe, carregarImoveis, carregarLeads, filtrarCorretor, primeiroNome, ROTULO_ORIGEM, type LeadOpa } from "@/lib/opa/dados";
+import { carregarEquipe, carregarImoveis, carregarLeads, filtrarCorretor, primeiroNome, rotuloOrigem, type LeadOpa } from "@/lib/opa/dados";
 import { escopoDoFunil } from "@/lib/opa/envio-etapa";
 import { afinidade, precoCurto } from "@/lib/opa/imoveis";
 import { diaSP, inicioDoDia } from "@/lib/opa/periodo";
@@ -161,7 +161,7 @@ export default async function PipelinePage({
                   valor: l.valorCents ? precoCurto(l.valorCents) : "",
                 },
           anuncio: l.origem.anuncio ?? null,
-          origem: ROTULO_ORIGEM[l.origem.canal ?? ""] ?? l.origem.canal ?? "origem",
+          origem: rotuloOrigem(l.origem, "origem"),
           pago: l.pago,
           temperatura: l.copiloto.temperatura ?? null,
           offMarket: l.offMarket,

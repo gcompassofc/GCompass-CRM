@@ -13,7 +13,7 @@ import {
   carregarLeads,
   diagnosticoCompleto,
   primeiroNome,
-  ROTULO_ORIGEM,
+  rotuloOrigem,
   tempoCurto,
   voltaRecente,
 } from "@/lib/opa/dados";
@@ -59,6 +59,7 @@ import {
   PaperPlaneTilt,
   Phone,
   Prohibit,
+  Question,
   SealCheck,
   Smiley,
   Snowflake,
@@ -85,6 +86,7 @@ import { AbasPilula, Cartao, Chip, IconeRedondo, TituloBloco, Vazio, type Icone 
 import {
   alternarEtiqueta,
   alternarLembretes,
+  anotarNoLead,
   confirmarSugestao,
   descartarSugestao,
   editarCampo,
@@ -116,6 +118,8 @@ interface Msg {
   body: string | null;
   sent_at: string;
   sent_via: string | null;
+  metadata?: Record<string, unknown> | null;
+  status?: string | null;
 }
 
 interface Visita {
@@ -186,6 +190,8 @@ const ICONE_HISTORICO: Record<string, [Icone, "claro" | "acao" | "escuro" | "ok"
   visita: [CalendarBlank, "claro"],
   agenda: [Bell, "aviso"],
   copiloto: [Sparkle, "escuro"],
+  nota: [Notepad, "claro"],
+  boas_vindas: [WhatsappLogo, "ok"],
 };
 
 function ChipTemperatura({ valor }: { valor?: "quente" | "morno" | "frio" }) {
@@ -242,6 +248,7 @@ export default async function LeadPage({
     { data: eventosRaw },
     { data: agendadosRaw },
     { data: aceitasRaw },
+    { data: notasRaw },
   ] = await Promise.all([
     carregarImoveis(org.orgId),
     carregarEquipe(org.orgId),
@@ -257,17 +264,31 @@ export default async function LeadPage({
     lead.conversa?.id
       ? supabase
           .from("messages")
-          .select("id, direction, body, sent_at, sent_via")
+          .select("id, direction, body, sent_at, sent_via, metadata, status")
           .eq("conversation_id", lead.conversa.id)
           // As 80 mais recentes (a lista é invertida abaixo para ficar em ordem).
           .order("sent_at", { ascending: false })
           .limit(80)
       : Promise.resolve({ data: [] }),
     supabase.from("visitas").select("*").eq("lead_id", id).order("quando", { ascending: false }),
-    supabase.from("crm_lead_activities").select("type, payload, performed_at, reason").eq("lead_id", id).order("performed_at", { ascending: false }).limit(30),
+    supabase
+      .from("crm_lead_activities")
+      .select("type, payload, performed_at, reason")
+      .eq("lead_id", id)
+      .neq("type", "nota")
+      .order("performed_at", { ascending: false })
+      .limit(30),
     supabase.from("eventos_meta").select("evento, valor_cents, status, created_at").eq("lead_id", id),
     supabase.from("lembretes_agendados").select("quando, mensagem, status, created_at").eq("lead_id", id),
     supabase.from("copiloto_sugestoes").select("campo, valor, decidido_em").eq("lead_id", id).eq("status", "aceita"),
+    // Anotações livres de corretor e gestor (#516, item 9): à parte, para nenhuma sumir entre as atividades.
+    supabase
+      .from("crm_lead_activities")
+      .select("id, payload, performed_at, performed_by_user_id")
+      .eq("lead_id", id)
+      .eq("type", "nota")
+      .order("performed_at", { ascending: false })
+      .limit(50),
   ]);
 
   const funil = (funilRaw as { name: string; slug: string } | null) ?? { name: "Compradores", slug: "compradores" };
@@ -345,13 +366,22 @@ export default async function LeadPage({
     imoveis: interesse.length + Math.min(combinam.length, 6),
   };
 
+  const notas = ((notasRaw ?? []) as Array<{ id: string; payload: { texto?: string }; performed_at: string; performed_by_user_id: string | null }>).map((n) => ({
+    id: n.id,
+    em: n.performed_at,
+    texto: String(n.payload?.texto ?? ""),
+    autor: equipe.get(n.performed_by_user_id ?? "")?.nome ?? "Pessoa removida",
+  }));
+
   // Histórico: tudo o que aconteceu com o negócio, do mais novo ao mais velho.
   const historico = [
-    { em: lead.criadoEm, texto: `Entrou por ${ROTULO_ORIGEM[lead.origem.canal ?? ""] ?? "nova entrada"}${entrada ? `, imóvel ${entrada.codigo}` : ""}`, tipo: "entrada" },
-    ...((atividadesRaw ?? []) as Array<{ type: string; payload: Record<string, unknown>; performed_at: string }>).map((a) => ({
+    { em: lead.criadoEm, texto: `Entrou por ${rotuloOrigem(lead.origem, "nova entrada")}${entrada ? `, imóvel ${entrada.codigo}` : ""}`, tipo: "entrada" },
+    ...((atividadesRaw ?? []) as Array<{ type: string; payload: Record<string, unknown>; performed_at: string; reason: string | null }>).map((a) => ({
       em: a.performed_at,
       texto:
-        a.type === "lead_voltou"
+        a.type === "boas_vindas_enviada" || a.type === "boas_vindas_nao_enviada" || a.type === "lead_do_whatsapp"
+          ? (a.reason ?? a.type.replace(/_/g, " "))
+          : a.type === "lead_voltou"
           ? `Voltou por outro formulário (${a.payload.vez}º), sem roleta`
           : a.type === "ligacao"
             ? `Ligação: ${a.payload.resultado === "atendeu" ? "atendeu" : a.payload.resultado === "retorno" ? "pediu retorno" : "não atendeu"}`
@@ -366,8 +396,9 @@ export default async function LeadPage({
           : a.type === "reaberto"
             ? `Negócio reaberto${a.payload.motivo_da_perda ? ` (tinha sido perdido por: ${String(a.payload.motivo_da_perda)})` : ""}`
             : a.type.replace(/_/g, " "),
-      tipo: a.type === "venda_realizada" ? "venda" : "atividade",
+      tipo: a.type === "venda_realizada" ? "venda" : a.type === "boas_vindas_enviada" ? "boas_vindas" : "atividade",
     })),
+    ...notas.map((n) => ({ em: n.em, texto: `Anotação de ${n.autor}: “${n.texto.slice(0, 120)}${n.texto.length > 120 ? "…" : ""}”`, tipo: "nota" })),
     ...((eventosRaw ?? []) as Array<{ evento: string; valor_cents: number | null; status: string; created_at: string }>).map((e) => ({
       em: e.created_at,
       texto: `Evento “${e.evento}” para o Meta${e.valor_cents ? `, valor ${precoCheio(e.valor_cents)}` : ""} (${e.status === "na_fila" ? "na fila" : e.status})`,
@@ -410,7 +441,7 @@ export default async function LeadPage({
         {/* Selos: o que diferencia este lead, num olhar. */}
         <div className="flex flex-wrap items-center gap-2">
           <Chip icone={Infinito} tom="claro">
-            {lead.pago ? "Pago" : "Orgânico"} · {ROTULO_ORIGEM[lead.origem.canal ?? ""] ?? lead.origem.canal}
+            {lead.pago ? "Pago" : "Orgânico"} · {rotuloOrigem(lead.origem)}
           </Chip>
           <ChipTemperatura valor={lead.copiloto.temperatura} />
           {lead.offMarket && (
@@ -672,6 +703,41 @@ export default async function LeadPage({
               </Cartao>
 
               <Cartao bloco>
+                <TituloBloco icone={Notepad} titulo="Anotações" sub="Corretor e gestor, com autor e hora. Ficam no histórico." />
+                {podeEditar && (
+                  <FormComRetorno action={anotarNoLead} sucesso="Anotação salva." className="mt-4 flex flex-col gap-2.5">
+                    <input type="hidden" name="leadId" value={lead.id} />
+                    <textarea
+                      name="texto"
+                      required
+                      maxLength={2000}
+                      rows={3}
+                      aria-label="Nova anotação"
+                      placeholder="O que vale lembrar deste lead"
+                      className="w-full resize-y rounded-[18px] bg-[#f2f6f9] px-4 py-3 text-[14px] text-[#0a2d40] outline-none placeholder:text-[#5b7284] focus:ring-2 focus:ring-[#8fc4dd]"
+                    />
+                    <BotaoEnvio className="inline-flex h-11 items-center gap-1.5 self-end rounded-full bg-[#0a2d40] px-5 text-[13px] font-semibold text-white hover:bg-[#12455f]">
+                      Salvar anotação
+                    </BotaoEnvio>
+                  </FormComRetorno>
+                )}
+                {notas.length > 0 ? (
+                  <ol className="mt-4 flex flex-col gap-2.5">
+                    {notas.map((n) => (
+                      <li key={n.id} className="rounded-[18px] bg-[#f2f6f9] px-4 py-3">
+                        <p className="whitespace-pre-line text-[14px] text-[#0a2d40]">{n.texto}</p>
+                        <p className="mt-1.5 text-[12px] text-[#5b7284]">
+                          {n.autor} · {hora(n.em)}
+                        </p>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="mt-4 text-[14px] text-[#5b7284]">Nenhuma anotação ainda.</p>
+                )}
+              </Cartao>
+
+              <Cartao bloco>
                 <TituloBloco
                   icone={WhatsappLogo}
                   titulo={`WhatsApp de ${primeiroNome(dono?.nome) || "corretor"}`}
@@ -689,7 +755,14 @@ export default async function LeadPage({
                       <p className="whitespace-pre-line">{m.body}</p>
                       <p className="mt-1 text-right text-[10px] text-[#5b7284]">
                         {hora(m.sent_at)}
-                        {m.direction === "outbound" && (m.sent_via === "external_device" ? " · pelo celular" : " · pelo CRM")}
+                        {m.direction === "outbound" &&
+                          ((m.metadata as { boas_vindas?: boolean } | null | undefined)?.boas_vindas
+                            ? m.status === "failed"
+                              ? " · boas-vindas automática, não saiu"
+                              : " · boas-vindas automática"
+                            : m.sent_via === "external_device"
+                              ? " · pelo celular"
+                              : " · pelo CRM")}
                       </p>
                     </div>
                   ))}
@@ -701,11 +774,29 @@ export default async function LeadPage({
             </div>
 
             <div className="flex min-w-0 flex-col gap-5 lg:col-span-5">
+              {lead.respostasFormulario.length > 0 && (
+                <Cartao>
+                  <TituloBloco
+                    icone={Question}
+                    titulo="Respostas do formulário"
+                    sub={lead.respostasEm ? `Enviado em ${hora(lead.respostasEm)}` : "O que a pessoa respondeu ao entrar"}
+                  />
+                  <dl className="mt-4 flex flex-col gap-2.5">
+                    {lead.respostasFormulario.map((r) => (
+                      <div key={r.chave} className="rounded-[18px] bg-[#f2f6f9] px-4 py-3">
+                        <dt className="text-[13px] text-[#5b7284]">{r.pergunta}</dt>
+                        <dd className="mt-1 whitespace-pre-line text-[15px] font-semibold text-[#0a2d40]">{r.resposta}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </Cartao>
+              )}
+
               {voltouRecente && (
                 <Cartao>
                   <TituloBloco icone={ArrowsClockwise} titulo="Voltou por outro formulário" sub="Sem roleta: veio direto para quem já cuidava" />
                   <p className="mt-4 text-[14px] leading-relaxed text-[#34566b]">
-                    {hora(voltouRecente.em)}, {ROTULO_ORIGEM[voltouRecente.origem?.canal ?? ""] ?? "nova entrada"}
+                    {hora(voltouRecente.em)}, {rotuloOrigem(voltouRecente.origem, "nova entrada")}
                     {imovelDaVolta ? `: ${imovelDaVolta.codigo} · ${imovelDaVolta.titulo}` : ""}. O imóvel novo entrou na lista de interesse e o lead
                     subiu na fila.
                   </p>
@@ -780,18 +871,18 @@ export default async function LeadPage({
               <Cartao>
                 <TituloBloco icone={Infinito} titulo="Origem e avisos" sub={`Entrou em ${hora(lead.criadoEm)}`} />
                 <div className="mt-4 flex flex-wrap gap-1.5">
-                  <Chip tom="neutro">{ROTULO_ORIGEM[lead.origem.canal ?? ""] ?? lead.origem.canal ?? "Não informado"}</Chip>
+                  <Chip tom="neutro">{rotuloOrigem(lead.origem)}</Chip>
                   <Chip icone={Timer} tom="neutro">
                     {lead.pago ? `Pago, ${tempoCurto(config.prazos.pago_min)}` : `Orgânico, ${tempoCurto(config.prazos.organico_min)}`}
                   </Chip>
                 </div>
-                {lead.origem.campanha && (
+                {(lead.origem.anuncio || lead.origem.campanha || lead.origem.conjunto) && (
                   <dl className="mt-4 grid grid-cols-1 gap-2 text-[13px]">
                     {(
                       [
+                        ["Anúncio", lead.origem.anuncio],
                         ["Campanha", lead.origem.campanha],
                         ["Conjunto", lead.origem.conjunto],
-                        ["Anúncio", lead.origem.anuncio],
                       ] as const
                     ).map(([k, v]) =>
                       v ? (
@@ -802,6 +893,20 @@ export default async function LeadPage({
                       ) : null,
                     )}
                   </dl>
+                )}
+                {lead.boasVindas && (
+                  <p className="mt-4 flex items-start gap-2.5 text-[14px] text-[#34566b]">
+                    {lead.boasVindas.status === "enviada" ? (
+                      <WhatsappLogo className="mt-0.5 size-5 shrink-0 text-[#1f8a5b]" />
+                    ) : (
+                      <Warning className="mt-0.5 size-5 shrink-0 text-[#a4410e]" />
+                    )}
+                    {lead.boasVindas.status === "enviada"
+                      ? `Boas-vindas enviada às ${hora(lead.boasVindas.em)} pelo WhatsApp de ${primeiroNome(dono?.nome) || "corretor"}`
+                      : lead.boasVindas.status === "enviando"
+                        ? "Boas-vindas saindo agora"
+                        : "Boas-vindas não confirmada pelo WhatsApp: veja o histórico"}
+                  </p>
                 )}
                 <div className="mt-4 flex items-center justify-between gap-3 border-t border-[#e7eef2] pt-4">
                   <p className="flex items-center gap-2.5 text-[14px] text-[#34566b]">

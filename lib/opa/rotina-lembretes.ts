@@ -37,7 +37,7 @@ import {
   type CanalDeAvisos,
   type ResultadoAviso,
 } from "./aviso-whatsapp";
-import { esperaDesde, esperaEmMinutos, minutosUteis } from "./atendimento";
+import { boasVindasEnviadaEm, esperaDesde, esperaEmMinutos, minutosUteis, saidaDoCorretor } from "./atendimento";
 import { carregarConfig, type ConfigOpa } from "./config";
 import { carregarEquipe, type Pessoa } from "./dados";
 import { emLotes } from "./lotes";
@@ -372,7 +372,8 @@ async function processarFila(c: Contexto, inicio: number) {
     if (cf.lembretes_desligados) continue;
     const conv = l.contact_id ? conversas.get(l.contact_id) : undefined;
     // Só a espera pelo PRIMEIRO atendimento gera aviso e repasse (A2).
-    if (!aguardaPrimeiraResposta({ criadoEm: l.created_at, respondidoEm: cf.respondido_em, ultimaSaidaEm: conv?.last_outbound_at })) continue;
+    const boasVindasEm = boasVindasEnviadaEm(cf as unknown as Record<string, unknown>);
+    if (!aguardaPrimeiraResposta({ criadoEm: l.created_at, respondidoEm: cf.respondido_em, ultimaSaidaEm: saidaDoCorretor(conv?.last_outbound_at, boasVindasEm) })) continue;
     const desde = esperaDesde({
       status: l.status,
       criadoEm: l.created_at,
@@ -383,6 +384,7 @@ async function processarFila(c: Contexto, inicio: number) {
       ultimaMensagemEm: conv?.last_message_at,
       ultimaEntradaEm: conv?.last_inbound_at,
       ultimaSaidaEm: conv?.last_outbound_at,
+      boasVindasEm,
     });
     if (desde === null) continue;
 

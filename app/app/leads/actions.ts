@@ -8,6 +8,7 @@ import { audit } from "@/lib/audit";
 import { ehLeadDaOpa, MOTIVO_PESSOAL } from "@/lib/opa/contatos-whatsapp";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { analisarLead } from "@/lib/opa/analisar";
+import { boasVindasEnviadaEm } from "@/lib/opa/atendimento";
 import { mesclarCampos, type OpcoesMescla } from "@/lib/opa/campos";
 import { carregarConfig } from "@/lib/opa/config";
 import { CAMPOS } from "@/lib/opa/copiloto";
@@ -458,14 +459,17 @@ export async function marcarRespondido(formData: FormData) {
   if (org.role === "viewer") throw new Error("Seu acesso é só de leitura.");
   const { data: lead } = await supabase
     .from("crm_leads")
-    .select("contact_id, tags, created_at")
+    .select("contact_id, tags, created_at, custom_fields")
     .eq("organization_id", org.orgId)
     .eq("id", leadId)
     .maybeSingle();
   if (!lead) throw new Error("Lead não encontrado.");
   // Lead da OPA de quem tem o WhatsApp ligado: a resposta aparece sozinha. O "Respondi"
   // sem mensagem nenhuma parava o prazo e segurava o lead (05/11/2026).
-  const dados = lead as { contact_id: string | null; tags: string[] | null; created_at: string };
+  const dados = lead as { contact_id: string | null; tags: string[] | null; created_at: string; custom_fields: Record<string, unknown> | null };
+  // A boas-vindas automática saiu do número dele, mas não é resposta: conta só o que veio depois.
+  const bv = boasVindasEnviadaEm(dados.custom_fields);
+  const respostaDepoisDe = bv && Date.parse(bv) + 60_000 > Date.parse(dados.created_at) ? new Date(Date.parse(bv) + 60_000).toISOString() : dados.created_at;
   if (!ehGestor({ user, org }) && ehLeadDaOpa(dados.tags) && dados.contact_id) {
     const admin = createAdminClient();
     const { data: numero } = await admin
@@ -482,7 +486,7 @@ export async function marcarRespondido(formData: FormData) {
         .select("id")
         .eq("organization_id", org.orgId)
         .eq("contact_id", dados.contact_id)
-        .gt("last_outbound_at", dados.created_at)
+        .gt("last_outbound_at", respostaDepoisDe)
         .limit(1)
         .maybeSingle();
       if (!saida) throw new Error("Responda o cliente pelo WhatsApp: a resposta é registrada sozinha.");
@@ -905,4 +909,35 @@ export async function salvarPedidoRadar(leadId: string, entrada: unknown): Promi
   });
   revalidatePath(`/app/leads/${leadId}`);
   return { ok: true };
+}
+
+/**
+ * Anotação livre no lead (#516, item 9, pedido do Kallyl em 06/11/2026). Corretor e
+ * gestor escrevem; fica no histórico com autor e hora. Grava pela sessão: o RLS das
+ * atividades (0042) só aceita lead que a pessoa enxerga.
+ */
+export async function anotarNoLead(formData: FormData) {
+  const leadId = String(formData.get("leadId") ?? "");
+  const texto = String(formData.get("texto") ?? "").trim();
+  if (!texto) throw new Error("Escreva a anotação antes de salvar.");
+  if (texto.length > 2000) throw new Error("Anotação com até 2.000 caracteres.");
+  const { user, org, supabase } = await contexto();
+  if (org.role === "viewer") throw new Error("Seu acesso é só de leitura.");
+  const { data: lead } = await supabase.from("crm_leads").select("contact_id").eq("organization_id", org.orgId).eq("id", leadId).maybeSingle();
+  if (!lead) throw new Error("Lead não encontrado.");
+  const agora = new Date().toISOString();
+  const { error } = await supabase.from("crm_lead_activities").insert({
+    organization_id: org.orgId,
+    lead_id: leadId,
+    contact_id: (lead as { contact_id: string | null }).contact_id,
+    source_module: "opa",
+    type: "nota",
+    payload: { texto },
+    performed_at: agora,
+    performed_by_user_id: user.id,
+    actor_kind: "user",
+  });
+  if (error) throw new Error(erroParaTela(error));
+  await supabase.from("crm_leads").update({ last_activity_at: agora }).eq("organization_id", org.orgId).eq("id", leadId);
+  revalidatePath(`/app/leads/${leadId}`);
 }

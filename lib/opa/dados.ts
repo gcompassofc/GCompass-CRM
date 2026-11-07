@@ -5,7 +5,7 @@ import { cifraConfigurada, decifrar } from "@/lib/crypto/dados-pessoais";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
-import { esperaDesde, esperaEmMinutos } from "./atendimento";
+import { boasVindasEnviadaEm, esperaDesde, esperaEmMinutos } from "./atendimento";
 import { carregarConfig } from "./config";
 import type { Imovel } from "./imoveis";
 import { emLotes, todasAsPaginas } from "./lotes";
@@ -51,6 +51,18 @@ export interface OrigemLead {
   campanha?: string | null;
   conjunto?: string | null;
   anuncio?: string | null;
+  /** Ids da Meta, quando o lead veio do formulário pelo painel (#516, item 6). */
+  campanha_id?: string | null;
+  conjunto_id?: string | null;
+  anuncio_id?: string | null;
+  /** "whatsapp": nasceu de conversa no WhatsApp do corretor (anúncio de clique, etiqueta). */
+  via?: string | null;
+}
+
+export interface RespostaSalva {
+  chave: string;
+  pergunta: string;
+  resposta: string;
 }
 
 export interface VoltouInfo {
@@ -114,16 +126,38 @@ export interface LeadOpa {
   classificado: "lead" | null;
   /** Último pedido ao OPA Radar feito pela ficha (lib/opa/pedido-radar.ts). */
   pedidoRadar: PedidoRadarSalvo | null;
+  /** Respostas do último formulário (pergunta por extenso), lib/opa/formulario.ts. */
+  respostasFormulario: RespostaSalva[];
+  respostasEm: string | null;
+  /** Boas-vindas automática: quando saiu, ou por que não saiu. */
+  boasVindas: { em: string; status: string; erro?: string | null } | null;
 }
 
 export const ROTULO_ORIGEM: Record<string, string> = {
   meta: "Formulário Meta",
+  anuncio_whatsapp: "Anúncio de WhatsApp",
   site: "Site",
   whatsapp: "WhatsApp",
   linkbio: "Link da bio",
   indicacao: "Indicação",
   radar: "OPA Radar",
 };
+
+/**
+ * Chave da origem para rótulo e filtro. Lead pago que nasceu de conversa no
+ * WhatsApp do corretor é "Anúncio de WhatsApp": só o formulário passa pelo painel
+ * e traz campanha, imóvel e respostas (#516, item 7).
+ */
+export function chaveOrigem(origem: OrigemLead | null | undefined): string {
+  if (!origem) return "";
+  if (origem.canal === "meta" && origem.via === "whatsapp") return "anuncio_whatsapp";
+  return origem.canal ?? "";
+}
+
+export function rotuloOrigem(origem: OrigemLead | null | undefined, padrao = "Não informado"): string {
+  const k = chaveOrigem(origem);
+  return ROTULO_ORIGEM[k] ?? (k || padrao);
+}
 
 type LinhaLead = {
   id: string;
@@ -267,6 +301,7 @@ export async function carregarLeadsSemCache(
       ultimaMensagemEm: bruta?.last_message_at,
       ultimaEntradaEm: bruta?.last_inbound_at,
       ultimaSaidaEm: bruta?.last_outbound_at,
+      boasVindasEm: boasVindasEnviadaEm(cf),
     });
     const esperandoMin = desde !== null ? esperaEmMinutos(desde, agora, config.horario) : null;
     let conversa: LeadOpa["conversa"] = bruta
@@ -321,6 +356,9 @@ export async function carregarLeadsSemCache(
       pendentes: pendPorLead.get(l.id) ?? 0,
       classificado: (cf.classificado as { como?: string } | undefined)?.como === "lead" ? "lead" : null,
       pedidoRadar: (cf.pedido_radar as PedidoRadarSalvo | undefined)?.pedido ? (cf.pedido_radar as PedidoRadarSalvo) : null,
+      respostasFormulario: ((cf.formulario as { respostas?: RespostaSalva[] } | undefined)?.respostas ?? []).filter((r) => r && r.pergunta && r.resposta),
+      respostasEm: (cf.formulario as { em?: string } | undefined)?.em ?? null,
+      boasVindas: (cf.boas_vindas as LeadOpa["boasVindas"] | undefined) ?? null,
     };
   });
 }

@@ -65,18 +65,68 @@ export async function moverNaRoleta(formData: FormData) {
   }
 }
 
-/** Liga ou desliga um corretor da roleta de leads (fica na ordem, mas pula a vez). */
+/**
+ * Liga ou desliga um corretor da roleta de leads (fica na ordem, mas pula a vez).
+ * Quem ainda não está na ordem (entrou na equipe depois que a ordem foi salva)
+ * entra no fim da fila, já valendo (#562, 07/11/2026: Luana, Cristian e Paulo
+ * Martin estavam na Equipe e não apareciam na roleta).
+ */
 export async function alternarNaRoleta(formData: FormData) {
-  const { orgId, config } = await gestor();
+  const { orgId, admin, config } = await gestor();
   const id = texto(formData, "id");
   const ordemBase = texto(formData, "ordem").split(",").filter(Boolean);
+  const ordem = config.roleta.length ? config.roleta : ordemBase;
   const pausados = new Set(config.roleta_pausados);
+  if (!ordem.includes(id)) {
+    // Só membro ativo da empresa, e não quem só lê.
+    const { data: membro } = await admin
+      .from("user_organizations")
+      .select("role")
+      .eq("organization_id", orgId)
+      .eq("user_id", id)
+      .is("revoked_at", null)
+      .maybeSingle();
+    const papel = (membro as { role: string } | null)?.role;
+    if (!papel || papel === "viewer") throw new Error("Só quem atende pode entrar na roleta.");
+    pausados.delete(id);
+    await gravar(orgId, { roleta: [...ordem, id], roleta_pausados: [...pausados] });
+    return;
+  }
   if (pausados.has(id)) pausados.delete(id);
   else pausados.add(id);
   await gravar(orgId, {
-    roleta: config.roleta.length ? config.roleta : ordemBase,
+    roleta: ordem,
     roleta_pausados: [...pausados],
   });
+}
+
+// ---------------------------------------------------------------- boas-vindas
+
+/** Liga ou desliga a boas-vindas automática pelo WhatsApp do corretor (#498, D6). */
+export async function alternarBoasVindas() {
+  const { orgId, config } = await gestor();
+  await gravar(orgId, { boas_vindas: { ...config.boas_vindas, ligada: !config.boas_vindas.ligada } });
+}
+
+/** Como cada corretor assina a boas-vindas (uma palavra, sem travessão). */
+export async function salvarAssinaturas(formData: FormData) {
+  const { orgId, config } = await gestor();
+  const assinaturas: Record<string, string> = {};
+  for (const [k, v] of formData.entries()) {
+    if (!k.startsWith("assina_")) continue;
+    const nome = String(v).trim().replace(/[\u2013\u2014]/g, "").slice(0, 40);
+    if (nome) assinaturas[k.slice(7)] = nome;
+  }
+  await gravar(orgId, { boas_vindas: { ...config.boas_vindas, assinaturas } });
+}
+
+/** Texto da boas-vindas. Vazio volta ao texto da casa. */
+export async function salvarModeloBoasVindas(formData: FormData) {
+  const { orgId, config } = await gestor();
+  const modelo = texto(formData, "modelo").replace(/\s*\r?\n+\s*/g, " ");
+  if (modelo.length > 600) throw new Error("Texto com até 600 caracteres.");
+  if (/[\u2013\u2014]/.test(modelo)) throw new Error("Sem travessão: use vírgula, ponto ou dois-pontos.");
+  await gravar(orgId, { boas_vindas: { ...config.boas_vindas, modelo } });
 }
 
 export async function salvarPrazos(formData: FormData) {

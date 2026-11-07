@@ -16,7 +16,7 @@ import {
   diagnosticoCompleto,
   prazoDoLead,
   primeiroNome,
-  ROTULO_ORIGEM,
+  rotuloOrigem,
   tempoCurto,
   type LeadOpa,
   type Pessoa,
@@ -379,7 +379,7 @@ function ResponderPrimeiro({ lead, imovel }: { lead: LeadOpa; imovel?: Imovel })
   const pct = Math.min(100, Math.round((espera / prazo) * 100));
   const fone = (lead.telefone ?? "").replace(/\D/g, "");
   const chips = chipsDoPerfil(lead);
-  const origem = ROTULO_ORIGEM[lead.origem.canal ?? ""] ?? lead.origem.canal;
+  const origem = rotuloOrigem(lead.origem, "");
 
   return (
     <Cartao escuro bloco className="flex flex-col gap-5">

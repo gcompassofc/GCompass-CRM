@@ -11,10 +11,11 @@
  * Idempotente: o mesmo telefone chegando várias vezes ao mesmo tempo (n8n e Meta
  * reenviam em erro) vira um lead só e todas as chamadas respondem 200.
  */
-import type { NextRequest } from "next/server";
+import { after, type NextRequest } from "next/server";
 import { z } from "zod";
 
 import { fail, ok } from "@/lib/api/wrappers";
+import { enviarBoasVindas } from "@/lib/opa/boas-vindas";
 import { registrarEntrada } from "@/lib/opa/entrada";
 import { lerCorpoLimitado, mesmoSegredo, tokenDeEntrada } from "@/lib/opa/segredos";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -35,6 +36,18 @@ const corpo = z.object({
   campanha: z.string().max(300).nullish(),
   conjunto: z.string().max(300).nullish(),
   anuncio: z.string().max(300).nullish(),
+  // O painel de tracking manda os ids nas UTMs e os nomes à parte (PR #80 do painel,
+  // 06/11/2026). Antes o validador descartava tudo isto calado e o card ficava sem anúncio.
+  utm_source: z.string().max(300).nullish(),
+  utm_medium: z.string().max(300).nullish(),
+  utm_campaign: z.string().max(300).nullish(),
+  utm_term: z.string().max(300).nullish(),
+  utm_content: z.string().max(300).nullish(),
+  campanha_nome: z.string().max(300).nullish(),
+  conjunto_nome: z.string().max(300).nullish(),
+  anuncio_nome: z.string().max(300).nullish(),
+  // Respostas do formulário pelo valor da opção (finalidade, relacao_ilhabela, historia_ilhabela...).
+  respostas: z.record(z.string(), z.unknown()).nullish(),
 });
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ org: string }> }): Promise<Response> {
@@ -67,15 +80,27 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ org
     email: b.email,
     imovelCodigo: b.imovel_codigo,
     origem: b.origem,
-    campanha: b.campanha,
-    conjunto: b.conjunto,
-    anuncio: b.anuncio,
+    campanha: b.campanha_nome ?? b.campanha,
+    conjunto: b.conjunto_nome ?? b.conjunto,
+    anuncio: b.anuncio_nome ?? b.anuncio,
+    campanhaId: b.utm_campaign,
+    conjuntoId: b.utm_term,
+    anuncioId: b.utm_content,
+    utmSource: b.utm_source,
+    utmMedium: b.utm_medium,
+    respostas: b.respostas ?? null,
   };
   // Corrida de entradas iguais: a perdedora bate na constraint única do contato
   // ou do lead. Na segunda tentativa o registro já existe e vira "voltou".
   for (let tentativa = 0; ; tentativa++) {
     try {
       const r = await registrarEntrada(admin, linha.id, entrada);
+      // Boas-vindas pelo número do corretor da vez (#498): depois da resposta, para
+      // o painel não esperar o WhatsApp. Só lead novo de formulário (Meta ou site).
+      if (r.tipo === "novo" && (b.origem === "meta" || b.origem === "site")) {
+        const orgId = linha.id;
+        after(() => enviarBoasVindas(admin, orgId, r.leadId).catch((e) => console.error("[opa-entrada] boas-vindas", e instanceof Error ? e.message : e)));
+      }
       // Só o necessário para quem chamou; quem é o dono fica dentro do CRM.
       return ok({ tipo: r.tipo, leadId: r.leadId });
     } catch (e) {

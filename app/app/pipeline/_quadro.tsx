@@ -237,10 +237,26 @@ export function QuadroOpa({ colunas: inicial, envio, simples = false }: { coluna
                                 )}
                               </p>
                               <div className="mt-3 flex items-center gap-1.5">
-                                <span className="inline-flex min-w-0 items-center gap-1 rounded-full bg-[#eef3f6] px-2 py-1 text-[11px] font-medium text-[#34566b]">
+                                <span
+                                  title={c.anuncio ? `Anúncio: ${c.anuncio}` : undefined}
+                                  className="inline-flex min-w-0 items-center gap-1 rounded-full bg-[#eef3f6] px-2 py-1 text-[11px] font-medium text-[#34566b]"
+                                >
                                   <OrigemIcone className="size-3 shrink-0" weight="bold" />
                                   <span className="truncate">{c.origem}</span>
                                 </span>
+                                {/* Gestor e administrador veem quem atende; o corretor só vê os dele. */}
+                                {!simples && (
+                                  <span
+                                    title={c.dono ? `Atendido por ${c.dono}` : "Sem corretor"}
+                                    className={cn(
+                                      "inline-flex max-w-[45%] shrink-0 items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold",
+                                      c.dono ? "bg-[#e7f0f5] text-[#12455f]" : "bg-[#fdf0e6] text-[#a4410e]",
+                                    )}
+                                  >
+                                    <UserCircle className="size-3 shrink-0" weight="fill" />
+                                    <span className="truncate">{c.dono ?? "Sem corretor"}</span>
+                                  </span>
+                                )}
                                 {temp && (
                                   <span
                                     title={temp.rotulo}
@@ -266,7 +282,7 @@ export function QuadroOpa({ colunas: inicial, envio, simples = false }: { coluna
                                   <Clock className="size-3.5" /> {tempo(c.esperandoMin)}
                                 </span>
                               ) : (
-                                <span className="truncate text-[12px] text-[#5b7284]">{c.dono ? `${c.dono} · respondido` : "respondido"}</span>
+                                <span className="truncate text-[12px] text-[#5b7284]">respondido</span>
                               )}
                               <div className="flex shrink-0 gap-1.5">
                                 {toque && (

@@ -154,6 +154,8 @@ export interface DadosDaEspera {
   ultimaMensagemEm?: string | null;
   ultimaEntradaEm?: string | null;
   ultimaSaidaEm?: string | null;
+  /** custom_fields.boas_vindas.em quando a boas-vindas automática saiu (#498). */
+  boasVindasEm?: string | null;
 }
 
 const ms = (iso: string | null | undefined): number | null => {
@@ -161,6 +163,32 @@ const ms = (iso: string | null | undefined): number | null => {
   const t = Date.parse(iso);
   return Number.isNaN(t) ? null : t;
 };
+
+/**
+ * A última mensagem enviada na conversa foi só a boas-vindas automática? Vale a
+ * folga de 1 minuto: a linha da mensagem nasce um instante antes da hora gravada
+ * no lead. Qualquer mensagem do corretor depois disso já é resposta de verdade.
+ */
+export function saidaFoiSoBoasVindas(ultimaSaidaEm: string | null | undefined, boasVindasEm: string | null | undefined): boolean {
+  const saiu = ms(ultimaSaidaEm);
+  const bv = ms(boasVindasEm);
+  return saiu !== null && bv !== null && saiu <= bv + 60_000;
+}
+
+/** A saída que conta como resposta do corretor: a boas-vindas automática não conta. */
+export function saidaDoCorretor(ultimaSaidaEm: string | null | undefined, boasVindasEm: string | null | undefined): string | null {
+  return saidaFoiSoBoasVindas(ultimaSaidaEm, boasVindasEm) ? null : (ultimaSaidaEm ?? null);
+}
+
+/**
+ * custom_fields.boas_vindas.em: hora da tentativa da boas-vindas automática.
+ * Vale também quando falhou: a linha da mensagem (mesmo com falha) marca a
+ * conversa como "última saída", e nem por isso o corretor respondeu.
+ */
+export function boasVindasEnviadaEm(cf: Record<string, unknown> | null | undefined): string | null {
+  const bv = cf?.boas_vindas as { em?: string } | undefined;
+  return bv?.em ?? null;
+}
 
 /**
  * Desde quando o lead espera uma resposta do corretor (ms), ou null se não
@@ -175,8 +203,13 @@ const ms = (iso: string | null | undefined): number | null => {
  */
 export function esperaDesde(d: DadosDaEspera): number | null {
   const entrou = ms(d.ultimaEntradaEm);
-  const saiu = ms(d.ultimaSaidaEm);
+  // A boas-vindas automática não é resposta do corretor: não tira da fila nem zera o prazo.
+  const soBoasVindas = saidaFoiSoBoasVindas(d.ultimaSaidaEm, d.boasVindasEm);
+  const saiu = soBoasVindas ? null : ms(d.ultimaSaidaEm);
   let desde: number | null = entrou !== null && (saiu === null || entrou > saiu) ? entrou : null;
+  // Lead respondeu à boas-vindas: o relógio continua o da chegada do lead.
+  const criadoEm = ms(d.criadoEm);
+  if (soBoasVindas && desde !== null && criadoEm !== null) desde = Math.min(desde, criadoEm);
 
   const voltou = ms(d.voltouEm);
   if (voltou !== null) {
@@ -187,7 +220,7 @@ export function esperaDesde(d: DadosDaEspera): number | null {
   const respondido = ms(d.respondidoEm) ?? 0;
   if (desde !== null && respondido >= desde) desde = null;
 
-  if (desde === null && !d.temConversa && d.status === "open" && !respondido) desde = ms(d.criadoEm);
+  if (desde === null && (!d.temConversa || soBoasVindas) && d.status === "open" && !respondido) desde = ms(d.criadoEm);
 
   // A entrega inicial (atribuição no instante da criação) não reinicia nada;
   // uma troca de corretor depois dela, sim.

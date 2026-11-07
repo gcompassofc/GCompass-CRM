@@ -3,7 +3,7 @@
  * (decisão 6 do protótipo: exportar só o administrador).
  */
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
-import { carregarEquipe, carregarLeadsSemCache, ROTULO_ORIGEM } from "@/lib/opa/dados";
+import { carregarEquipe, carregarLeadsSemCache, rotuloOrigem } from "@/lib/opa/dados";
 import { dataHoraSP, diaSP } from "@/lib/opa/periodo";
 import { createClient } from "@/lib/supabase/server";
 
@@ -41,7 +41,7 @@ export async function GET(): Promise<Response> {
       l.nome,
       l.telefone,
       SITUACAO[l.status] ?? l.status,
-      ROTULO_ORIGEM[l.origem.canal ?? ""] ?? l.origem.canal,
+      rotuloOrigem(l.origem, ""),
       l.pago ? "sim" : "não",
       l.imovelCodigo,
       l.etapa.nome,

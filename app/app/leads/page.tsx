@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
-import { carregarEquipe, carregarImoveis, carregarLeads, filtrarCorretor, ROTULO_ORIGEM, type LeadOpa } from "@/lib/opa/dados";
+import { carregarEquipe, carregarImoveis, carregarLeads, chaveOrigem, filtrarCorretor, ROTULO_ORIGEM, rotuloOrigem, type LeadOpa } from "@/lib/opa/dados";
 import { createClient } from "@/lib/supabase/server";
 import {
   ArrowsClockwise,
@@ -51,6 +51,7 @@ const ABAS: Array<[string, string, Icone, (l: LeadOpa, compradores: string) => b
 /** Ícone de cada canal de entrada, para a origem se ler sem texto longo. */
 const ICONE_ORIGEM: Record<string, Icone> = {
   meta: Infinito,
+  anuncio_whatsapp: WhatsappLogo,
   site: Globe,
   whatsapp: WhatsappLogo,
   linkbio: LinkSimple,
@@ -98,7 +99,7 @@ export default async function LeadsPage({
   // "Mais N nesta etapa", no Funil, chega aqui com ?etapa= (F7).
   const base = filtrarCorretor(todos, corretor)
     .filter((l) => !etapa || l.etapa.id === etapa)
-    .filter((l) => !origem || l.origem.canal === origem)
+    .filter((l) => !origem || chaveOrigem(l.origem) === origem)
     .filter((l) => !temperatura || l.copiloto.temperatura === temperatura)
     .filter((l) => {
       if (!busca) return true;
@@ -134,7 +135,7 @@ export default async function LeadsPage({
 
   // Só as etiquetas que têm algum lead: filtro que nunca traz nada é ruído.
   const opcoesFiltro: OpcaoFiltro[] = [
-    ...[...new Set(todos.map((l) => l.origem.canal).filter((c): c is string => Boolean(c)))].map((c) => ({ campo: "origem", campoRotulo: "Origem", valor: c, rotulo: ROTULO_ORIGEM[c] ?? c })),
+    ...[...new Set(todos.map((l) => chaveOrigem(l.origem)).filter((c): c is string => Boolean(c)))].map((c) => ({ campo: "origem", campoRotulo: "Origem", valor: c, rotulo: ROTULO_ORIGEM[c] ?? c })),
     ...Object.entries(TEMPERATURA)
       .filter(([k]) => todos.some((l) => l.copiloto.temperatura === k))
       .map(([k, t]) => ({ campo: "temperatura", campoRotulo: "Temperatura", valor: k, rotulo: t.rotulo })),
@@ -149,7 +150,7 @@ export default async function LeadsPage({
           {visiveis.map((l) => {
             const im = porCodigo.get(l.imovelCodigo ?? "");
             const dono = equipe.get(l.donoId ?? "");
-            const IconeOrigem = ICONE_ORIGEM[l.origem.canal ?? ""] ?? UserPlus;
+            const IconeOrigem = ICONE_ORIGEM[chaveOrigem(l.origem)] ?? UserPlus;
             const temp = TEMPERATURA[l.copiloto.temperatura ?? ""];
             const espera = l.conversa?.esperandoMin != null;
             const etapas = etapasDoFunil.get(l.pipelineId) ?? [];
@@ -195,7 +196,7 @@ export default async function LeadsPage({
                 {gestor && (
                   <div className="hidden w-40 shrink-0 xl:block">
                     <Chip icone={IconeOrigem} tom={l.pago ? "claro" : "neutro"}>
-                      {ROTULO_ORIGEM[l.origem.canal ?? ""] ?? l.origem.canal ?? "Origem"}
+                      {rotuloOrigem(l.origem, "Origem")}
                     </Chip>
                   </div>
                 )}

@@ -15,6 +15,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { mesclarCampos } from "./campos";
 import { carregarConfig } from "./config";
+import { camposDoCorretorDasRespostas, diagnosticoDasRespostas, lerRespostas, soOQueFalta } from "./formulario";
 import { avisarLeadCriado } from "@/lib/opa/eventos-lead";
 
 /** Padrão da janela; a empresa muda em Configurações (config.volta_dias). */
@@ -29,6 +30,16 @@ export interface Entrada {
   campanha?: string | null;
   conjunto?: string | null;
   anuncio?: string | null;
+  /** Ids da Meta (utm_campaign, utm_term, utm_content do painel). */
+  campanhaId?: string | null;
+  conjuntoId?: string | null;
+  anuncioId?: string | null;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  /** Respostas do formulário pelo valor da opção (lib/opa/formulario.ts). */
+  respostas?: Record<string, unknown> | null;
+  /** Lead que nasceu de conversa no WhatsApp do corretor (anúncio de clique para WhatsApp, etiqueta). */
+  via?: "whatsapp";
   /** Quando aconteceu (padrão: agora). O seed usa para montar o histórico. */
   em?: string;
   /** Dono escolhido na mão ("Novo lead" na tela): pula a roleta. */
@@ -41,6 +52,41 @@ export type ResultadoEntrada =
   | { tipo: "novo"; leadId: string; donoId: string }
   | { tipo: "voltou"; leadId: string; donoId: string; vez: number }
   | { tipo: "voltou-negocio-novo"; leadId: string; donoId: string };
+
+/** Id da Meta é só número; nome de campanha do site ("bio-perfil") é texto. */
+const ehId = (v: string | null | undefined): boolean => Boolean(v && /^\d{6,}$/.test(v.trim()));
+
+/**
+ * O que vai em custom_fields.origem: nomes para o corretor ler e ids para o
+ * painel e o dashboard cruzarem (#516, item 6). Sem nome, a UTM de texto do site
+ * vale como nome; id numérico nunca aparece como nome.
+ */
+export function montarOrigem(e: Entrada): Record<string, unknown> {
+  const nome = (n: string | null | undefined, utm: string | null | undefined) => n?.trim() || (utm && !ehId(utm) ? utm.trim() : null);
+  const origem: Record<string, unknown> = {
+    canal: e.origem,
+    campanha: nome(e.campanha, e.campanhaId),
+    conjunto: nome(e.conjunto, e.conjuntoId),
+    anuncio: nome(e.anuncio, e.anuncioId),
+  };
+  if (ehId(e.campanhaId)) origem.campanha_id = e.campanhaId!.trim();
+  if (ehId(e.conjuntoId)) origem.conjunto_id = e.conjuntoId!.trim();
+  if (ehId(e.anuncioId)) origem.anuncio_id = e.anuncioId!.trim();
+  if (e.utmSource) origem.fonte = e.utmSource;
+  if (e.utmMedium) origem.meio = e.utmMedium;
+  if (e.via) origem.via = e.via;
+  return origem;
+}
+
+/** Respostas legíveis + diagnóstico pré-preenchido, para gravar no lead. */
+function camposDoFormulario(e: Entrada) {
+  const respostas = lerRespostas(e.respostas);
+  return {
+    respostas,
+    diagnostico: diagnosticoDasRespostas(respostas),
+    corretor: camposDoCorretorDasRespostas(e.respostas),
+  };
+}
 
 /** +55 com DDD, só dígitos. "(11) 99841-4410" vira "+5511998414410". */
 export function normalizarTelefone(bruto: string): string {
@@ -81,7 +127,8 @@ async function funilCompradores(admin: SupabaseClient, orgId: string) {
 export async function registrarEntrada(admin: SupabaseClient, orgId: string, e: Entrada): Promise<ResultadoEntrada> {
   const em = e.em ?? new Date().toISOString();
   const telefone = normalizarTelefone(e.telefone);
-  const origem = { canal: e.origem, campanha: e.campanha ?? null, conjunto: e.conjunto ?? null, anuncio: e.anuncio ?? null };
+  const origem = montarOrigem(e);
+  const form = camposDoFormulario(e);
 
   const { data: imovel } = e.imovelCodigo
     ? await admin
@@ -127,11 +174,18 @@ export async function registrarEntrada(admin: SupabaseClient, orgId: string, e: 
       if (im) interesse.add(im.codigo);
       const vez = (((cf.voltou as { vez?: number }) ?? {}).vez ?? 1) + 1;
       // Só as chaves que mudam: o que o corretor gravou no meio (E1) não se perde.
+      // As respostas do formulário novo entram; o diagnóstico só preenche o que está vazio.
       await mesclarCampos(
         admin,
         aberto.id,
-        { imoveis_interesse: [...interesse], voltou: { em, vez, origem, imovel_codigo: im?.codigo ?? null } },
-        { atividade: em, orgId },
+        {
+          imoveis_interesse: [...interesse],
+          voltou: { em, vez, origem, imovel_codigo: im?.codigo ?? null },
+          ...(form.respostas.length ? { formulario: { em, respostas: form.respostas } } : {}),
+          opa: soOQueFalta(cf.opa as Record<string, unknown> | undefined, form.diagnostico),
+          campos_corretor: soOQueFalta(cf.campos_corretor as Record<string, unknown> | undefined, form.corretor),
+        },
+        { atividade: em, orgId, mesclar: ["opa", "campos_corretor"] },
       );
       if (im?.off_market) {
         // Acrescenta no banco, sem ler e regravar a lista (C8): etiqueta gravada no meio não se perde.
@@ -144,7 +198,7 @@ export async function registrarEntrada(admin: SupabaseClient, orgId: string, e: 
         contact_id: contactId,
         source_module: "opa",
         type: "lead_voltou",
-        payload: { vez, origem, imovel_codigo: im?.codigo ?? null, roleta: false },
+        payload: { vez, origem, imovel_codigo: im?.codigo ?? null, roleta: false, respostas: form.respostas.length },
         performed_at: em,
         actor_kind: "system",
         reason: "Lead que já tem dono volta ao corretor responsável, sem roleta.",
@@ -221,8 +275,10 @@ export async function registrarLeadDoContato(
         .maybeSingle()
     : { data: null };
   const em = new Date().toISOString();
-  const entrada: Entrada = { ...e, telefone: "" };
-  const origem = { canal: e.origem, campanha: null, conjunto: null, anuncio: null };
+  // Nasceu de conversa no WhatsApp do corretor: "Anúncio de WhatsApp" quando veio de
+  // anúncio, nunca "Formulário Meta" (#516, item 7).
+  const entrada: Entrada = { ...e, telefone: "", via: "whatsapp" };
+  const origem = montarOrigem(entrada);
   const leadId = await criarLead(
     admin,
     orgId,
@@ -265,6 +321,7 @@ async function criarLead(
   // Quem já chegou por ação da OPA não vira próprio num cadastro novo (05/11/2026):
   // sem isto, bastava encerrar o lead e cadastrar o número de novo para fugir do repasse.
   const proprio = Boolean(e.proprio) && !(await jaFoiDaOpa(admin, orgId, contactId));
+  const form = camposDoFormulario(e);
   const tags = [
     e.origem === "meta" ? "pago" : "organico",
     ...(im?.off_market ? ["off-market-comprador"] : []),
@@ -288,7 +345,15 @@ async function criarLead(
       stage_changed_at: em,
       source: e.origem,
       tags,
-      custom_fields: { opa: {}, imovel_codigo: im?.codigo ?? null, imoveis_interesse: im ? [im.codigo] : [], origem, ...extra },
+      custom_fields: {
+        opa: form.diagnostico,
+        ...(Object.keys(form.corretor).length ? { campos_corretor: form.corretor } : {}),
+        ...(form.respostas.length ? { formulario: { em, respostas: form.respostas } } : {}),
+        imovel_codigo: im?.codigo ?? null,
+        imoveis_interesse: im ? [im.codigo] : [],
+        origem,
+        ...extra,
+      },
       created_at: em,
     })
     .select("id")

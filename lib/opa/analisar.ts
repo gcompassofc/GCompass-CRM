@@ -7,7 +7,7 @@ import { logger } from "@/lib/logger";
 
 import { mesclarCampos } from "./campos";
 import { analisarComIA, analisarPorRegras, CAMPOS, pedidoDaLeitura, type CampoCopiloto, type ContextoLeitura, type Leitura, type MensagemLida } from "./copiloto";
-import { ROTULO_ORIGEM } from "./dados";
+import { rotuloOrigem } from "./dados";
 import { precoCurto } from "./imoveis";
 
 /** Modelo do copiloto: leitura curta e estruturada, então o Haiku dá conta. */
@@ -110,7 +110,7 @@ export async function analisarLead(supabase: SupabaseClient, orgId: string, lead
       year: "numeric",
     }).format(new Date()),
     etapa: l.crm_stages?.name,
-    origem: [ROTULO_ORIGEM[origem.canal ?? ""] ?? origem.canal, origem.campanha].filter(Boolean).join(", campanha ") || undefined,
+    origem: [rotuloOrigem(origem, ""), origem.campanha].filter(Boolean).join(", campanha ") || undefined,
     confirmados: confirmadosValidos,
     imovel,
   };
