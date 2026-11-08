@@ -20,6 +20,7 @@ import {
 } from "@/lib/channels";
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "@/lib/channels/archived";
 import { isMediaPathOwnedBy } from "@/lib/messaging/media/upload-validation";
+import { NUMERO_SEM_WHATSAPP } from "@/lib/messaging/sem-whatsapp";
 import type { ListMessagesQuery, SendMessageInput } from "@/lib/schemas";
 import { sendTemplateForSession } from "@/lib/channels/meta/send-template-for-session";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -240,7 +241,7 @@ export async function sendMessageHandler(
   // envio com 42703. Sem a coluna, nada está arquivado — e a consulta sem ela é a
   // consulta certa (ver lib/channels/archived).
   const convSelect = (comArchived: boolean) =>
-    `id, organization_id, contact_id, channel_session_id, is_group, group_chat_id, contacts:contact_id(phone_number, wa_identity, is_blocked), channel_sessions:channel_session_id(${CHANNEL_SESSION_REF_COLUMNS}, status${comArchived ? `, ${ARCHIVED_AT}` : ""})`;
+    `id, organization_id, contact_id, channel_session_id, is_group, group_chat_id, last_inbound_at, contacts:contact_id(phone_number, wa_identity, is_blocked), channel_sessions:channel_session_id(${CHANNEL_SESSION_REF_COLUMNS}, status${comArchived ? `, ${ARCHIVED_AT}` : ""})`;
   const { data: conv, error: convErr } = await queryTolerantToMissingArchived(
     () => supabase.from("conversations").select(convSelect(true)).eq("id", input.conversation_id).maybeSingle(),
     () => supabase.from("conversations").select(convSelect(false)).eq("id", input.conversation_id).maybeSingle(),
@@ -260,6 +261,7 @@ export async function sendMessageHandler(
     channel_session_id: string;
     is_group: boolean;
     group_chat_id: string | null;
+    last_inbound_at?: string | null;
     contacts: { phone_number: string | null; wa_identity: string | null; is_blocked: boolean } | null;
     channel_sessions: (ChannelSessionRef & { status: string; archived_at?: string | null }) | null;
   };
@@ -395,7 +397,33 @@ export async function sendMessageHandler(
       .maybeSingle();
     if (updated) message = updated as unknown as Message;
   } else {
-    try {
+    // Antes da primeira resposta do contato, pergunta ao canal se o número tem
+    // conta (08/11/2026: lead com número sem WhatsApp somou 7 "Falhou" sem motivo).
+    // Contato que já escreveu nesta conversa tem conta: não pergunta de novo.
+    // `existe: null` (não deu para saber) segue o envio exatamente como antes.
+    let destino = chatId;
+    let semConta = false;
+    if (!c.is_group && !c.last_inbound_at && adapter.checkRecipient) {
+      const r = await adapter.checkRecipient({
+        sessionRef: resolveSessionRef(c.channel_sessions),
+        recipient: chatId,
+      });
+      if (r.existe === false) semConta = true;
+      else if (r.endereco) destino = r.endereco;
+    }
+    if (semConta) {
+      const { data: updated } = await supabase
+        .from("messages")
+        .update({
+          status: "failed",
+          error_code: NUMERO_SEM_WHATSAPP,
+          error_message: "Este número não tem WhatsApp. Ligue ou mande e-mail para o contato.",
+        })
+        .eq("id", message.id)
+        .select(MSG_COLS)
+        .maybeSingle();
+      if (updated) message = updated as unknown as Message;
+    } else try {
       // O que separa mídia de texto é a presença de `media` no envelope — o
       // adapter preserva o mesmo branch (e a mesma mensagem de erro de cada
       // método) do outro lado do seam.
@@ -407,7 +435,7 @@ export async function sendMessageHandler(
         // coisa que só faz sentido para template.
         externalId = await sendTemplateForSession(supabase, {
           organizationId: ctx.organization_id,
-          to: chatId,
+          to: destino,
           name: input.template_name ?? "",
           language: input.template_language ?? "",
           values: input.template_values ?? {},
@@ -424,7 +452,7 @@ export async function sendMessageHandler(
         const filename = input.media_storage_path.split("/").pop() ?? undefined;
         ({ externalId } = await adapter.send({
           sessionRef: resolveSessionRef(c.channel_sessions),
-          to: chatId,
+          to: destino,
           kind: input.type,
           media: {
             url: signed.signedUrl,
@@ -436,7 +464,7 @@ export async function sendMessageHandler(
       } else {
         ({ externalId } = await adapter.send({
           sessionRef: resolveSessionRef(c.channel_sessions),
-          to: chatId,
+          to: destino,
           kind: input.type,
           body: input.body ?? "",
         }));
@@ -447,7 +475,7 @@ export async function sendMessageHandler(
         c.id,
         message.id,
         externalId,
-        externalId ? (adapter.echoExternalIds?.({ externalId, recipient: chatId }) ?? [externalId]) : [],
+        externalId ? (adapter.echoExternalIds?.({ externalId, recipient: destino }) ?? [externalId]) : [],
       );
       const { data: updated } = await supabase
         .from("messages")

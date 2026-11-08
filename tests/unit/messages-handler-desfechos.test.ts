@@ -50,6 +50,12 @@ interface ConversationShape {
   provider?: string;
   /** Canal excluído pelo usuário (migration 0106) — a linha sobrevive, o canal não. */
   archivedAt?: string | null;
+  /**
+   * Quando o contato escreveu pela última vez. O padrão é uma data: a maioria dos
+   * casos fala de conversa já em andamento, que NÃO passa pela consulta de número
+   * (08/11/2026). `null` = primeiro contato, que consulta antes de enviar.
+   */
+  lastInboundAt?: string | null;
 }
 
 function conversationRow(shape: ConversationShape = {}): Row {
@@ -60,6 +66,7 @@ function conversationRow(shape: ConversationShape = {}): Row {
     channel_session_id: SESSION,
     is_group: shape.isGroup ?? false,
     group_chat_id: shape.groupChatId ?? null,
+    last_inbound_at: shape.lastInboundAt === undefined ? '2026-11-01T12:00:00Z' : shape.lastInboundAt,
     contacts: {
       phone_number: shape.phoneNumber === undefined ? '+5531999998888' : shape.phoneNumber,
       wa_identity: shape.waIdentity ?? null,
@@ -277,7 +284,8 @@ describe('sendMessageHandler — os 6 desfechos do envio', () => {
 
     expect(msg.status).toBe('failed');
     expect(msg.error_code).toBe('waha_error');
-    expect(msg.error_message).toBe('waha_500');
+    // Desde 08/11/2026 o texto leva o corpo da resposta: é ele que diz o motivo.
+    expect(msg.error_message).toBe('waha_500: boom');
     expect(msg.external_id).toBeNull();
   });
 
@@ -490,5 +498,132 @@ describe('sendMessageHandler — os 6 desfechos do envio', () => {
 
     expect(msg.status).toBe('sent');
     expect(msg.external_id).toBe('TEXT9');
+  });
+});
+
+/**
+ * Consulta de número antes do primeiro envio (08/11/2026). Lead de formulário com
+ * número sem WhatsApp somou 7 "Falhou" com o texto "waha_500" e nada mais.
+ * Fetch roteado por URL: a consulta e o envio são chamadas diferentes ao WAHA.
+ */
+describe('sendMessageHandler — número sem WhatsApp no primeiro contato', () => {
+  type Existe = { numberExists: boolean; chatId?: string | null; pn?: string | null };
+  function wahaFalso(consulta: (phone: string) => Existe | 'erro') {
+    const chamadas: Array<{ url: string; body?: Record<string, unknown> }> = [];
+    const fetchMock = vi.fn(async (input: unknown, init?: RequestInit) => {
+      const url = String(input);
+      chamadas.push({ url, body: init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : undefined });
+      if (url.includes('/api/contacts/check-exists')) {
+        const r = consulta(new URL(url).searchParams.get('phone') ?? '');
+        return r === 'erro' ? new Response('down', { status: 500 }) : Response.json(r);
+      }
+      return Response.json({ key: { id: 'TXT' } });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return chamadas;
+  }
+  const envios = (c: Array<{ url: string; body?: Record<string, unknown> }>) => c.filter((x) => x.url.endsWith('/api/sendText'));
+
+  it('nenhuma forma do número tem conta: failed/numero_sem_whatsapp e nada é enviado', async () => {
+    wahaConfigured(true);
+    const chamadas = wahaFalso(() => ({ numberExists: false }));
+
+    const msg = await sendMessageHandler(
+      makeSupabase(conversationRow({ lastInboundAt: null, phoneNumber: '+5511965365270' })),
+      ctx,
+      textInput(),
+    );
+
+    expect(msg.status).toBe('failed');
+    expect(msg.error_code).toBe('numero_sem_whatsapp');
+    expect(msg.error_message).toMatch(/não tem WhatsApp/);
+    expect(envios(chamadas)).toHaveLength(0);
+    // Pergunta as duas formas (com e sem o nono dígito) antes de afirmar.
+    const consultados = chamadas.map((c) => new URL(c.url).searchParams.get('phone'));
+    expect(consultados).toEqual(['5511965365270', '551165365270']);
+  });
+
+  it('o WhatsApp conhece o número sem o nono dígito: envia para essa forma', async () => {
+    wahaConfigured(true);
+    const chamadas = wahaFalso((phone) =>
+      phone === '5531998966398'
+        ? { numberExists: true, chatId: '123456789@lid', pn: '553198966398@c.us' }
+        : { numberExists: false },
+    );
+
+    const msg = await sendMessageHandler(
+      makeSupabase(conversationRow({ lastInboundAt: null, phoneNumber: '+5531998966398' })),
+      ctx,
+      textInput(),
+    );
+
+    expect(msg.status).toBe('sent');
+    expect(envios(chamadas)[0]?.body?.chatId).toBe('553198966398@c.us');
+  });
+
+  it('consulta devolve só @lid: envia para o número montado, não para o @lid', async () => {
+    wahaConfigured(true);
+    const chamadas = wahaFalso(() => ({ numberExists: true, chatId: '999@lid', pn: null }));
+
+    const msg = await sendMessageHandler(
+      makeSupabase(conversationRow({ lastInboundAt: null, phoneNumber: '+5511965365270' })),
+      ctx,
+      textInput(),
+    );
+
+    expect(msg.status).toBe('sent');
+    expect(envios(chamadas)[0]?.body?.chatId).toBe('5511965365270@c.us');
+  });
+
+  it('consulta fora do ar: envia como antes (a consulta nunca segura uma mensagem)', async () => {
+    wahaConfigured(true);
+    const chamadas = wahaFalso(() => 'erro');
+
+    const msg = await sendMessageHandler(
+      makeSupabase(conversationRow({ lastInboundAt: null })),
+      ctx,
+      textInput(),
+    );
+
+    expect(msg.status).toBe('sent');
+    expect(envios(chamadas)).toHaveLength(1);
+  });
+
+  it('uma forma diz que não e a outra falha: não afirma "sem WhatsApp", envia', async () => {
+    wahaConfigured(true);
+    const chamadas = wahaFalso((phone) => (phone === '5511965365270' ? { numberExists: false } : 'erro'));
+
+    const msg = await sendMessageHandler(
+      makeSupabase(conversationRow({ lastInboundAt: null, phoneNumber: '+5511965365270' })),
+      ctx,
+      textInput(),
+    );
+
+    expect(msg.status).toBe('sent');
+    expect(envios(chamadas)).toHaveLength(1);
+  });
+
+  it('contato que já escreveu nesta conversa: não consulta', async () => {
+    wahaConfigured(true);
+    const chamadas = wahaFalso(() => ({ numberExists: false }));
+
+    const msg = await sendMessageHandler(makeSupabase(conversationRow()), ctx, textInput());
+
+    expect(msg.status).toBe('sent');
+    expect(chamadas.some((c) => c.url.includes('check-exists'))).toBe(false);
+  });
+
+  it('grupo: não consulta', async () => {
+    wahaConfigured(true);
+    const chamadas = wahaFalso(() => ({ numberExists: false }));
+
+    const msg = await sendMessageHandler(
+      makeSupabase(conversationRow({ lastInboundAt: null, isGroup: true, groupChatId: '120363@g.us' })),
+      ctx,
+      textInput(),
+    );
+
+    expect(msg.status).toBe('sent');
+    expect(chamadas.some((c) => c.url.includes('check-exists'))).toBe(false);
   });
 });

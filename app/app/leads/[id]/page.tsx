@@ -907,7 +907,9 @@ export default async function LeadPage({
                       ? `Boas-vindas enviada às ${hora(lead.boasVindas.em)} pelo WhatsApp de ${primeiroNome(dono?.nome) || "corretor"}`
                       : lead.boasVindas.status === "enviando"
                         ? "Boas-vindas saindo agora"
-                        : "Boas-vindas não confirmada pelo WhatsApp: veja o histórico"}
+                        : lead.boasVindas.status === "sem_whatsapp"
+                          ? "Este número não tem WhatsApp: ligue ou mande e-mail"
+                          : "Boas-vindas não confirmada pelo WhatsApp: veja o histórico"}
                   </p>
                 )}
                 <div className="mt-4 flex items-center justify-between gap-3 border-t border-[#e7eef2] pt-4">

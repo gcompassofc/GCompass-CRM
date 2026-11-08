@@ -13,6 +13,8 @@ import { useDebugToggle } from "@/hooks/ai/useDebugToggle";
 import { useActiveOrg, useUser } from "@/hooks/auth/AuthProvider";
 import { ROLE_RANK } from "@/lib/auth/types";
 import type { Message, Note } from "@/lib/types/messaging";
+import { NUMERO_SEM_WHATSAPP } from "@/lib/messaging/sem-whatsapp";
+import { Phone } from "@/lib/ui/icons";
 
 interface Props {
   conversationId: string | null;
@@ -66,6 +68,18 @@ export function ChatThread({ conversationId }: Props) {
     () => mergeThreadItems(messages, notes),
     [messages, notes],
   );
+
+  // A consulta antes do envio disse que o número não tem conta: aviso fixo abaixo
+  // da última mensagem, enquanto ela for a falha. Se o contato escrever depois, some.
+  const semWhatsapp = useMemo(() => {
+    let ultima: Message | null = null;
+    for (const it of items) if (it.kind === "message") ultima = it.data;
+    return (
+      ultima?.direction === "outbound" &&
+      ultima.status === "failed" &&
+      ultima.error_code === NUMERO_SEM_WHATSAPP
+    );
+  }, [items]);
 
   const paginas = q.data?.pages.length ?? 0;
 
@@ -198,6 +212,21 @@ export function ChatThread({ conversationId }: Props) {
             )}
           </div>
         ))}
+
+        {semWhatsapp && (
+          <div
+            data-testid="aviso-sem-whatsapp"
+            className="mx-4 my-2 flex items-start gap-2.5 rounded-lg border border-warning bg-warning-bg px-3 py-2.5 text-xs text-warning-fg"
+          >
+            <Phone size={16} weight="duotone" className="mt-0.5 shrink-0" aria-hidden />
+            <div className="min-w-0">
+              <p className="font-medium">Este número não tem WhatsApp</p>
+              <p className="mt-0.5 opacity-90">
+                A mensagem não saiu e não adianta reenviar. Ligue para o contato ou mande e-mail.
+              </p>
+            </div>
+          </div>
+        )}
 
         <div ref={bottomRef} />
       </div>

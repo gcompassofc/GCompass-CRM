@@ -112,4 +112,21 @@ export interface ChannelAdapter {
    * quem chama cai no próprio `externalId`.
    */
   echoExternalIds?(input: { externalId: string; recipient: string }): string[];
+
+  /**
+   * O destinatário tem conta neste canal? Pergunta de leitura, nada vai ao contato.
+   *
+   *   `existe: false` → o canal afirma que não há conta (nenhuma variante do número)
+   *   `existe: true`  → há conta; `endereco` é a forma que o canal reconhece, quando
+   *                     difere da que o CRM montou (nono dígito brasileiro)
+   *   `existe: null`  → não deu para saber (canal fora, prazo, resposta estranha):
+   *                     quem chama segue o envio como antes
+   *
+   * OPCIONAL: canal sem essa consulta não implementa, e o envio segue direto.
+   * NUNCA lança.
+   */
+  checkRecipient?(input: {
+    sessionRef: string;
+    recipient: string;
+  }): Promise<{ existe: boolean | null; endereco: string | null }>;
 }

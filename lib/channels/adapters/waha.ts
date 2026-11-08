@@ -9,6 +9,7 @@ import { getWahaClient } from "@/lib/waha/client";
 import { wahaSendPlanFor } from "@/lib/waha/media-send";
 import { bareWaMessageId, parseWahaMessageId } from "@/lib/waha/message-id";
 import { resolveWahaChatId } from "@/lib/waha/send";
+import { phoneLookupVariants } from "../phone-variants";
 import type { ChannelAdapter, OutboundEnvelope, RecipientInput } from "../types";
 
 export const wahaAdapter: ChannelAdapter = {
@@ -60,6 +61,46 @@ export const wahaAdapter: ChannelAdapter = {
     const client = getWahaClient();
     if (!client) return null;
     return client.getProfilePictureUrl(input.sessionRef, input.recipient);
+  },
+
+  /**
+   * Pergunta ao WhatsApp se o número tem conta antes do primeiro envio (08/11/2026:
+   * lead de formulário com número sem WhatsApp gerou 7 envios "Falhou" sem motivo).
+   *
+   * Tenta a forma montada e a variante com/sem o nono dígito: só diz "não existe"
+   * quando TODAS respondem que não. Qualquer falha na consulta vira `null` (envio
+   * segue como antes): a consulta nunca pode ser o motivo de uma mensagem não sair.
+   */
+  async checkRecipient(input: {
+    sessionRef: string;
+    recipient: string;
+  }): Promise<{ existe: boolean | null; endereco: string | null }> {
+    const desconhecido = { existe: null, endereco: null };
+    const client = getWahaClient();
+    if (!client) return desconhecido;
+    const m = /^(\d+)@c\.us$/.exec(input.recipient);
+    if (!m) return desconhecido; // grupo e @lid: o endereço já veio do próprio WhatsApp
+    const formas = phoneLookupVariants(m[1]!).map((v) => v.replace(/\D/g, ""));
+    if (!formas.length) return desconhecido;
+
+    for (const forma of formas) {
+      try {
+        const r = await client.checkExists(input.sessionRef, forma);
+        if (!r.numberExists) continue;
+        // O endereço devolvido só é usado se for o MESMO número (alguma das formas);
+        // `@lid` ou outro número não substituem o que o CRM montou.
+        const digitos = [r.pn, r.chatId]
+          .map((id) => (id ? /^(\d+)@(?:c\.us|s\.whatsapp\.net)$/.exec(id)?.[1] : undefined))
+          .find((d): d is string => !!d && formas.includes(d));
+        const endereco = `${digitos ?? forma}@c.us`;
+        return { existe: true, endereco: endereco === input.recipient ? null : endereco };
+      } catch {
+        // Para no primeiro erro: com o WAHA travado, insistir na outra forma só
+        // dobraria a espera de quem está enviando (6 s por consulta).
+        return desconhecido;
+      }
+    }
+    return { existe: false, endereco: null };
   },
 
   async send(envelope: OutboundEnvelope): Promise<{ externalId: string | null }> {

@@ -254,8 +254,39 @@ export class WahaClient {
       },
       body: JSON.stringify({ session, chatId, text }),
     });
-    if (!res.ok) throw new Error(`waha_${res.status}`);
+    if (!res.ok) {
+      // O corpo é o único lugar que diz POR QUE falhou (número sem conta, sessão
+      // caída, limite). Sem ele o histórico guardava só "waha_500" (08/11/2026).
+      const body = await res.text().catch(() => "");
+      throw new Error(body ? `waha_${res.status}: ${body.slice(0, 200)}` : `waha_${res.status}`);
+    }
     return res.json();
+  }
+
+  /**
+   * O número tem conta no WhatsApp? Consulta só de leitura: não manda nada ao
+   * contato. `chatId` é o endereço que o WhatsApp reconhece (resolve o nono
+   * dígito); `pn` vem quando o `chatId` é um `@lid`.
+   *
+   * Lança em qualquer falha (rede, sessão, prazo de 6 s): quem chama trata como
+   * "não deu para saber" e segue o envio normal.
+   */
+  async checkExists(
+    session: string,
+    phone: string,
+  ): Promise<{ numberExists: boolean; chatId: string | null; pn: string | null }> {
+    const res = await fetch(
+      `${this.baseUrl}/api/contacts/check-exists?phone=${encodeURIComponent(phone)}&session=${encodeURIComponent(session)}`,
+      { headers: { "X-Api-Key": this.apiKey }, signal: AbortSignal.timeout(6000) },
+    );
+    if (!res.ok) throw new Error(`waha_check_${res.status}`);
+    const body = (await res.json()) as { numberExists?: unknown; chatId?: unknown; pn?: unknown };
+    if (typeof body.numberExists !== "boolean") throw new Error("waha_check_sem_resposta");
+    return {
+      numberExists: body.numberExists,
+      chatId: typeof body.chatId === "string" ? body.chatId : null,
+      pn: typeof body.pn === "string" ? body.pn : null,
+    };
   }
 
   async sendMedia(

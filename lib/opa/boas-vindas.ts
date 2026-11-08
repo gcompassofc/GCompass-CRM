@@ -14,6 +14,7 @@
  */
 import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
 import { ensureConversation } from "@/lib/automation/start-conversation";
+import { NUMERO_SEM_WHATSAPP } from "@/lib/messaging/sem-whatsapp";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
 import { montarBoasVindas } from "./boas-vindas-texto";
@@ -133,6 +134,7 @@ export async function enviarBoasVindas(admin: Admin, orgId: string, leadId: stri
 
   let status = "failed";
   let erro: string | null = null;
+  let codigoErro: string | null = null;
   try {
     const msg = await sendMessageHandler(
       admin as never,
@@ -141,11 +143,16 @@ export async function enviarBoasVindas(admin: Admin, orgId: string, leadId: stri
     );
     status = msg.status;
     erro = msg.error_message ?? null;
+    codigoErro = msg.error_code ?? null;
   } catch (e) {
     erro = e instanceof Error ? e.message : String(e);
   }
 
   if (status !== "sent") {
+    if (codigoErro === NUMERO_SEM_WHATSAPP) {
+      await mesclarCampos(admin, leadId, { boas_vindas: { em, por: dono, status: "sem_whatsapp", erro: NUMERO_SEM_WHATSAPP } }, { orgId });
+      return falhou(`o número do lead não tem WhatsApp. Ligue ou mande e-mail`);
+    }
     await mesclarCampos(admin, leadId, { boas_vindas: { em, por: dono, status: "falhou", erro } }, { orgId });
     return falhou(`o WhatsApp de ${primeiro} não confirmou o envio${erro ? ` (${erro.slice(0, 120)})` : ""}`);
   }
