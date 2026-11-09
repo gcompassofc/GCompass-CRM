@@ -54,3 +54,20 @@ export async function lerCorpoLimitado(req: Request, limite = 32 * 1024): Promis
   }
   return Buffer.concat(partes).toString("utf8");
 }
+
+/** Chave do OPA Radar (migration 0131): o Radar manda as distribuições para Captações do Radar. */
+export async function tokenDoRadar(admin: SupabaseClient, orgId: string): Promise<string | null> {
+  const { data } = await admin.from("opa_segredos").select("radar_token").eq("organization_id", orgId).maybeSingle();
+  return (data as { radar_token: string | null } | null)?.radar_token ?? null;
+}
+
+/** Gera (ou troca) a chave do Radar. A anterior para de valer na hora. */
+export async function novoTokenDoRadar(admin: SupabaseClient, orgId: string): Promise<string> {
+  const token = `radar_${randomBytes(24).toString("hex")}`;
+  const { data: linha } = await admin.from("opa_segredos").select("organization_id").eq("organization_id", orgId).maybeSingle();
+  const { error } = linha
+    ? await admin.from("opa_segredos").update({ radar_token: token, atualizado_em: new Date().toISOString() }).eq("organization_id", orgId)
+    : await admin.from("opa_segredos").insert({ organization_id: orgId, entrada_token: randomBytes(24).toString("hex"), radar_token: token });
+  if (error) throw new Error(`Não gravou a chave do Radar: ${error.message}`);
+  return token;
+}

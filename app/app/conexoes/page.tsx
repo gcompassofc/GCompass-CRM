@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { listarNumerosDaEquipe, type NumeroDaEquipe } from "@/lib/channels/numeros";
 import { inicioDoPeriodo } from "@/lib/opa/dados";
-import { tokenDeEntrada } from "@/lib/opa/segredos";
+import { tokenDeEntrada, tokenDoRadar } from "@/lib/opa/segredos";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -34,7 +34,7 @@ import { cn } from "@/lib/utils";
 
 import { CabecalhoOpa, CorpoOpa } from "../_opa/cabecalho";
 import { Avatar, Cartao, CartaoNumero, Chip, IconeRedondo, TituloBloco, iniciaisDe, type Icone } from "../_opa/ui";
-import { CopiarPorta } from "./_copiar";
+import { ChaveDoRadar, CopiarPorta } from "./_copiar";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Conexões" };
@@ -82,13 +82,15 @@ export default async function ConexoesPage() {
 
   const o = orgRaw as { slug: string } | null;
   const token = (await tokenDeEntrada(admin, org.orgId)) ?? "";
+  const chaveRadar = (await tokenDoRadar(admin, org.orgId)) ?? "";
   const porta = `/api/v1/webhooks/opa-entrada/${o?.slug ?? "<empresa>"}`;
+  const portaRadar = `/api/v1/webhooks/opa-radar/${o?.slug ?? "<empresa>"}`;
 
   const leads7 = (leadsRaw ?? []) as Array<{ source: string | null }>;
   const contar = (fonte: string) => leads7.filter((l) => l.source === fonte).length;
   const plural = (n: number) => `${n} ${n === 1 ? "lead" : "leads"} em 7 dias`;
 
-  const entradas: Array<{ icone: Icone; nome: string; descricao: string; ligado: boolean; estado: string; volume: string; site?: boolean }> = [
+  const entradas: Array<{ icone: Icone; nome: string; descricao: string; ligado: boolean; estado: string; volume: string; site?: boolean; radar?: boolean }> = [
     {
       icone: Globe,
       nome: "Site opailhabela.com.br",
@@ -125,10 +127,11 @@ export default async function ConexoesPage() {
     {
       icone: Target,
       nome: "OPA Radar",
-      descricao: "Imóveis que a OPA não tem, 2 por semana para cada corretor captar",
-      ligado: false,
-      estado: "A ligar",
-      volume: "entra no pipeline de Captação",
+      descricao: "Imóveis que a OPA não tem, 2 por semana para cada corretor captar. O Radar manda sozinho, com a chave, ao marcar a rodada como enviada",
+      ligado: Boolean(chaveRadar),
+      estado: chaveRadar ? "Ligado pela chave" : "A ligar",
+      volume: "entra em Captações do Radar",
+      radar: true,
     },
   ];
 
@@ -272,6 +275,15 @@ export default async function ConexoesPage() {
                     </p>
                     <p className="mt-1 break-all font-mono text-[11px] text-[#34566b]">{porta}</p>
                     <CopiarPorta porta={porta} finalToken={token ? token.slice(-4) : null} />
+                  </div>
+                )}
+                {e.radar && (org.role === "admin" || org.role === "manager" || user.is_platform_admin) && (
+                  <div className="rounded-[18px] bg-[#e7f0f5] p-3.5">
+                    <p className="flex items-center gap-1.5 text-[12px] font-semibold text-[#12455f]">
+                      <LinkSimple className="size-3.5" /> Endereço do Radar (POST com a chave)
+                    </p>
+                    <p className="mt-1 break-all font-mono text-[11px] text-[#34566b]">{portaRadar}</p>
+                    <ChaveDoRadar porta={portaRadar} finalChave={chaveRadar ? chaveRadar.slice(-4) : null} podeGerar={org.role === "admin" || Boolean(user.is_platform_admin)} />
                   </div>
                 )}
               </li>
