@@ -40,7 +40,7 @@ fi
 MODO="--seco"
 [ "${2:-}" = "--valer" ] && MODO=""
 
-echo "== OPA Lembretes · número $TELEFONE · ${MODO:+só conferência (nada é gravado)}${MODO:-criando de verdade}"
+if [ -n "$MODO" ]; then echo "== OPA Lembretes · número $TELEFONE · só conferência (nada é gravado)"; else echo "== OPA Lembretes · número $TELEFONE · criando de verdade"; fi
 $SSH "$NO_APP node --input-type=module - --telefone=$TELEFONE $MODO" < "$AQUI/criar-opa-lembretes.mjs"
 
 if [ -z "$MODO" ]; then
