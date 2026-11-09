@@ -23,7 +23,7 @@ import {
 import { cn } from "@/lib/utils";
 
 import { CabecalhoOpa, CorpoOpa } from "../_opa/cabecalho";
-import { AbasPilula, Avatar, Cartao, CartaoNumero, Chip, TituloBloco, Vazio, type Icone } from "../_opa/ui";
+import { AbasPilula, Avatar, Cartao, CartaoNumero, Chip, Vazio, type Icone } from "../_opa/ui";
 import { ImportarDoRadar } from "./_componentes";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +32,11 @@ export const metadata = { title: "Captações do Radar" };
 /** Quantas linhas a lista mostra antes do "Ver mais" (padrão das listas da OPA). */
 const VISIVEIS = 4;
 
-const ABAS: Array<[AbaRadar, string, Icone]> = [
+/** "todos" só existe para o gestor: todos os imóveis, separados por corretor. */
+type Aba = AbaRadar | "todos";
+
+const ABAS: Array<[Aba, string, Icone]> = [
+  ["todos", "Todos", Target],
   ["agir", "Para agir", ClockCountdown],
   ["andando", "Em andamento", ArrowsClockwise],
   ["captados", "Captados", Trophy],
@@ -63,20 +67,24 @@ export default async function CaptacoesPage({ searchParams }: { searchParams: Pr
     carregarConfig(supabase, org.orgId),
   ]);
   const prazo = config.captacao.devolutiva_dias;
-  const agora = Date.now();
+  const agora = new Date().getTime();
 
   const linhas = cards.map((c) => {
     const s = situacaoRadar({ status: c.status, etapaSlug: c.etapa.slug, ultimoMovimento: c.ultimoMovimento, enviadoEm: c.radar.enviado_em }, agora, prazo);
     return { c, s, aba: abaDoCard(s, c.etapa.slug), dias: diasParado(c, agora) };
   });
-  const porAba = (a: AbaRadar) => linhas.filter((l) => l.aba === a);
-  const aba: AbaRadar = ABAS.some(([k]) => k === abaPedida) ? (abaPedida as AbaRadar) : "agir";
+  const porAba = (a: Aba) => (a === "todos" ? linhas : linhas.filter((l) => l.aba === a));
+  // Gestor e administrador abrem em "Todos", separado por corretor; o corretor, no que pede ação.
+  const visaoEquipe = gestor && !corretor;
+  const abas = ABAS.filter(([k]) => k !== "todos" || gestor);
+  const padrao: Aba = gestor ? "todos" : "agir";
+  const aba: Aba = abas.some(([k]) => k === abaPedida) ? (abaPedida as Aba) : padrao;
   const lista = porAba(aba).sort((x, y) => y.dias - x.dias || Date.parse(y.c.radar.enviado_em) - Date.parse(x.c.radar.enviado_em));
   const mostrar = mais ? lista : lista.slice(0, VISIVEIS);
 
   const link = (p: { aba?: string; mais?: boolean }) => {
     const q = new URLSearchParams();
-    if ((p.aba ?? aba) !== "agir") q.set("aba", p.aba ?? aba);
+    if ((p.aba ?? aba) !== padrao) q.set("aba", p.aba ?? aba);
     if (corretor && gestor) q.set("corretor", corretor);
     if (p.mais) q.set("mais", "1");
     const s = q.toString();
@@ -86,20 +94,24 @@ export default async function CaptacoesPage({ searchParams }: { searchParams: Pr
   const novas = linhas.filter((l) => l.s === "nova").length;
   const pedem = linhas.filter((l) => l.s === "lembrar" || l.s === "prazo").length;
 
-  // Placar da equipe (só gestor, com a equipe toda à vista).
-  const placar = gestor && !corretor
-    ? [...new Set(cards.map((c) => c.donoId).filter((x): x is string => Boolean(x)))]
+  // Visão da equipe: um bloco por corretor, com os imóveis dele na aba escolhida.
+  const ordem = (x: (typeof linhas)[number], y: (typeof linhas)[number]) =>
+    y.dias - x.dias || Date.parse(y.c.radar.enviado_em) - Date.parse(x.c.radar.enviado_em);
+  const grupos = visaoEquipe
+    ? [...new Set(cards.map((c) => c.donoId ?? ""))]
         .map((id) => {
-          const m = linhas.filter((l) => l.c.donoId === id);
+          const m = linhas.filter((l) => (l.c.donoId ?? "") === id);
           return {
+            id,
             pessoa: equipe.get(id),
+            itens: m.filter((l) => aba === "todos" || l.aba === aba).sort(ordem),
             recebeu: m.length,
             abertos: m.filter((l) => l.aba === "agir" || l.aba === "andando").length,
             captou: m.filter((l) => l.s === "captado").length,
             parados: m.filter((l) => l.s === "prazo").length,
           };
         })
-        .sort((a, b) => (a.pessoa?.nome ?? "").localeCompare(b.pessoa?.nome ?? ""))
+        .sort((a, b) => (a.pessoa?.nome ?? "~").localeCompare(b.pessoa?.nome ?? "~"))
     : [];
 
   return (
@@ -128,7 +140,7 @@ export default async function CaptacoesPage({ searchParams }: { searchParams: Pr
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <AbasPilula
-            itens={ABAS.map(([k, rotulo, icone]) => ({ href: link({ aba: k }), rotulo, icone, contagem: porAba(k).length, ativo: k === aba }))}
+            itens={abas.map(([k, rotulo, icone]) => ({ href: link({ aba: k }), rotulo, icone, contagem: porAba(k).length, ativo: k === aba }))}
           />
           <Link
             href="/app/pipeline?p=captacao"
@@ -138,7 +150,68 @@ export default async function CaptacoesPage({ searchParams }: { searchParams: Pr
           </Link>
         </div>
 
+        {visaoEquipe ? (
+          grupos.length === 0 ? (
+            <Cartao bloco>
+              <Vazio titulo="Nenhum imóvel do Radar ainda" texto="Importe o registro do Radar para os imóveis de cada corretor aparecerem aqui." />
+            </Cartao>
+          ) : (
+            grupos.map((g) => (
+              <Cartao key={g.id || "sem-dono"} bloco className="px-4 py-4 sm:px-5">
+                <div className="flex flex-wrap items-center justify-between gap-3 px-2 pb-2">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <Avatar texto={g.pessoa?.iniciais ?? "?"} foto={g.pessoa?.foto} className="size-10" />
+                    <div className="min-w-0">
+                      <h2 className="truncate text-[17px] font-semibold tracking-[-0.02em] text-[#0a2d40]">{g.pessoa?.nome ?? "Fora da equipe"}</h2>
+                      <p className="text-[13px] text-[#5b7284]">
+                        Recebeu {g.recebeu} · {g.abertos} em aberto
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {g.captou > 0 && <Chip icone={Trophy} tom="ok">{g.captou} {g.captou === 1 ? "captado" : "captados"}</Chip>}
+                    {g.parados > 0 ? (
+                      <Chip icone={ClockCountdown} tom="alerta">{g.parados} {g.parados === 1 ? "parado" : "parados"}</Chip>
+                    ) : (
+                      <Chip icone={Check} tom="ok">Nenhum parado</Chip>
+                    )}
+                    {g.id && (
+                      <Link href={`/app/captacoes?corretor=${g.id}`} className="ml-1 text-[13px] font-semibold text-[#2a7ca8] hover:underline">
+                        Só os dele
+                      </Link>
+                    )}
+                  </div>
+                </div>
+                {g.itens.length === 0 ? (
+                  <p className="px-2 py-3 text-[14px] text-[#5b7284]">Nada nesta aba.</p>
+                ) : (
+                  <ul>
+                    {(mais ? g.itens : g.itens.slice(0, VISIVEIS)).map(({ c, s, dias }) => (
+                      <LinhaCaptacao key={c.id} c={c} s={s} dias={dias} />
+                    ))}
+                  </ul>
+                )}
+                {!mais && g.itens.length > VISIVEIS && g.id && (
+                  <Link
+                    href={`/app/captacoes?corretor=${g.id}${aba !== "todos" ? `&aba=${aba}` : ""}&mais=1`}
+                    className="inline-flex px-3 py-3 text-[14px] font-semibold text-[#2a7ca8]"
+                  >
+                    Ver mais {g.itens.length - VISIVEIS}
+                  </Link>
+                )}
+              </Cartao>
+            ))
+          )
+        ) : (
         <Cartao bloco className="px-4 py-3 sm:px-5">
+          {gestor && corretor && (
+            <div className="flex flex-wrap items-center justify-between gap-2 px-2 pb-2">
+              <p className="text-[15px] font-semibold text-[#0a2d40]">{equipe.get(corretor)?.nome ?? "Corretor"}</p>
+              <Link href="/app/captacoes" className="text-[13px] font-semibold text-[#2a7ca8] hover:underline">
+                Ver a equipe toda
+              </Link>
+            </div>
+          )}
           {lista.length === 0 ? (
             <Vazio
               titulo={aba === "agir" ? "Nada pedindo ação agora" : "Nada nesta aba"}
@@ -147,7 +220,7 @@ export default async function CaptacoesPage({ searchParams }: { searchParams: Pr
           ) : (
             <ul>
               {mostrar.map(({ c, s, dias }) => (
-                <LinhaCaptacao key={c.id} c={c} s={s} dias={dias} dono={gestor ? equipe.get(c.donoId ?? "") : undefined} />
+                <LinhaCaptacao key={c.id} c={c} s={s} dias={dias} />
               ))}
             </ul>
           )}
@@ -157,40 +230,6 @@ export default async function CaptacoesPage({ searchParams }: { searchParams: Pr
             </Link>
           )}
         </Cartao>
-
-        {placar.length > 0 && (
-          <Cartao bloco>
-            <TituloBloco icone={Target} titulo="Radar por corretor" sub={`Parado = ${prazo} dias ou mais sem anotação. Toque no nome para ver só os dele.`} />
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[560px] text-left">
-                <thead>
-                  <tr className="text-[12px] text-[#5b7284]">
-                    <th className="px-2 py-2 font-medium">Corretor</th>
-                    <th className="px-2 py-2 font-medium">Recebeu</th>
-                    <th className="px-2 py-2 font-medium">Em aberto</th>
-                    <th className="px-2 py-2 font-medium">Captou</th>
-                    <th className="px-2 py-2 font-medium">Parados</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {placar.map((p) => (
-                    <tr key={p.pessoa?.id ?? p.recebeu} className="border-t border-[#eef3f6] text-[14px] text-[#0a2d40]">
-                      <td className="px-2 py-3">
-                        <Link href={`/app/captacoes?corretor=${p.pessoa?.id ?? ""}`} className="inline-flex items-center gap-2.5 font-semibold hover:text-[#2a7ca8]">
-                          <Avatar texto={p.pessoa?.iniciais ?? "?"} foto={p.pessoa?.foto} className="size-8" />
-                          {p.pessoa?.nome ?? "Fora da equipe"}
-                        </Link>
-                      </td>
-                      <td className="px-2 py-3 text-[20px] font-light tabular-nums">{p.recebeu}</td>
-                      <td className="px-2 py-3 text-[20px] font-light tabular-nums">{p.abertos}</td>
-                      <td className="px-2 py-3">{p.captou ? <Chip icone={Trophy} tom="ok">{p.captou}</Chip> : <Chip>0</Chip>}</td>
-                      <td className="px-2 py-3">{p.parados ? <Chip icone={ClockCountdown} tom="alerta">{p.parados}</Chip> : <Chip tom="ok">0</Chip>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </Cartao>
         )}
       </CorpoOpa>
     </>

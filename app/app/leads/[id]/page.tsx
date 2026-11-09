@@ -634,7 +634,7 @@ export default async function LeadPage({
             <div className="flex min-w-0 flex-col gap-5 lg:col-span-7">
               {/* O único cartão escuro da tela: o que a IA leu e o que falta confirmar. */}
               {lead.radar ? (
-                <CartaoRadar radar={lead.radar} dias={diasParado({ ultimoMovimento: ultimoMovimentoRadar }, Date.now())} />
+                <CartaoRadar radar={lead.radar} dias={diasParado({ ultimoMovimento: ultimoMovimentoRadar }, new Date().getTime())} />
               ) : (
               <Cartao escuro bloco tour="ficha-copiloto">
                 <TituloBloco
