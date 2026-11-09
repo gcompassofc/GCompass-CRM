@@ -20,6 +20,8 @@ import { limparNomeDoLead, tituloComNovoNome } from "@/lib/opa/nome-lead";
 import { ehTipoDeLead, TIPOS_DE_LEAD } from "@/lib/opa/tipo-lead";
 import { conferirDataETexto, faltaNaFicha } from "@/lib/opa/visita";
 import { pedidoRadarSchema, resumoDoPedidoRadar } from "@/lib/opa/pedido-radar";
+import { MOTIVOS_RADAR } from "@/lib/opa/radar-captacoes";
+import { FONTE_RADAR } from "@/lib/opa/radar-captacoes-dados";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -683,12 +685,14 @@ export async function perderNegocio(formData: FormData): Promise<ResultadoEtapa>
   const { user, org, supabase } = await contexto();
   const { data: lead } = await supabase
     .from("crm_leads")
-    .select("pipeline_id, tags")
+    .select("pipeline_id, tags, source")
     .eq("organization_id", org.orgId)
     .eq("id", leadId)
     .maybeSingle();
   if (!lead) return { ok: false, erro: "Lead não encontrado." };
   const pipelineId = (lead as { pipeline_id: string }).pipeline_id;
+  // Card das Captações do Radar tem os motivos dele ("Radar: já foi vendido"...).
+  const doRadar = (lead as { source: string | null }).source === FONTE_RADAR;
   if (motivo === MOTIVO_PESSOAL && !ehGestor({ user, org }) && ehLeadDaOpa((lead as { tags: string[] | null }).tags)) {
     return { ok: false, erro: "Este lead veio por ação da OPA. Se for mesmo pessoal, peça ao gestor." };
   }
@@ -697,12 +701,13 @@ export async function perderNegocio(formData: FormData): Promise<ResultadoEtapa>
   // Os motivos moram em Configurações > Motivos de perda: sincroniza antes de gravar.
   const admin = createAdminClient();
   const config = await carregarConfig(admin, org.orgId);
-  if (!config.motivos_perda.some((m) => m.motivo === motivo)) return { ok: false, erro: "Motivo fora da lista de Configurações." };
+  const validos = [...config.motivos_perda.map((m) => m.motivo), ...(doRadar ? MOTIVOS_RADAR : [])];
+  if (!validos.includes(motivo)) return { ok: false, erro: "Motivo fora da lista de Configurações." };
   const { data: funil } = await admin.from("crm_pipelines").select("settings").eq("id", pipelineId).eq("organization_id", org.orgId).single();
   const settings = ((funil as { settings: Record<string, unknown> | null }).settings ?? {}) as Record<string, unknown>;
   const atuais = new Set((settings.lost_reasons as string[] | undefined) ?? []);
   if (!atuais.has(motivo)) {
-    await admin.rpc("fn_opa_garantir_motivos", { p_pipeline: pipelineId, p_motivos: config.motivos_perda.map((m) => m.motivo) });
+    await admin.rpc("fn_opa_garantir_motivos", { p_pipeline: pipelineId, p_motivos: validos });
   }
 
   const { data: etapa } = await supabase

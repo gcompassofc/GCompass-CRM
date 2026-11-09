@@ -43,6 +43,7 @@ import {
   ShieldCheck,
   Signpost,
   Storefront,
+  Target,
   UserCircle,
   WhatsappLogo,
   Users,
@@ -356,6 +357,16 @@ export const NAV_DESTINATIONS: NavDestination[] = [
     label: "Carteira de imóveis",
     description: "O acervo da imobiliária, com os leads de cada imóvel e quem combina com ele.",
     icon: HouseLine,
+    group: "crm",
+    sidebar: true,
+    perfil: "imobiliaria",
+  },
+  {
+    // Captações do Radar (09/11/2026): os imóveis que o OPA Radar separou para cada corretor captar.
+    href: "/app/captacoes",
+    label: "Captações do Radar",
+    description: "Imóveis de outras imobiliárias que o Radar separou para você captar, com etapa e devolutiva.",
+    icon: Target,
     group: "crm",
     sidebar: true,
     perfil: "imobiliaria",
@@ -758,7 +769,13 @@ export function gruposImobiliaria(isPlatformAdmin: boolean, role: Role | null): 
     { id: "inicio", rotulo: "Início", icone: IconeAtendimento, itens: achar(["/app/hoje"]) },
     { id: "atendimento", rotulo: "Atendimento", icone: IconeAtendimento, itens: achar(["/app/fila", "/app/inbox", "/app/lembretes"]) },
     { id: "clientes", rotulo: "Clientes", icone: IconeClientes, itens: achar(["/app/leads", "/app/pipeline"]) },
-    { id: "imoveis", rotulo: "Imóveis", icone: IconeAtendimento, itens: achar(["/app/imoveis"]) },
+    {
+      id: "imoveis",
+      rotulo: "Imóveis",
+      icone: IconeAtendimento,
+      // Com Captações do Radar o grupo abre em dois; a carteira vira "Carteira".
+      itens: achar(["/app/imoveis", "/app/captacoes"]).map((d) => (d.href === "/app/imoveis" ? { ...d, label: "Carteira" } : d)),
+    },
     { id: "ferramentas", rotulo: "Ferramentas", icone: IconeFerramentas, itens: achar(["/app/kit", "/app/meu-whatsapp"]) },
   ];
   if (gestor) {

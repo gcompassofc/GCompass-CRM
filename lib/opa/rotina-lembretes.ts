@@ -38,6 +38,8 @@ import {
   type ResultadoAviso,
 } from "./aviso-whatsapp";
 import { avancarRespondidos } from "./avanco";
+import { avisoDevidoRadar, diasParado, textoAvisoRadar } from "./radar-captacoes";
+import { carregarCardsRadar, type CardRadar } from "./radar-captacoes-dados";
 import { boasVindasEnviadaEm, esperaDesde, esperaEmMinutos, minutosUteis, saidaDoCorretor } from "./atendimento";
 import { carregarConfig, type ConfigOpa } from "./config";
 import { carregarEquipe, type Pessoa } from "./dados";
@@ -74,9 +76,11 @@ export interface ResultadoRotina {
   semNumero: number;
   /** Cards que andaram sozinhos para Primeiro contato (lib/opa/avanco.ts). */
   avancos: number;
+  /** Avisos das Captações do Radar (chegada, lembrete, prazo). */
+  radar: number;
 }
 
-const vazio = (): ResultadoRotina => ({ lembretes: 0, avisos: 0, repasses: 0, escaladas: 0, parados: 0, semNumero: 0, avancos: 0 });
+const vazio = (): ResultadoRotina => ({ lembretes: 0, avisos: 0, repasses: 0, escaladas: 0, parados: 0, semNumero: 0, avancos: 0, radar: 0 });
 
 type Admin = SupabaseClient;
 
@@ -548,6 +552,74 @@ async function processarParados(c: Contexto) {
   }
 }
 
+// ---------------------------------------------------------------- 5. Captações do Radar
+
+/**
+ * Captações do Radar (09/11/2026): o corretor recebe a lista do que chegou, um
+ * lembrete no 3º dia sem anotação e o aviso do prazo (Configurações > Captação,
+ * `devolutiva_dias`), com cópia para a gestão. Nada é repassado sozinho: até a
+ * reunião que fecha o prazo, quem decide o repasse é o gestor.
+ */
+async function processarRadar(c: Contexto) {
+  const cards = (await carregarCardsRadar(c.admin, c.orgId, { soAbertos: true })).filter((x) => x.donoId);
+  if (cards.length === 0) return;
+  await carregarHistorico(c, cards.map((x) => x.id));
+  const prazo = c.config.captacao.devolutiva_dias;
+
+  // Tudo o que cada pessoa deve receber nesta rodada; sai numa mensagem só por pessoa.
+  const porPessoa = new Map<string, ItemRadar[]>();
+  const juntar = (p: Pessoa, item: ItemRadar) => porPessoa.set(p.id, [...(porPessoa.get(p.id) ?? []), item]);
+  for (const card of cards) {
+    const devido = avisoDevidoRadar(
+      { status: card.status, etapaSlug: card.etapa.slug, ultimoMovimento: card.ultimoMovimento, enviadoEm: card.radar.enviado_em, avisarChegada: card.radar.avisar_chegada },
+      c.agora,
+      prazo,
+    );
+    if (!devido) continue;
+    const dono = c.equipe.get(card.donoId!);
+    const base = { card, tipo: devido.tipo, marca: devido.marca, dias: diasParado(card, c.agora), dono: dono?.nome ?? "corretor que saiu" };
+    if (dono) juntar(dono, base);
+    if (devido.tipo === "radar_prazo") for (const g of c.gestores) if (g.id !== dono?.id) juntar(g, { ...base, paraGestor: true });
+  }
+
+  for (const [pessoaId, itens] of porPessoa) {
+    const pessoa = c.equipe.get(pessoaId)!;
+    const reservados: Array<ItemRadar & { avisoId: string }> = [];
+    for (const it of itens) {
+      const avisoId = await reservarAviso(c.admin, { orgId: c.orgId, leadId: it.card.id, userId: pessoaId, tipo: it.tipo, marca: it.marca }, c.feitos);
+      if (avisoId) reservados.push({ ...it, avisoId });
+    }
+    if (reservados.length === 0) continue;
+    const texto = textoAvisoRadar(
+      pessoa.nome,
+      reservados.map((x) => ({
+        tipo: x.tipo,
+        paraGestor: Boolean(x.paraGestor),
+        titulo: x.card.titulo,
+        dist: x.card.radar.dist,
+        preco: x.card.radar.preco_anunciado,
+        imobiliaria: x.card.radar.imobiliaria,
+        dias: x.dias,
+        corretor: x.dono,
+      })),
+      `${env.NEXT_PUBLIC_APP_URL}/app/captacoes`,
+    );
+    const resultado = await avisarPessoa(c.canal, pessoa, texto);
+    if (resultado === "sem_numero") c.r.semNumero++;
+    for (const x of reservados) await fecharAviso(c.admin, x.avisoId, resultado);
+    c.r.radar++;
+  }
+}
+
+interface ItemRadar {
+  card: CardRadar;
+  tipo: "radar_chegada" | "radar_lembrete" | "radar_prazo";
+  marca: string;
+  dias: number;
+  dono: string;
+  paraGestor?: boolean;
+}
+
 // ---------------------------------------------------------------- rodada
 
 /** Organizações com o CRM da OPA ligado: têm o funil de compradores e a configuração `settings.opa`. */
@@ -602,7 +674,14 @@ export async function rodarRotinaLembretes(admin: Admin, agora = Date.now()): Pr
       // Negócio parado: de dez em dez minutos, no horário comercial de dia aberto.
       const { hora, minuto } = horaEMinuto(agora);
       const aberto = minutosUteis(agora - 10 * 60_000, agora, config.horario) > 0;
-      if (aberto && hora >= 9 && hora < 19 && minuto % 10 === 0) await processarParados(c);
+      if (aberto && hora >= 9 && hora < 19 && minuto % 10 === 0) {
+        await processarParados(c);
+        try {
+          await processarRadar(c);
+        } catch (e) {
+          logger.warn("[opa-lembretes] falha nas Captações do Radar", { orgId, error: String(e) });
+        }
+      }
     } catch (e) {
       logger.warn("[opa-lembretes] falha numa organização", { orgId, error: String(e) });
     }

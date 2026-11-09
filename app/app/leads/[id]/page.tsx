@@ -20,6 +20,9 @@ import {
 import { contarEtiquetas, etiquetasDoLead } from "@/lib/opa/etiquetas";
 import { afinidade, fotoUrl, precoCheio, precoPrincipal } from "@/lib/opa/imoveis";
 import { pedidoInicial, resumoDoPedidoRadar } from "@/lib/opa/pedido-radar";
+import { diasParado, ERROS_RADAR, MOTIVOS_RADAR } from "@/lib/opa/radar-captacoes";
+import { ErroNoAnuncio } from "../../captacoes/_componentes";
+import { CartaoRadar } from "./_radar";
 import { AdicionarImovel, CopiarPedidoRadar, PesquisarRadar, RemoverImovel } from "./_imoveis";
 import { ReabrirNegocio } from "./_reabrir";
 import { ExcluirLead } from "./_excluir";
@@ -36,6 +39,7 @@ import { createClient } from "@/lib/supabase/server";
 import {
   CaretDown,
   ArrowRight,
+  ArrowSquareOut,
   ArrowsClockwise,
   Bed,
   Bell,
@@ -359,6 +363,8 @@ export default async function LeadPage({
         ).data as { lost_reason: string | null; closed_at: string | null } | null)
       : null;
   const wa = lead.telefone ? `https://wa.me/${lead.telefone.replace(/\D/g, "")}` : null;
+  // Card do Radar ainda sem o dono do imóvel: sem contato, sem conversa (Captações do Radar).
+  const semDono = Boolean(lead.radar) && !lead.contatoId;
   const linkAba = (a: string) => `/app/leads/${lead.id}${a === "resumo" ? "" : `?aba=${a}`}`;
   const contagem: Record<string, number | null> = {
     etiquetas: nEtiquetas,
@@ -372,6 +378,9 @@ export default async function LeadPage({
     texto: String(n.payload?.texto ?? ""),
     autor: equipe.get(n.performed_by_user_id ?? "")?.nome ?? "Pessoa removida",
   }));
+  const ultimoMovimentoRadar = lead.radar
+    ? [lead.radar.enviado_em, ...notas.map((n) => n.em)].sort().at(-1) ?? lead.radar.enviado_em
+    : "";
 
   // Histórico: tudo o que aconteceu com o negócio, do mais novo ao mais velho.
   const historico = [
@@ -461,6 +470,11 @@ export default async function LeadPage({
               Lead próprio
             </Chip>
           )}
+          {lead.radar && (
+            <Chip icone={Target} tom="escuro">
+              Captação do Radar · {lead.radar.dist}
+            </Chip>
+          )}
           {aberto && lead.conversa?.esperandoMin != null && (
             <Chip icone={Timer} tom="alerta">
               esperando há {tempoCurto(lead.conversa.esperandoMin)}
@@ -488,6 +502,20 @@ export default async function LeadPage({
                     : "Não deu para abrir a conversa agora. Tente de novo em instantes."}
               </p>
             )}
+            {semDono && lead.radar ? (
+              <div data-tour="ficha-acoes" className="flex flex-wrap items-center gap-2">
+                <a
+                  href={lead.radar.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex h-11 items-center gap-2 rounded-full bg-[#2a7ca8] px-5 text-[14px] font-semibold text-white hover:bg-[#1f6a93]"
+                >
+                  <ArrowSquareOut className="size-4" /> Ver anúncio
+                </a>
+                {podeEditar && <ErroNoAnuncio leadId={lead.id} erros={ERROS_RADAR} />}
+                {podeEditar && <PerderNegocio leadId={lead.id} motivos={[...MOTIVOS_RADAR]} />}
+              </div>
+            ) : (
             <div data-tour="ficha-acoes" className="flex flex-wrap items-center gap-2">
               {/* Sempre no Multi-atendimento do CRM, nunca no WhatsApp Web: sem
                   conversa ainda, a rota abre uma para mandar a primeira mensagem. */}
@@ -537,6 +565,7 @@ export default async function LeadPage({
                 </div>
               </details>
             </div>
+            )}
           </>
         )}
 
@@ -604,6 +633,9 @@ export default async function LeadPage({
           <div className="grid gap-5 lg:grid-cols-12">
             <div className="flex min-w-0 flex-col gap-5 lg:col-span-7">
               {/* O único cartão escuro da tela: o que a IA leu e o que falta confirmar. */}
+              {lead.radar ? (
+                <CartaoRadar radar={lead.radar} dias={diasParado({ ultimoMovimento: ultimoMovimentoRadar }, Date.now())} />
+              ) : (
               <Cartao escuro bloco tour="ficha-copiloto">
                 <TituloBloco
                   claro
@@ -703,9 +735,14 @@ export default async function LeadPage({
                   </div>
                 )}
               </Cartao>
+              )}
 
               <Cartao bloco>
-                <TituloBloco icone={Notepad} titulo="Anotações" sub="Corretor e gestor, com autor e hora. Ficam no histórico." />
+                <TituloBloco
+                  icone={Notepad}
+                  titulo={lead.radar ? "Devolutivas" : "Anotações"}
+                  sub={lead.radar ? "Como foi cada passo da captação, com autor e hora. Fica no histórico." : "Corretor e gestor, com autor e hora. Ficam no histórico."}
+                />
                 {podeEditar && (
                   <FormComRetorno action={anotarNoLead} sucesso="Anotação salva." className="mt-4 flex flex-col gap-2.5">
                     <input type="hidden" name="leadId" value={lead.id} />
@@ -715,7 +752,7 @@ export default async function LeadPage({
                       maxLength={2000}
                       rows={3}
                       aria-label="Nova anotação"
-                      placeholder="O que vale lembrar deste lead"
+                      placeholder={lead.radar ? "Como foi, o que o dono disse, próximo passo" : "O que vale lembrar deste lead"}
                       className="w-full resize-y rounded-[18px] bg-[#f2f6f9] px-4 py-3 text-[14px] text-[#0a2d40] outline-none placeholder:text-[#5b7284] focus:ring-2 focus:ring-[#8fc4dd]"
                     />
                     <BotaoEnvio className="inline-flex h-11 items-center gap-1.5 self-end rounded-full bg-[#0a2d40] px-5 text-[13px] font-semibold text-white hover:bg-[#12455f]">
@@ -739,6 +776,7 @@ export default async function LeadPage({
                 )}
               </Cartao>
 
+              {!semDono && (
               <Cartao bloco>
                 <TituloBloco
                   icone={WhatsappLogo}
@@ -773,6 +811,7 @@ export default async function LeadPage({
                   )}
                 </div>
               </Cartao>
+              )}
             </div>
 
             <div className="flex min-w-0 flex-col gap-5 lg:col-span-5">

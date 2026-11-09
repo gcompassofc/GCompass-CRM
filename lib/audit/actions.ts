@@ -227,4 +227,6 @@ export type AuditAction =
   | "auth.codigo_login_ok"
   | "auth.codigo_login_falhou"
   /** Gestor abriu a conversa de um contato a classificar do número de um corretor (05/11/2026). */
-  | "whatsapp.gestor_viu_conversa_a_classificar";
+  | "whatsapp.gestor_viu_conversa_a_classificar"
+  /** Gestor importou o registro do OPA Radar em Captações do Radar (09/11/2026). */
+  | "radar.importado";

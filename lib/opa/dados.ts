@@ -1,6 +1,7 @@
 import { cache } from "react";
 
 import type { PedidoRadarSalvo } from "@/lib/opa/pedido-radar";
+import type { RadarDoCard } from "@/lib/opa/radar-captacoes";
 import { cifraConfigurada, decifrar } from "@/lib/crypto/dados-pessoais";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -131,6 +132,8 @@ export interface LeadOpa {
   respostasEm: string | null;
   /** Boas-vindas automática: quando saiu, ou por que não saiu. */
   boasVindas: { em: string; status: string; erro?: string | null } | null;
+  /** Card do funil de captação que veio das Captações do Radar (custom_fields.radar); null nos outros. */
+  radar: RadarDoCard | null;
 }
 
 export const ROTULO_ORIGEM: Record<string, string> = {
@@ -170,7 +173,8 @@ type LinhaLead = {
   source: string | null;
   tags: string[] | null;
   custom_fields: Record<string, unknown> | null;
-  contact_id: string;
+  /** null no card do Radar, que nasce sem contato até o corretor achar o dono. */
+  contact_id: string | null;
   created_at: string;
   assigned_at: string | null;
   contacts: { name: string | null; phone_number: string | null; telefone_cifrado?: string | null } | null;
@@ -245,7 +249,7 @@ export async function carregarLeadsSemCache(
   }
   if (leads.length === 0) return [];
 
-  const contatos = [...new Set(leads.map((l) => l.contact_id))];
+  const contatos = [...new Set(leads.map((l) => l.contact_id).filter((c): c is string => Boolean(c)))];
   const [config, conversas, pend] = await Promise.all([
     carregarConfig(supabase, orgId),
     emLotes(contatos, (lote) =>
@@ -286,7 +290,7 @@ export async function carregarLeadsSemCache(
     const interesse = new Set<string>((cf.imoveis_interesse as string[] | undefined) ?? []);
     if (cf.imovel_codigo) interesse.add(cf.imovel_codigo as string);
     const pago = l.source === "meta" || tags.includes("pago");
-    const bruta = convPorContato.get(l.contact_id) ?? null;
+    const bruta = l.contact_id ? (convPorContato.get(l.contact_id) ?? null) : null;
     // Desde quando espera resposta: mensagem do lead sem resposta, volta por
     // formulário, "Respondi" ou ligação (tiram da fila), lead novo sem conversa
     // e relógio novo quando o lead muda de corretor. Os minutos contam só o
@@ -322,7 +326,7 @@ export async function carregarLeadsSemCache(
       venda: (cf.venda as VendaDoLead | undefined) ?? null,
       nome,
       telefone: l.contacts?.phone_number ?? telefoneSoCifrado(orgId, l.contacts?.telefone_cifrado ?? null),
-      contatoId: l.contact_id,
+      contatoId: l.contact_id ?? "",
       etapa: {
         id: l.stage_id,
         nome: l.crm_stages?.name ?? "",
@@ -359,6 +363,7 @@ export async function carregarLeadsSemCache(
       respostasFormulario: ((cf.formulario as { respostas?: RespostaSalva[] } | undefined)?.respostas ?? []).filter((r) => r && r.pergunta && r.resposta),
       respostasEm: (cf.formulario as { em?: string } | undefined)?.em ?? null,
       boasVindas: (cf.boas_vindas as LeadOpa["boasVindas"] | undefined) ?? null,
+      radar: (cf.radar as RadarDoCard | undefined)?.dist ? (cf.radar as RadarDoCard) : null,
     };
   });
 }
