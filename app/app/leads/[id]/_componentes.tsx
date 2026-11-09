@@ -541,18 +541,29 @@ export function RegistrarVisita({
 
 // ---------------------------------------------------------------- perder
 
-export function PerderNegocio({ leadId, motivos }: { leadId: string; motivos: string[] }) {
+export function PerderNegocio({
+  leadId,
+  motivos,
+  rotulo = "Perder",
+  titulo = "Perder o negócio",
+}: {
+  leadId: string;
+  motivos: string[];
+  /** Card das Captações do Radar: "Não serve". */
+  rotulo?: string;
+  titulo?: string;
+}) {
   const router = useRouter();
   const [aberto, setAberto] = useState(false);
   const [pendente, iniciar] = useTransition();
   return (
     <>
       <button type="button" onClick={() => setAberto(true)} className={cn(pilulaBranca, "text-[#a4410e] hover:bg-[#fdeee3]")}>
-        <Prohibit className="size-4" /> Perder
+        <Prohibit className="size-4" /> {rotulo}
       </button>
       <Dialog open={aberto} onOpenChange={setAberto}>
         <DialogContent className={cn(DIALOGO, "max-w-md")}>
-          <CabecaDialogo icone={Prohibit} tom="alerta" titulo="Perder o negócio" texto="O card sai do quadro. O motivo entra no relatório de perdas." />
+          <CabecaDialogo icone={Prohibit} tom="alerta" titulo={titulo} texto="O card sai do quadro. O motivo entra no relatório de perdas." />
           <form
             className="flex flex-col gap-2"
             onSubmit={(ev) => {

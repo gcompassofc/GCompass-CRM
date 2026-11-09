@@ -284,7 +284,8 @@ export async function carregarLeadsSemCache(
 
   return leads.map((l) => {
     const cf = (l.custom_fields ?? {}) as Record<string, unknown>;
-    const nome = l.contacts?.name ?? l.title.split(" · ")[0] ?? "Lead";
+    // Card do Radar sem dono achado: o título inteiro ("Casa · Praia Grande") é o nome.
+    const nome = l.contacts?.name ?? ((cf.radar as { dist?: string } | undefined)?.dist ? l.title : l.title.split(" · ")[0]) ?? "Lead";
     const tags = l.tags ?? [];
     const voltou = (cf.voltou as VoltouInfo | undefined) ?? null;
     const interesse = new Set<string>((cf.imoveis_interesse as string[] | undefined) ?? []);

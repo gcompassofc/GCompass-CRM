@@ -440,7 +440,7 @@ export default async function LeadPage({
       <CabecalhoOpa
         secao={funil.name}
         titulo={lead.nome}
-        subtitulo={`${lead.telefone ?? ""}${dono ? ` · ${dono.nome}` : ""}`}
+        subtitulo={[lead.radar ? `${lead.radar.dist} · ${lead.radar.imobiliaria}` : lead.telefone, dono?.nome].filter(Boolean).join(" · ")}
         icone={IdentificationCard}
         equipe={false}
         ferramentas={false}
@@ -513,7 +513,7 @@ export default async function LeadPage({
                   <ArrowSquareOut className="size-4" /> Ver anúncio
                 </a>
                 {podeEditar && <ErroNoAnuncio leadId={lead.id} erros={ERROS_RADAR} />}
-                {podeEditar && <PerderNegocio leadId={lead.id} motivos={[...MOTIVOS_RADAR]} />}
+                {podeEditar && <PerderNegocio leadId={lead.id} motivos={[...MOTIVOS_RADAR]} rotulo="Não serve" titulo="Este imóvel não serve" />}
               </div>
             ) : (
             <div data-tour="ficha-acoes" className="flex flex-wrap items-center gap-2">
@@ -875,9 +875,12 @@ export default async function LeadPage({
                 </Cartao>
               )}
 
-              <Diagnostico leadId={lead.id} campos={lead.campos} feitos={feitos} pendentes={sugestoes.map((s) => s.campo)} outros={outrosCampos} />
+              {/* Diagnóstico e mensagem pronta são do comprador: o card do Radar ainda não tem com quem falar. */}
+              {!lead.radar && (
+                <Diagnostico leadId={lead.id} campos={lead.campos} feitos={feitos} pendentes={sugestoes.map((s) => s.campo)} outros={outrosCampos} />
+              )}
 
-              {aberto && (
+              {aberto && !lead.radar && (
                 <Cartao tour="ficha-mensagem">
                   <TituloBloco icone={PaperPlaneTilt} titulo="Próxima mensagem" sub={mensagem.motivo} />
                   <div className="mt-4">
