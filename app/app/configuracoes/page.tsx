@@ -395,11 +395,13 @@ function AbaMensagens({ config, equipe }: { config: ConfigOpa; equipe: Map<strin
     .filter((p): p is Pessoa => Boolean(p));
   const exemplo = montarBoasVindas({
     modelo: config.boas_vindas.modelo,
-    nomeLead: "Aristides",
-    corretor: "Marco",
-    imovelCodigo: "CA006944",
+    nomeLead: "Marlene",
+    corretor: "Cristian",
+    imovelCodigo: "CA006779",
+    bairro: "Siriúba",
     canal: "meta",
     publicado: true,
+    respostas: { relacao: "ja_vim_algumas", finalidade: "moradia_veraneio" },
   });
   return (
     <div className="flex max-w-3xl flex-col gap-5">

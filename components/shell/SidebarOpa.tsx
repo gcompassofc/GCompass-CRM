@@ -78,7 +78,11 @@ export function SidebarOpa({
   const [escolhido, setEscolhido] = useState<string | null>(null);
   // Trocou de tela, volta a valer o módulo da tela atual.
   useEffect(() => setEscolhido(null), [pathname]);
-  const estaAtivo = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  // Leads é a vista em lista do Funil (09/11/2026): a lista e a ficha acendem o Funil.
+  const estaAtivo = (href: string) =>
+    pathname === href ||
+    pathname.startsWith(`${href}/`) ||
+    (href === "/app/pipeline" && (pathname === "/app/leads" || pathname.startsWith("/app/leads/")));
   const nome = user.full_name ?? user.email.split("@")[0] ?? "";
 
   const contagemFila = (ativo: boolean) =>

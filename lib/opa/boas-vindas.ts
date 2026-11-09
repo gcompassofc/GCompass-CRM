@@ -11,12 +11,19 @@
  * o prazo de 1 h (lib/opa/atendimento.ts, migration 0130).
  *
  * Melhor esforço: roda depois de a porta responder ao painel e nunca lança.
+ *
+ * 09/11/2026 (caso do Cristian, waha_500): quando não sai, o dono e a G-Compass
+ * (administradores) são avisados na hora pelo OPA Lembretes, e a ficha ganha
+ * "Reenviar boas-vindas" (`forcar`), que manda de novo pela conexão do dono.
  */
 import { sendMessageHandler } from "@/app/api/v1/messages/_handler";
 import { ensureConversation } from "@/lib/automation/start-conversation";
 import { NUMERO_SEM_WHATSAPP } from "@/lib/messaging/sem-whatsapp";
 import type { createAdminClient } from "@/lib/supabase/admin";
 
+import { env } from "@/lib/env";
+
+import { avisarPessoa, carregarCanalDeAvisos } from "./aviso-whatsapp";
 import { montarBoasVindas } from "./boas-vindas-texto";
 import { mesclarCampos } from "./campos";
 import { carregarConfig } from "./config";
@@ -48,7 +55,39 @@ async function registrar(admin: Admin, orgId: string, leadId: string, contactId:
   if (error) console.error("[opa.boas-vindas] atividade", error.message);
 }
 
-export async function enviarBoasVindas(admin: Admin, orgId: string, leadId: string): Promise<ResultadoBoasVindas> {
+/**
+ * Aviso na hora de que a boas-vindas não saiu: para o dono do lead e para os
+ * administradores (a G-Compass), pelo OPA Lembretes. Uma vez por tentativa
+ * (`opa_avisos`, marca = hora da tentativa). Nunca lança.
+ */
+async function avisarFalha(admin: Admin, orgId: string, leadId: string, dono: string, corretor: string, nomeLead: string, motivo: string, marca: string) {
+  try {
+    const [canal, { data: membros }] = await Promise.all([
+      carregarCanalDeAvisos(admin as never, orgId),
+      admin.from("user_organizations").select("user_id, role").eq("organization_id", orgId).is("revoked_at", null),
+    ]);
+    const admins = ((membros ?? []) as Array<{ user_id: string; role: string }>).filter((m) => m.role === "admin" && m.user_id !== dono).map((m) => m.user_id);
+    const link = `${env.NEXT_PUBLIC_APP_URL}/app/leads/${leadId}`;
+    for (const id of [dono, ...admins]) {
+      const { error } = await admin
+        .from("opa_avisos")
+        .insert({ organization_id: orgId, lead_id: leadId, user_id: id, tipo: "boas_vindas_falhou", marca, dados: { motivo } });
+      if (error) continue; // já avisado nesta tentativa (ou sem tabela): não repete
+      const nome = id === dono ? corretor : await nomeDaPessoa(admin, id);
+      const primeiroNome = nome.split(/\s+/)[0] || "Oi";
+      const texto =
+        id === dono
+          ? `${primeiroNome}, a boas-vindas para ${nomeLead} não saiu: ${motivo}. Abra a ficha e use "Reenviar boas-vindas", ou chame o lead direto.\n${link}`
+          : `${primeiroNome}, a boas-vindas do lead ${nomeLead} (corretor ${corretor.split(/\s+/)[0]}) não saiu: ${motivo}.\n${link}`;
+      const r = await avisarPessoa(canal, { id, nome }, texto);
+      await admin.from("opa_avisos").update({ status: r === "enviado" ? "enviado" : r === "sem_numero" ? "sem_numero" : "falhou" }).eq("lead_id", leadId).eq("tipo", "boas_vindas_falhou").eq("marca", marca).eq("user_id", id);
+    }
+  } catch (e) {
+    console.error("[opa.boas-vindas] aviso de falha", e instanceof Error ? e.message : e);
+  }
+}
+
+export async function enviarBoasVindas(admin: Admin, orgId: string, leadId: string, opts: { forcar?: boolean } = {}): Promise<ResultadoBoasVindas> {
   const config = await carregarConfig(admin, orgId);
   if (!config.boas_vindas.ligada) return { enviada: false, motivo: "desligada em Configurações", registrar: false };
 
@@ -68,16 +107,21 @@ export async function enviarBoasVindas(admin: Admin, orgId: string, leadId: stri
   } | null;
   if (!lead || lead.status !== "open" || !lead.owner_user_id) return { enviada: false, motivo: "lead sem dono", registrar: false };
   const cf = lead.custom_fields ?? {};
-  if (cf.boas_vindas) return { enviada: false, motivo: "já enviada", registrar: false };
+  const anterior = cf.boas_vindas as { status?: string; em?: string } | undefined;
+  // Reenvio (botão da ficha) só não repete a que saiu ou a que está saindo agora.
+  const saindo = anterior?.status === "enviando" && Date.now() - Date.parse(anterior.em ?? "") < 2 * 60_000;
+  if (anterior && (!opts.forcar || anterior.status === "enviada" || saindo)) return { enviada: false, motivo: "já enviada", registrar: false };
   if ((lead.tags ?? []).includes("particular")) return { enviada: false, motivo: "contato particular", registrar: false };
 
   const dono = lead.owner_user_id;
   // Assinatura escolhida em Configurações (Paulo Martin assina "Martin"); sem ela, o primeiro nome do perfil.
   const corretor = config.boas_vindas.assinaturas[dono]?.trim() || (await nomeDaPessoa(admin, dono)) || "corretor";
   const primeiro = corretor.split(/\s+/)[0]!;
+  const tentativa = new Date().toISOString();
   const falhou = async (motivo: string, registrarNoLead = true): Promise<ResultadoBoasVindas> => {
     if (registrarNoLead) {
       await registrar(admin, orgId, leadId, lead.contact_id, "boas_vindas_nao_enviada", `Boas-vindas não enviada: ${motivo}.`, { motivo, corretor: primeiro });
+      await avisarFalha(admin, orgId, leadId, dono, corretor, lead.contacts?.name?.trim() || "o lead novo", motivo, tentativa);
     }
     return { enviada: false, motivo, registrar: registrarNoLead };
   };
@@ -107,14 +151,20 @@ export async function enviarBoasVindas(admin: Admin, orgId: string, leadId: stri
     .not("last_message_at", "is", null)
     .limit(1)
     .maybeSingle();
-  if (jaTem) return falhou(`o contato já conversa com ${primeiro}`, false);
+  // No reenvio a conversa já existe (a tentativa anterior a criou): segue.
+  if (jaTem && !opts.forcar) return falhou(`o contato já conversa com ${primeiro}`, false);
 
   const codigo = (cf.imovel_codigo as string | null) ?? null;
   let publicado = true;
+  let bairro: string | null = null;
   if (codigo) {
-    const { data: im } = await admin.from("imoveis").select("status").eq("organization_id", orgId).eq("codigo", codigo).maybeSingle();
+    const { data: im } = await admin.from("imoveis").select("status, bairro").eq("organization_id", orgId).eq("codigo", codigo).maybeSingle();
     publicado = !im || (im as { status: string | null }).status === "ativo";
+    bairro = (im as { bairro: string | null } | null)?.bairro ?? null;
   }
+  // O que a pessoa já respondeu no formulário (lib/opa/formulario.ts): a mensagem não pergunta de novo.
+  const respostas = ((cf.formulario as { respostas?: Array<{ chave: string; resposta: string }> } | undefined)?.respostas ?? []);
+  const resposta = (k: string) => respostas.find((r) => r.chave === k)?.resposta ?? null;
   const canal = (cf.origem as { canal?: string } | undefined)?.canal === "site" ? "site" : "meta";
   const texto = montarBoasVindas({
     modelo: config.boas_vindas.modelo,
@@ -123,6 +173,8 @@ export async function enviarBoasVindas(admin: Admin, orgId: string, leadId: stri
     imovelCodigo: codigo,
     canal,
     publicado,
+    bairro,
+    respostas: { relacao: resposta("relacao_ilhabela"), finalidade: resposta("finalidade") },
   });
 
   const conversaId = await ensureConversation(admin as never, orgId, lead.contact_id, sessao.id);

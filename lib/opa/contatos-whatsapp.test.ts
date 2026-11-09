@@ -33,13 +33,15 @@ describe("decidir: pessoal, lead ou a classificar", () => {
     expect(decidir({ ...base, atual: "pessoal" })).toEqual({ situacao: "pessoal", origem: null, gravar: false, virouLead: false });
   });
 
-  it("sinal de anúncio ou site ganha de pessoal: marcar o número antes não segura o lead da OPA", () => {
+  it("sinal do site ganha de pessoal: marcar o número antes não segura o lead da OPA", () => {
     expect(decidir({ ...base, atual: "pessoal", sinal: SITE })).toMatchObject({ situacao: "lead", origem: "site", gravar: true, virouLead: true });
   });
 
-  it("contato novo com sinal de anúncio vira lead na hora", () => {
-    const d = decidir({ ...base, sinal: { origem: "campanha", imovelCodigo: null } });
-    expect(d).toEqual({ situacao: "lead", origem: "campanha", gravar: true, virouLead: true });
+  it("anúncio de WhatsApp não vira lead sozinho: pode ser campanha do próprio corretor (09/11/2026)", () => {
+    const anuncio = { origem: "campanha" as const, imovelCodigo: null };
+    expect(decidir({ ...base, sinal: anuncio })).toEqual({ situacao: "a_classificar", origem: "novo", gravar: false, virouLead: false });
+    expect(decidir({ ...base, atual: "pessoal", sinal: anuncio })).toMatchObject({ situacao: "pessoal", gravar: false });
+    expect(decidir({ ...base, atual: "a_classificar", sinal: anuncio })).toMatchObject({ situacao: "a_classificar", gravar: false });
   });
 
   it("a classificar com sinal vira lead; sem sinal continua esperando, sem guardar", () => {

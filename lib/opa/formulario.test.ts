@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { montarBoasVindas, tipoDoImovel } from "./boas-vindas-texto";
+import { MODELO_ANTERIOR, montarBoasVindas, tipoDoImovel } from "./boas-vindas-texto";
 import { camposDoCorretorDasRespostas, diagnosticoDasRespostas, lerRespostas, soOQueFalta } from "./formulario";
 
 describe("respostas do formulário", () => {
@@ -47,16 +47,51 @@ describe("respostas do formulário", () => {
 });
 
 describe("boas-vindas", () => {
-  it("monta o texto aprovado pelo Kallyl em 06/11", () => {
-    expect(montarBoasVindas({ nomeLead: "aristides silva", corretor: "Marco Henrique", imovelCodigo: "CA006944", canal: "meta", publicado: true })).toBe(
-      "Oi Aristides, tudo bem? Aqui é Marco, da OPA. A casa do anúncio está disponível. Para eu te ajudar melhor: a casa é para morar, para as temporadas ou para investir?",
+  it("texto de 09/11: imóvel com bairro e código, o que o formulário disse e a pergunta da visita", () => {
+    expect(
+      montarBoasVindas({
+        nomeLead: "marlene souza",
+        corretor: "Cristian Spengler",
+        imovelCodigo: "CA006779",
+        bairro: "Siriúba",
+        canal: "meta",
+        publicado: true,
+        respostas: { relacao: "ja_vim_algumas", finalidade: "moradia_veraneio" },
+      }),
+    ).toBe(
+      "Oi Marlene, tudo bem? Aqui é Cristian, da OPA. A casa do Siriúba, código CA006779, está disponível. Vi no formulário que você já veio algumas vezes a Ilhabela e busca casa para morar ou passar temporadas. Para eu te ajudar melhor: você já tem uma data em mente para vir conhecer?",
     );
   });
 
-  it("site, apartamento, sem nome e imóvel fora do ar", () => {
-    expect(montarBoasVindas({ nomeLead: "", corretor: "Luana", imovelCodigo: "AP001", canal: "site", publicado: false })).toBe(
-      "Oi, tudo bem? Aqui é Luana, da OPA. O apartamento que você viu no site saiu do site, mas tenho opções parecidas. Para eu te ajudar melhor: o apartamento é para morar, para as temporadas ou para investir?",
+  it("sem resposta do formulário, a frase some; aceita o texto que a ficha mostra", () => {
+    expect(montarBoasVindas({ nomeLead: "Aristides", corretor: "Marco", imovelCodigo: "CA006944", bairro: "Barra Velha", canal: "meta", publicado: true })).toBe(
+      "Oi Aristides, tudo bem? Aqui é Marco, da OPA. A casa da Barra Velha, código CA006944, está disponível. Para eu te ajudar melhor: você já tem uma data em mente para vir conhecer?",
     );
+    expect(
+      montarBoasVindas({ nomeLead: "Ana", corretor: "Luana", imovelCodigo: "AP001", bairro: "Perequê", canal: "site", publicado: true, respostas: { finalidade: "Investimento" } }),
+    ).toContain("Vi no formulário que você busca apartamento para investir.");
+    expect(
+      montarBoasVindas({ nomeLead: "Ana", corretor: "Luana", imovelCodigo: "AP001", canal: "site", publicado: true, respostas: { finalidade: "ainda_nao_sei", relacao: "Nunca vim" } }),
+    ).toContain("Vi no formulário que você ainda não conhece Ilhabela. Para");
+    expect(montarBoasVindas({ nomeLead: "Ana", corretor: "Luana", imovelCodigo: "CA1", bairro: "Água Branca", canal: "meta", publicado: true })).toContain("A casa da Água Branca");
+  });
+
+  it("sem bairro e imóvel fora do ar; sem nome", () => {
+    expect(montarBoasVindas({ nomeLead: "", corretor: "Luana", imovelCodigo: "AP001", canal: "site", publicado: false })).toBe(
+      "Oi, tudo bem? Aqui é Luana, da OPA. O apartamento que você viu no site, código AP001, saiu do site, mas tenho opções parecidas. Para eu te ajudar melhor: você já tem uma data em mente para vir conhecer?",
+    );
+  });
+
+  it("sem código, o trecho do código some", () => {
+    expect(montarBoasVindas({ nomeLead: "Ana", corretor: "Luana", imovelCodigo: null, canal: "meta", publicado: true })).toBe(
+      "Oi Ana, tudo bem? Aqui é Luana, da OPA. O imóvel do anúncio está disponível. Para eu te ajudar melhor: você já tem uma data em mente para vir conhecer?",
+    );
+  });
+
+  it("conta salva com o modelo antigo passa a usar o novo", () => {
+    expect(
+      montarBoasVindas({ modelo: MODELO_ANTERIOR, nomeLead: "Ana", corretor: "Luana", imovelCodigo: "CA1", bairro: "Curral", canal: "meta", publicado: true }),
+    ).toContain("A casa do Curral, código CA1, está disponível.");
   });
 
   it("tipo pelo prefixo do código", () => {

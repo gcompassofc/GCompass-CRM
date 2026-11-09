@@ -95,6 +95,7 @@ import {
   descartarSugestao,
   editarCampo,
   reanalisar,
+  reenviarBoasVindas,
   salvarCamposCorretor,
 } from "../actions";
 import {
@@ -954,6 +955,24 @@ export default async function LeadPage({
                           : "Boas-vindas não confirmada pelo WhatsApp: veja o histórico"}
                   </p>
                 )}
+                {/* Reenviar pela conexão do dono (09/11/2026): quando falhou, ou o lead de formulário ficou sem ela. */}
+                {aberto &&
+                  podeEditar &&
+                  lead.telefone &&
+                  (lead.origem?.canal === "meta" || lead.origem?.canal === "site") &&
+                  lead.boasVindas?.status !== "enviada" &&
+                  lead.boasVindas?.status !== "enviando" &&
+                  (gestorDaTela || lead.donoId === user.id) && (
+                    <FormComRetorno action={reenviarBoasVindas} className="mt-3">
+                      <input type="hidden" name="leadId" value={lead.id} />
+                      <BotaoEnvio
+                        enviando="Enviando"
+                        className="inline-flex h-11 items-center gap-1.5 rounded-full bg-[#0a2d40] px-4 text-[13px] font-semibold text-white hover:bg-[#12455f]"
+                      >
+                        <WhatsappLogo className="size-4" /> {lead.boasVindas ? "Reenviar boas-vindas" : "Enviar boas-vindas"}
+                      </BotaoEnvio>
+                    </FormComRetorno>
+                  )}
                 <div className="mt-4 flex items-center justify-between gap-3 border-t border-[#e7eef2] pt-4">
                   <p className="flex items-center gap-2.5 text-[14px] text-[#34566b]">
                     {lead.lembretesDesligados ? <BellSlash className="size-5 text-[#5b7284]" /> : <Bell className="size-5 text-[#2a7ca8]" />}

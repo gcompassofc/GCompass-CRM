@@ -10,6 +10,7 @@ import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { analisarLead } from "@/lib/opa/analisar";
 import { boasVindasEnviadaEm } from "@/lib/opa/atendimento";
 import { avancarEtapa } from "@/lib/opa/avanco";
+import { enviarBoasVindas } from "@/lib/opa/boas-vindas";
 import { mesclarCampos, type OpcoesMescla } from "@/lib/opa/campos";
 import { carregarConfig } from "@/lib/opa/config";
 import { CAMPOS } from "@/lib/opa/copiloto";
@@ -996,4 +997,24 @@ export async function marcarSelecaoEnviada(leadId: string, codigos: string[]): P
   revalidatePath(`/app/leads/${leadId}`);
   if (etapa) revalidatePath("/app/pipeline");
   return { ok: true, etapa };
+}
+
+/**
+ * "Reenviar boas-vindas" da ficha (09/11/2026, caso do Cristian com waha_500): manda
+ * de novo pela conexão do DONO do lead (quem envia é o dono, não quem clicou, por
+ * isso o conector não conseguia). Dono ou gestão; o RLS decide se a pessoa vê o lead.
+ */
+export async function reenviarBoasVindas(formData: FormData): Promise<ResultadoEtapa> {
+  const leadId = String(formData.get("leadId") ?? "");
+  const { user, org, supabase } = await contexto();
+  if (org.role === "viewer") return { ok: false, erro: "Seu acesso é só de leitura." };
+  const { data: lead } = await supabase.from("crm_leads").select("owner_user_id, status").eq("organization_id", org.orgId).eq("id", leadId).maybeSingle();
+  if (!lead) return { ok: false, erro: "Lead não encontrado." };
+  const l = lead as { owner_user_id: string | null; status: string };
+  if (l.status !== "open") return { ok: false, erro: "O negócio está fechado." };
+  if (l.owner_user_id !== user.id && !ehGestor({ user, org })) return { ok: false, erro: "Só o dono do lead ou a gestão reenviam." };
+  const r = await enviarBoasVindas(createAdminClient(), org.orgId, leadId, { forcar: true });
+  revalidatePath(`/app/leads/${leadId}`);
+  if (r.enviada) return { ok: true, aviso: `Boas-vindas enviada pelo WhatsApp de ${r.corretor}.` };
+  return { ok: false, erro: r.motivo === "já enviada" ? "A boas-vindas já saiu (ou está saindo agora)." : `Não saiu: ${r.motivo}.` };
 }

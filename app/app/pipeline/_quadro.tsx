@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 
 import { marcarRespondido, moverEtapa } from "../leads/actions";
 import { AbrirLead } from "../_opa/painel-lead";
+import { ConversaFlutuante, type LeadDaJanela } from "./_conversa-flutuante";
 import { EnviarEtapa, type EnvioDaEtapa } from "./_enviar-etapa";
 import { moverCartao } from "./mover";
 
@@ -111,6 +112,8 @@ function useToque(): boolean {
 export function QuadroOpa({ colunas: inicial, envio, simples = false }: { colunas: ColunaQuadro[]; envio?: EnvioDaEtapa | null; simples?: boolean }) {
   const router = useRouter();
   const [colunas, setColunas] = useState(inicial);
+  // Conversa aberta na janela do canto (09/11/2026): o corretor responde sem sair do Funil.
+  const [conversa, setConversa] = useState<LeadDaJanela | null>(null);
   const [, iniciar] = useTransition();
   const toque = useToque();
 
@@ -139,6 +142,8 @@ export function QuadroOpa({ colunas: inicial, envio, simples = false }: { coluna
   };
 
   return (
+    <>
+    {conversa && <ConversaFlutuante lead={conversa} onFechar={() => setConversa(null)} />}
     <DragDropContext onDragEnd={soltar}>
       <div className="-mx-5 flex gap-4 overflow-x-auto px-5 pb-4 md:-mx-10 md:px-10">
         {colunas.map((col) => (
@@ -302,18 +307,23 @@ export function QuadroOpa({ colunas: inicial, envio, simples = false }: { coluna
                                     </select>
                                   </label>
                                 )}
-                                <Link
-                                  href={`/app/leads/${c.id}/conversa`}
-                                  prefetch={false}
-                                  title="Abrir a conversa"
-                                  aria-label="Abrir a conversa"
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    // O card inteiro abre o painel do lead: o clique fica só no botão.
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setConversa({ id: c.id, nome: c.nome });
+                                  }}
+                                  title="Abrir a conversa aqui"
+                                  aria-label={`Abrir a conversa com ${c.nome}`}
                                   className="relative inline-flex size-11 items-center justify-center rounded-full bg-[#eef3f6] text-[#0a2d40] hover:bg-[#e7f0f5]"
                                 >
                                   <ChatCircle className="size-4" />
                                   {c.esperandoMin != null && (
                                     <span className="absolute right-0 top-0 size-2.5 rounded-full bg-[#e07b2e] ring-2 ring-white" />
                                   )}
-                                </Link>
+                                </button>
                                 {c.esperandoMin != null && (
                                   <form action={marcarRespondido}>
                                     <input type="hidden" name="leadId" value={c.id} />
@@ -347,5 +357,6 @@ export function QuadroOpa({ colunas: inicial, envio, simples = false }: { coluna
         ))}
       </div>
     </DragDropContext>
+    </>
   );
 }

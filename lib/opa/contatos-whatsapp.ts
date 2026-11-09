@@ -196,15 +196,20 @@ export interface Decisao {
 }
 
 /**
- * A regra inteira em uma função. Lead do CRM ganha de tudo. O sinal de anúncio ou do
- * site também ganha de "pessoal": se não fosse assim, bastaria marcar o número como
- * pessoal antes para o lead da OPA nunca entrar (05/11/2026).
+ * A regra inteira em uma função. Lead do CRM ganha de tudo. O sinal do site também
+ * ganha de "pessoal": se não fosse assim, bastaria marcar o número como pessoal antes
+ * para o lead da OPA nunca entrar (05/11/2026).
+ *
+ * Anúncio de WhatsApp NÃO vira lead sozinho (09/11/2026, pedido do Allyson): o
+ * corretor pode ter campanha própria apontando para o próprio número (caso do
+ * Rodrigo), e o CRM não sabe qual anúncio é da OPA. Fica como qualquer conversa que
+ * começou fora: a classificar (ou pessoal), e entra quando o corretor marca OPA.
  */
 export function decidir(e: EntradaDecisao): Decisao {
   if (e.atual === "lead") return { situacao: "lead", origem: null, gravar: true, virouLead: false };
   if (e.temLeadNoCrm) return { situacao: "lead", origem: "lead_do_crm", gravar: true, virouLead: true };
 
-  const sinalDoCliente = e.direcao === "entrada" ? e.sinal : null;
+  const sinalDoCliente = e.direcao === "entrada" && e.sinal?.origem === "site" ? e.sinal : null;
   if (sinalDoCliente) return { situacao: "lead", origem: sinalDoCliente.origem, gravar: true, virouLead: true };
 
   if (e.atual === "pessoal") return { situacao: "pessoal", origem: null, gravar: false, virouLead: false };
