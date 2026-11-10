@@ -15,7 +15,7 @@ import { montarHistorico, tempoGasto, type AtividadeDoLead } from "../historico"
 import { precoCheio } from "../imoveis";
 import { emLotes } from "../lotes";
 import { diaSP } from "../periodo";
-import { MAX_ITENS, diaEHora, soHora, textoHistorico, textoLista, textoSituacao, veTudo, type Pessoa } from "./regras";
+import { MAX_ITENS, TEXTO_SEM_CORRETOR, TEXTO_SO_OS_SEUS, diaEHora, soHora, textoHistorico, textoLista, textoSituacao, veTudo, type Pessoa } from "./regras";
 
 type Admin = SupabaseClient;
 type Equipe = Awaited<ReturnType<typeof carregarEquipe>>;
@@ -59,7 +59,8 @@ function paraLead(l: LinhaLead): LeadAchado {
   const cf = l.custom_fields ?? {};
   return {
     id: l.id,
-    nome: l.contacts?.name?.trim() || l.title.split(" · ")[0] || "Lead",
+    // Nome de formulário vem com espaço sobrando e caractere invisível: uma linha limpa.
+    nome: (l.contacts?.name ?? "").replace(/[​-‏‪-‮⁠﻿]/g, "").replace(/\s+/g, " ").trim() || l.title.split(" · ")[0]?.trim() || "Lead",
     etapa: l.status === "won" ? "Ganho" : l.status === "lost" ? "Perdido" : (l.crm_stages?.name ?? "Sem etapa"),
     donoId: l.owner_user_id,
     status: l.status,
@@ -195,6 +196,42 @@ export async function leadsSemResposta(admin: Admin, orgId: string, pessoa: Pess
     "Nenhum lead sem resposta.",
     lista.length > MAX_ITENS ? `${env.NEXT_PUBLIC_APP_URL}/app/fila` : undefined,
   );
+}
+
+/**
+ * Leads abertos: os da pessoa ("meus leads") ou os de um corretor ("leads do Marco").
+ * O corretor só vê os dele. Gestor e administrador sem corretor citado veem a equipe.
+ * Sai o total, quantos por etapa e os 10 mais recentes, sem telefone.
+ */
+export async function leadsAbertos(admin: Admin, orgId: string, pessoa: Pessoa, corretor: string | null): Promise<string> {
+  const equipe = await carregarEquipe(orgId);
+  let donoId: string | null = null;
+  if (corretor) {
+    const alvo = semAcento(corretor);
+    const candidatos = [...equipe.values()].filter((p) => semAcento(p.nome).split(/\s+/).includes(alvo) || semAcento(p.nome) === alvo);
+    if (candidatos.length === 0) return TEXTO_SEM_CORRETOR;
+    // Dois com o mesmo nome: fica o que tem o primeiro nome igual; sem desempate, o primeiro.
+    donoId = (candidatos.find((p) => semAcento(p.nome).split(/\s+/)[0] === alvo) ?? candidatos[0]!).id;
+    if (!veTudo(pessoa.papel) && donoId !== pessoa.usuario) return TEXTO_SO_OS_SEUS;
+  } else if (!veTudo(pessoa.papel) || pessoa.usuario) {
+    donoId = pessoa.usuario;
+    if (!donoId) return TEXTO_SO_OS_SEUS;
+  }
+  const lista = (await leadsDaEmpresa(admin, orgId, { soAbertos: true })).map(paraLead).filter((l) => donoId === null || l.donoId === donoId);
+  const de = donoId ? `com ${nomeNaEquipe(equipe, donoId)}` : "da equipe";
+  if (lista.length === 0) return `Nenhum lead aberto ${de}.`;
+  const porEtapa = new Map<string, number>();
+  for (const l of lista) porEtapa.set(l.etapa, (porEtapa.get(l.etapa) ?? 0) + 1);
+  const etapas = [...porEtapa.entries()].sort((a, b) => b[1] - a[1]).map(([e, n]) => `${e}: ${n}`);
+  return [
+    `${lista.length} ${lista.length === 1 ? "lead aberto" : "leads abertos"} ${de}`,
+    `Por etapa:\n${etapas.join("\n")}`,
+    `Mais recentes:\n${lista
+      .slice(0, MAX_ITENS)
+      .map((l, i) => `${i + 1}. ${l.nome} (${l.etapa}${donoId ? "" : `, com ${nomeNaEquipe(equipe, l.donoId)}`})`)
+      .join("\n")}`,
+    `Ver todos: ${env.NEXT_PUBLIC_APP_URL}/app/leads${donoId ? `?corretor=${donoId}` : ""}`,
+  ].join("\n\n");
 }
 
 /** Meia-noite de hoje em Ilhabela, em ISO. */

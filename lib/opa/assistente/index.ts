@@ -27,7 +27,7 @@ import { avisarDestino, carregarCanalDeAvisos } from "../aviso-whatsapp";
 import { carregarConfig } from "../config";
 import { telefoneAlternativo } from "../contatos-whatsapp";
 import { carregarEquipe } from "../dados";
-import { acharLeads, agendaDoDia, dadosDoImovel, ehDaPessoa, historicoDoLead, leadsNovos, leadsSemResposta, resumoDoDia, situacaoDoLead, type LeadAchado } from "./consultas";
+import { acharLeads, agendaDoDia, dadosDoImovel, ehDaPessoa, historicoDoLead, leadsAbertos, leadsNovos, leadsSemResposta, resumoDoDia, situacaoDoLead, type LeadAchado } from "./consultas";
 import {
   EsquemaDaIA,
   INSTRUCOES_DA_IA,
@@ -35,10 +35,13 @@ import {
   SILENCIO_MIN,
   TEXTO_ERRO,
   TEXTO_NAO_ACHEI,
+  TEXTO_PAUSA,
+  TEXTO_RADAR,
   TEXTO_RITMO,
   TEXTO_SEM_ESCOLHA,
   TEXTO_SEM_LEAD,
   TEXTO_SO_TEXTO,
+  emPausa,
   entradaDaIA,
   interpretarPorRegras,
   podeUsar,
@@ -137,15 +140,21 @@ async function atender(admin: Admin, orgId: string, pessoa: Pessoa, p: WahaPaylo
   try {
     const anteriores = await mensagensAnteriores(admin, orgId, pessoa.numero, id, agora);
     const trava = travaAntesDaIA({ tipo, texto, agora }, anteriores);
+    const porRegras = trava ? null : interpretarPorRegras(texto);
+    const pausa = emPausa(anteriores, agora);
     if (trava) {
       if (trava.tipo === "so_texto") [resultado, resposta] = ["so_texto", TEXTO_SO_TEXTO];
       else if (trava.tipo === "ritmo") [resultado, resposta] = ["ritmo", trava.avisar ? TEXTO_RITMO : null];
-      else if (trava.tipo === "silencio") [resultado, resposta] = ["silencio", null];
       // Mensagem sem texto (reação, aviso do próprio WhatsApp): não responde e não conta como recusa.
       else if (trava.tipo === "vazia") [resultado, resposta] = ["ignorada", null];
       else [resultado, resposta] = ["recusada", textoRecusa(pessoa.papel)];
+    } else if (!porRegras && pausa.pausado) {
+      // Três pedidos seguidos fora da lista: o que as regras não entendem nem vai para a IA.
+      // Avisa uma vez e depois se cala; pedido direto continua sendo atendido (ramo de baixo).
+      [resultado, resposta] = pausa.avisar ? ["pausa", TEXTO_PAUSA] : ["silencio", null];
     } else {
-      const pedido = interpretarPorRegras(texto) ?? (await interpretarComIA(texto, requestId));
+      const ultimoLead = leadDaConversa(anteriores, agora);
+      const pedido = porRegras ?? (await interpretarComIA(texto, Boolean(ultimoLead), requestId));
       const r = await responder(admin, orgId, pessoa, pedido, anteriores, agora);
       resultado = r.resultado;
       resposta = r.texto;
@@ -168,7 +177,15 @@ async function atender(admin: Admin, orgId: string, pessoa: Pessoa, p: WahaPaylo
 }
 
 interface LinhaAnterior extends MensagemAnterior {
-  dados: { opcoes?: string[]; para?: Funcao } | null;
+  dados: { opcoes?: string[]; para?: Funcao; lead?: string } | null;
+}
+
+/**
+ * O lead da conversa: o último que o assistente mostrou a esta pessoa, nos últimos
+ * minutos. É o que deixa "e o histórico?" ou "e antes do Marco?" funcionar sem repetir o nome.
+ */
+function leadDaConversa(anteriores: LinhaAnterior[], agora: number): string | null {
+  return anteriores.find((a) => agora - a.em <= ESCOLHA_VALE_MIN * 60_000 && a.dados?.lead)?.dados?.lead ?? null;
 }
 
 /** As mensagens desta pessoa na última meia hora, da mais nova para a mais velha, sem a atual. */
@@ -189,7 +206,7 @@ async function mensagensAnteriores(admin: Admin, orgId: string, numero: string, 
 }
 
 /** A IA só classifica. Sem IA configurada, ou se ela falhar, o pedido que as regras não entenderam é recusado. */
-async function interpretarComIA(texto: string, requestId: string): Promise<Pedido> {
+async function interpretarComIA(texto: string, temLeadAntes: boolean, requestId: string): Promise<Pedido> {
   const modelo = resolveLanguageModel(MODELO_COPILOTO as never);
   if (!modelo) return { funcao: "recusa" };
   try {
@@ -197,7 +214,7 @@ async function interpretarComIA(texto: string, requestId: string): Promise<Pedid
       model: modelo as never,
       output: Output.object({ schema: EsquemaDaIA }),
       instructions: { role: "system" as const, content: INSTRUCOES_DA_IA, providerOptions: { anthropic: { cacheControl: { type: "ephemeral" as const } } } },
-      messages: [{ role: "user" as const, content: entradaDaIA(texto) }],
+      messages: [{ role: "user" as const, content: entradaDaIA(texto, temLeadAntes) }],
     } as never);
     return validarPedido((r as { output?: unknown }).output);
   } catch (e) {
@@ -241,9 +258,18 @@ async function responder(admin: Admin, orgId: string, pessoa: Pessoa, pedido: Pe
       return pedido.imovel ? { resultado: "atendida", funcao, texto: await dadosDoImovel(admin, orgId, pedido.imovel) } : recusa;
     case "resumo":
       return { resultado: "atendida", funcao, texto: await resumoDoDia(admin, orgId, agora) };
+    case "radar":
+      return { resultado: "atendida", funcao, texto: TEXTO_RADAR };
+    case "leads":
+      return { resultado: "atendida", funcao, texto: await leadsAbertos(admin, orgId, pessoa, pedido.corretor ?? null) };
     case "historico":
     case "situacao": {
-      if (!pedido.lead) return { resultado: "atendida", funcao, texto: TEXTO_SEM_LEAD };
+      if (!pedido.lead) {
+        // Sem nome: é o lead da conversa ("e o histórico?", "e antes do Marco?"), se houver.
+        const ultimo = leadDaConversa(anteriores, agora);
+        if (!ultimo) return { resultado: "atendida", funcao, texto: TEXTO_SEM_LEAD };
+        return sobreUmLead(admin, orgId, pessoa, funcao, await acharPorId(admin, orgId, ultimo, pessoa), agora);
+      }
       const achados = await acharLeads(admin, orgId, pedido.lead);
       if (achados.length === 0) return { resultado: "atendida", funcao, texto: TEXTO_NAO_ACHEI };
       const meus = achados.filter((l) => ehDaPessoa(pessoa, l.donoId));
@@ -279,7 +305,8 @@ async function acharPorId(admin: Admin, orgId: string, leadId: string, pessoa: P
 async function sobreUmLead(admin: Admin, orgId: string, pessoa: Pessoa, funcao: "historico" | "situacao", lead: LeadAchado | null, agora: number): Promise<Resposta> {
   if (!lead) return { resultado: "atendida", funcao, texto: TEXTO_NAO_ACHEI };
   const texto = funcao === "historico" ? await historicoDoLead(admin, orgId, lead, agora) : await situacaoDoLead(admin, orgId, lead, agora);
-  return { resultado: "atendida", funcao, texto };
+  // Guarda qual lead foi mostrado: é o "lead da conversa" das próximas perguntas.
+  return { resultado: "atendida", funcao, texto, dados: { lead: lead.id } };
 }
 
 /** Apaga o registro velho (GUARDA_DIAS). Chamada pela rotina de minuto em minuto. */
