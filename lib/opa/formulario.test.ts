@@ -85,6 +85,15 @@ describe("boas-vindas", () => {
     expect(textoProprioNaTela(bv, "c1", ["Cristian"])).toBe("");
   });
 
+  it("comercial e bairro com parêntese soam naturais", () => {
+    expect(montarBoasVindas({ nomeLead: "Ana", corretor: "Paulo", imovelCodigo: "CO001", bairro: "Centro (Vila)", canal: "meta", publicado: true })).toContain(
+      "interesse no imóvel comercial do Centro e",
+    );
+    expect(montarBoasVindas({ nomeLead: "Ana", corretor: "Paulo", imovelCodigo: "CA1", bairro: "Centro (Vila)", canal: "meta", publicado: true })).toContain(
+      "interesse na casa do Centro e",
+    );
+  });
+
   it("tipo pelo prefixo do código", () => {
     expect(tipoDoImovel("TE0001")).toBe("O terreno");
     expect(tipoDoImovel(null)).toBe("O imóvel");

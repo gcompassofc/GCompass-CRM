@@ -50,7 +50,7 @@ const TIPOS: Record<string, string> = {
   AP: "O apartamento",
   TE: "O terreno",
   CH: "A chácara",
-  CO: "O comercial",
+  CO: "O imóvel comercial",
 };
 
 export function tipoDoImovel(codigo: string | null | undefined): string {
@@ -63,9 +63,15 @@ function substantivo(codigo: string | null | undefined): string {
   return tipoDoImovel(codigo).replace(/^(A|O) /, "").toLowerCase();
 }
 
+/** Bairro como se fala na mensagem: sem o parêntese do cadastro ("Centro (Vila)" vira "Centro"). */
+export function bairroFalado(bairro: string | null | undefined): string {
+  const b = (bairro ?? "").replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s{2,}/g, " ").trim();
+  return b || (bairro ?? "").trim();
+}
+
 /** Bairro com artigo: "do Siriúba", "da Barra Velha". */
 export function doBairro(bairro: string): string {
-  const b = bairro.trim();
+  const b = bairroFalado(bairro);
   const feminino = /^(praia|barra|ponta|ilha|armação|feiticeira|água|costa|vila|reserva|santa|fome|serraria|figueira)(\s|$)/iu.test(b);
   return `${feminino ? "da" : "do"} ${b}`;
 }
@@ -156,7 +162,7 @@ export function montarBoasVindas(d: DadosBoasVindas): string {
   const tipo = tipoDoImovel(d.imovelCodigo);
   const nome = primeiraPalavra(d.nomeLead);
   const deOnde = d.canal === "site" ? "que você viu no site" : "do anúncio";
-  const bairro = d.bairro?.trim() || "";
+  const bairro = bairroFalado(d.bairro);
   const valores: Record<string, string> = {
     "{tipo_imovel}": tipo,
     "{tipo_imovel_minusculo}": tipo[0]!.toLowerCase() + tipo.slice(1),
