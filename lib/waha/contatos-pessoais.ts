@@ -44,6 +44,7 @@ import {
   type OrigemContato,
   type Situacao,
 } from "@/lib/opa/contatos-whatsapp";
+import { avisarLeadDeOutroCorretor } from "@/lib/opa/aviso-outro-corretor";
 import { entregarConversaAoDono } from "@/lib/opa/conversa-do-lead";
 import { registrarLeadDoContato } from "@/lib/opa/entrada";
 import { avisarMudancaDeEtapa } from "@/lib/opa/eventos-lead";
@@ -374,7 +375,9 @@ export async function filtrarEventoDoCorretor(
   const evento = envelope.event ?? "unknown";
   const p = envelope.payload ?? {};
 
-  if (evento === "message" || evento === "message.any") return filtrarMensagem(admin, sessao, p, requestId);
+  if (evento === "message" || evento === "message.any") {
+    return comAvisoDeOutroCorretor(admin, sessao, p, await filtrarMensagem(admin, sessao, p, requestId));
+  }
 
   if (evento.startsWith("label.")) {
     try {
@@ -393,6 +396,37 @@ export async function filtrarEventoDoCorretor(
   // Confirmação de leitura, reação e afins também carregam o chat (telefone): no
   // número do corretor seguem para o pipeline, mas sem corpo no log.
   return { acao: "seguir", registrarCorpo: false };
+}
+
+/** Mensagem mais velha que isto é reentrega (número reconectou), não contato de agora. */
+const AVISO_SO_MENSAGEM_RECENTE_MS = 10 * 60_000;
+
+/**
+ * Lead que escreveu neste número mas está com OUTRO corretor: depois de gravar a
+ * mensagem, o dono do número é avisado pelo OPA Lembretes (10/11/2026, regra em
+ * lib/opa/aviso-outro-corretor.ts). Só mensagem que chega, só de contato que é lead
+ * (o que segue com o corpo registrado), e sem mudar nada do que o filtro decidiu.
+ */
+function comAvisoDeOutroCorretor(admin: Admin, sessao: SessaoDoCorretor, p: WahaPayload, r: ResultadoFiltro): ResultadoFiltro {
+  const receptorId = sessao.owner_user_id;
+  if (r.acao !== "seguir" || !r.registrarCorpo || !receptorId) return r;
+  // Depois do filtro o chat já está na forma canônica (telefone no lugar do `@lid`).
+  const { chatId, direcao } = chatDaMensagem(p);
+  if (direcao !== "entrada") return r;
+  if (p.timestamp && Date.now() - p.timestamp * 1000 > AVISO_SO_MENSAGEM_RECENTE_MS) return r;
+  const antes = r.depois;
+  return {
+    ...r,
+    depois: async () => {
+      if (antes) await antes();
+      try {
+        const contatoIds = await contatosDoChat(admin, sessao.organization_id, chatId);
+        await avisarLeadDeOutroCorretor(admin as never, { orgId: sessao.organization_id, receptorId, contatoIds });
+      } catch (err) {
+        logger.warn("contatos-pessoais: aviso de lead com outro corretor falhou", { sessao: sessao.id, erro: String(err) });
+      }
+    },
+  };
 }
 
 async function filtrarMensagem(admin: Admin, sessao: SessaoDoCorretor, p: WahaPayload, requestId: string): Promise<ResultadoFiltro> {

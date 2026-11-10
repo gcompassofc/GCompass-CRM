@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { MODELO_09_11, MODELO_ANTERIOR, MODELO_LUANA, modeloDoCorretor, montarBoasVindas, textoProprioNaTela, tipoDoImovel } from "./boas-vindas-texto";
+import { MODELO_09_11, MODELO_10_11_MENSAGEM, MODELO_ANTERIOR, MODELO_LUANA, modeloDoCorretor, montarBoasVindas, textoProprioNaTela, tipoDoImovel } from "./boas-vindas-texto";
 import { camposDoCorretorDasRespostas, diagnosticoDasRespostas, lerRespostas, soOQueFalta } from "./formulario";
 
 describe("respostas do formulário", () => {
@@ -48,9 +48,9 @@ describe("respostas do formulário", () => {
 
 describe("boas-vindas", () => {
   const CASA = (nome: string, corretor: string, onde: string) =>
-    `Oi, ${nome}, tudo bem?\n\nAqui é o ${corretor}, da OPA Imóveis, em Ilhabela.\n\nRecebi a mensagem sobre seu interesse ${onde} e resolvi entrar em contato diretamente.\n\nQuando seria um bom momento para conversarmos por telefone? Podemos falar por uns 10 minutinhos para eu entender melhor o que você está buscando.\n\nUm abraço\n${corretor}`;
+    `Oi, ${nome}, tudo bem?\n\nAqui é o ${corretor}, da OPA Imóveis, em Ilhabela.\n\nRecebi o formulário sobre seu interesse ${onde} e resolvi entrar em contato diretamente.\n\nQuando seria um bom momento para conversarmos por telefone? Podemos falar por uns 10 minutinhos para eu entender melhor o que você está buscando.\n\nUm abraço\n${corretor}`;
 
-  it("texto da casa de 10/11: parágrafos, imóvel com bairro, assinatura no fim", () => {
+  it("texto da casa de 10/11: parágrafos, formulário, imóvel com bairro, assinatura no fim", () => {
     expect(
       montarBoasVindas({ nomeLead: "marlene souza", corretor: "Cristian Spengler", imovelCodigo: "CA006779", bairro: "Siriúba", canal: "meta", publicado: true }),
     ).toBe(CASA("Marlene", "Cristian", "na casa do Siriúba"));
@@ -67,7 +67,7 @@ describe("boas-vindas", () => {
   });
 
   it("conta salva com um texto antigo passa a usar o novo", () => {
-    for (const modelo of [MODELO_ANTERIOR, MODELO_09_11]) {
+    for (const modelo of [MODELO_ANTERIOR, MODELO_09_11, MODELO_10_11_MENSAGEM, MODELO_10_11_MENSAGEM.split("\n").join("\r\n")]) {
       expect(montarBoasVindas({ modelo, nomeLead: "Ana", corretor: "Paulo", imovelCodigo: "CA1", bairro: "Curral", canal: "meta", publicado: true })).toBe(
         CASA("Ana", "Paulo", "na casa do Curral"),
       );

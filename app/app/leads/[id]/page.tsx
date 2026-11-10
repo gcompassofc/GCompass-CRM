@@ -974,6 +974,7 @@ export default async function LeadPage({
                   podeEditar &&
                   lead.telefone &&
                   (lead.origem?.canal === "meta" || lead.origem?.canal === "site") &&
+                  lead.origem?.via !== "whatsapp" &&
                   lead.boasVindas?.status !== "enviada" &&
                   lead.boasVindas?.status !== "enviando" &&
                   (gestorDaTela || lead.donoId === user.id) && (

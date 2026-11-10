@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { carregarConfig, type CampoLead, type ConfigOpa, type GrupoEtiqueta } from "@/lib/opa/config";
 import { MODELO_BOAS_VINDAS, montarBoasVindas, textoProprioNaTela, VARIAVEIS_BOAS_VINDAS } from "@/lib/opa/boas-vindas-texto";
+import { telefoneLegivel } from "@/lib/opa/aviso-whatsapp";
 import { carregarEquipe, type Pessoa } from "@/lib/opa/dados";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -52,6 +53,7 @@ import {
   removerEtiqueta,
   removerMotivo,
   salvarCaptacao,
+  salvarDestinosDosAvisos,
   salvarHorario,
   salvarModeloBoasVindas,
   salvarPrazos,
@@ -306,7 +308,7 @@ function AbaRoleta({ config, equipe }: { config: ConfigOpa; equipe: Map<string, 
               </Regra>
               <Regra rotulo="Lead trazido pelo próprio corretor">fica com ele, não troca</Regra>
               <Regra rotulo="Roleta inteira sem resposta">escala para a gestão</Regra>
-              <Regra rotulo="Fora do horário">o relógio para</Regra>
+              <Regra rotulo="Fora do horário">o relógio para; só um lembrete aos 30 min</Regra>
             </ul>
             <div>
               <p className="mb-2 text-[13px] font-semibold text-[#34566b]">Lead que já tem dono e entra de novo</p>
@@ -832,9 +834,30 @@ function AbaPerda({ config }: { config: ConfigOpa }) {
 // ---------------------------------------------------------------- horário
 
 function AbaHorario({ config }: { config: ConfigOpa }) {
+  const campoNumeros = "w-full resize-y rounded-[18px] bg-[#f2f6f9] px-4 py-3 font-mono text-[14px] text-[#0a2d40] outline-none placeholder:text-[#8aa0ae] focus:ring-2 focus:ring-[#8fc4dd]";
   return (
-    <Cartao bloco className="max-w-3xl">
-      <TituloBloco icone={Clock} titulo="Horário de atendimento" sub="Fora dele, a fila e os lembretes esperam a abertura" />
+    <div className="flex max-w-3xl flex-col gap-5">
+    <Cartao bloco>
+      <TituloBloco icone={Megaphone} titulo="Quem recebe os avisos" sub="Números de WhatsApp que o OPA Lembretes avisa, um por linha" />
+      <FormComRetorno action={salvarDestinosDosAvisos} sucesso="Números salvos." className="mt-5 flex flex-col gap-4">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[13px] font-semibold text-[#5b7284]">Gestão: repasse, escalada, negócio parado e prazo das Captações do Radar</span>
+          <textarea name="gestor" rows={4} defaultValue={config.avisos.gestor.map((n) => telefoneLegivel(n) ?? n).join("\n")} placeholder="12 99999-0000" className={campoNumeros} />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <span className="text-[13px] font-semibold text-[#5b7284]">Administração: boas-vindas que não saiu</span>
+          <textarea name="admin" rows={3} defaultValue={config.avisos.admin.map((n) => telefoneLegivel(n) ?? n).join("\n")} placeholder="12 99999-0000" className={campoNumeros} />
+        </label>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Nota>Lista vazia: recebe quem tem o papel de gerente ou administrador, no número que conectou no CRM.</Nota>
+          <button type="submit" className={botaoPrimario}>
+            Salvar números
+          </button>
+        </div>
+      </FormComRetorno>
+    </Cartao>
+    <Cartao bloco>
+      <TituloBloco icone={Clock} titulo="Horário de atendimento" sub="Fora dele, o prazo do repasse para e o corretor recebe só um lembrete" />
       <FormComRetorno action={salvarHorario} sucesso="Horário salvo." className="mt-5 flex flex-col gap-5">
         <ul className="flex flex-col gap-2">
           {config.horario.map((d, i) => (
@@ -863,13 +886,14 @@ function AbaHorario({ config }: { config: ConfigOpa }) {
           ))}
         </ul>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Nota>Lead fora do horário recebe a boas-vindas na hora; o corretor é avisado na abertura.</Nota>
+          <Nota>Lead fora do horário recebe a boas-vindas na hora. O corretor recebe um lembrete aos 30 min sem resposta; os avisos com prazo começam na abertura.</Nota>
           <button type="submit" className={botaoPrimario}>
             Salvar horário
           </button>
         </div>
       </FormComRetorno>
     </Cartao>
+    </div>
   );
 }
 

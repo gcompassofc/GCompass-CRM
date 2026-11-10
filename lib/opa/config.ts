@@ -128,6 +128,14 @@ export interface ConfigOpa {
     /** Texto próprio de cada corretor (id -> texto). Sem chave = regra da casa (a Luana tem o dela); "" = texto da casa. */
     modelos?: Record<string, string>;
   };
+  /**
+   * Números de WhatsApp que recebem os avisos da gestão e da administração (10/11/2026).
+   * Só dígitos, com 55. Lista vazia = regra antiga: quem tem o papel de gerente
+   * (ou administrador), pelo número que a pessoa conectou no CRM.
+   *  - gestor: repasse, escalada, negócio parado e prazo das Captações do Radar;
+   *  - admin: boas-vindas que não saiu.
+   */
+  avisos: { gestor: string[]; admin: string[] };
 }
 
 // ---------------------------------------------------------------- padrões do protótipo
@@ -297,7 +305,21 @@ export const PADRAO: ConfigOpa = {
   volta_dias: 90,
   gerente_ve_receita: false,
   boas_vindas: { ligada: true, modelo: "", assinaturas: {}, modelos: {} },
+  avisos: { gestor: [], admin: [] },
 };
+
+/** "16 98830-1706" vira "5516988301706". Número que não fecha (10 a 13 dígitos) vira null. */
+export function numeroDeAviso(bruto: string): string | null {
+  let d = bruto.replace(/\D/g, "");
+  if (d.length === 10 || d.length === 11) d = `55${d}`;
+  return /^\d{12,13}$/.test(d) ? d : null;
+}
+
+/** Lista limpa: só números válidos, sem repetir. */
+export function numerosDeAviso(lista: unknown): string[] {
+  if (!Array.isArray(lista)) return [];
+  return [...new Set(lista.map((n) => numeroDeAviso(String(n ?? ""))).filter((n): n is string => Boolean(n)))];
+}
 
 // ---------------------------------------------------------------- leitura e gravação
 
@@ -315,6 +337,7 @@ export function mesclarConfig(salvo: Partial<ConfigOpa> | null | undefined): Con
       pesos: { ...PADRAO.cruzamento.pesos, ...(s.cruzamento?.pesos ?? {}) },
     },
     boas_vindas: { ...PADRAO.boas_vindas, ...(s.boas_vindas ?? {}), assinaturas: { ...(s.boas_vindas?.assinaturas ?? {}) }, modelos: { ...(s.boas_vindas?.modelos ?? {}) } },
+    avisos: { gestor: numerosDeAviso(s.avisos?.gestor), admin: numerosDeAviso(s.avisos?.admin) },
   };
 }
 

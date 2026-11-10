@@ -402,7 +402,8 @@ export const DUVIDAS: Duvida[] = [
   {
     id: "aviso-opa-lembretes",
     pergunta: "Recebi uma mensagem do OPA Lembretes. O que é?",
-    resposta: "É o número da OPA que avisa a equipe: prazo de resposta, lembretes e leads novos. Não responda por ele: abra o CRM.",
+    resposta:
+      "É o número da OPA que avisa a equipe: prazo de resposta, lembretes e leads novos. Também avisa quando um lead que preencheu o formulário e está com outro corretor escreve para você: peça a ele para seguir a conversa com o número do corretor responsável. Não responda por ele: abra o CRM.",
     tela: "agenda",
   },
   {

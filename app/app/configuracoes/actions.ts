@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import {
   carregarConfig,
+  numeroDeAviso,
   salvarConfig,
   type CampoLead,
   type CampoVisita,
@@ -139,6 +140,32 @@ export async function salvarModeloBoasVindas(formData: FormData) {
   if (modelo.length > 600) throw new Error("Texto com até 600 caracteres.");
   if (/[\u2013\u2014]/.test(modelo)) throw new Error("Sem travessão: use vírgula, ponto ou dois-pontos.");
   await gravar(orgId, { boas_vindas: { ...config.boas_vindas, modelo } });
+}
+
+// ---------------------------------------------------------------- quem recebe os avisos
+
+/**
+ * Números de WhatsApp que recebem os avisos da gestão e da administração, um por
+ * linha (10/11/2026). Lista vazia volta à regra por papel: gerente e administrador,
+ * pelo número que cada um conectou no CRM.
+ */
+export async function salvarDestinosDosAvisos(formData: FormData) {
+  const { orgId } = await gestor();
+  const ler = (campo: string): string[] => {
+    const linhas = texto(formData, campo)
+      .split(/[\n,;]+/)
+      .map((l) => l.trim())
+      .filter(Boolean);
+    if (linhas.length > 10) throw new Error("Até 10 números em cada lista.");
+    const numeros: string[] = [];
+    for (const linha of linhas) {
+      const n = numeroDeAviso(linha);
+      if (!n) throw new Error(`Número inválido: "${linha}". Use DDD e número, como 12 99999-0000.`);
+      if (!numeros.includes(n)) numeros.push(n);
+    }
+    return numeros;
+  };
+  await gravar(orgId, { avisos: { gestor: ler("gestor"), admin: ler("admin") } });
 }
 
 export async function salvarPrazos(formData: FormData) {

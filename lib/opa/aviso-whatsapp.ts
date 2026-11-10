@@ -7,9 +7,13 @@
  * sem dono gravado, ainda é achada pelo nome de exibição, mas só para quem não
  * tem sessão própria e só quando o nome é único: o nome da pessoa é editável por
  * ela, e casar por nome deixava um corretor receber os avisos de um gestor (A6).
+ *
+ * Avisos da gestão e da administração podem ir para números fixos, escolhidos em
+ * Configurações (10/11/2026): ver `Destino` mais abaixo.
  */
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { phoneLookupVariants } from "@/lib/channels/phone-variants";
 import { getWahaClient } from "@/lib/waha/client";
 
 export type ResultadoAviso = "enviado" | "sem_numero" | "sem_sessao" | "erro";
@@ -99,9 +103,107 @@ export async function avisarPessoa(canal: CanalDeAvisos, pessoa: { id: string; n
   }
 }
 
+// ---------------------------------------------------------------- destinos fixos
+
+/**
+ * Quem recebe um aviso. Pessoa da equipe sem número fixo recebe no WhatsApp que ela
+ * conectou no CRM. Número fixo (Configurações > Horário > Quem recebe os avisos)
+ * recebe direto nele; se for o número de alguém da equipe, leva o nome da pessoa.
+ */
+export interface Destino {
+  userId: string | null;
+  nome: string | null;
+  /** Número fixo, só dígitos. null = o número que a pessoa conectou. */
+  telefone: string | null;
+}
+
+export const destinoDaPessoa = (p: { id: string; nome: string }): Destino => ({ userId: p.id, nome: p.nome, telefone: null });
+
+/** DDD + 8 últimos dígitos: o mesmo número com ou sem 55 e com ou sem o nono dígito. */
+export function chaveDoTelefone(telefone: string | null | undefined): string | null {
+  let d = (telefone ?? "").replace(/\D/g, "");
+  if (d.length >= 12 && d.startsWith("55")) d = d.slice(2);
+  return d.length >= 10 ? d.slice(0, 2) + d.slice(-8) : null;
+}
+
+export function mesmoTelefone(a: string | null | undefined, b: string | null | undefined): boolean {
+  const x = chaveDoTelefone(a);
+  return x !== null && x === chaveDoTelefone(b);
+}
+
+/** Os números fixos como destinos; número de alguém da equipe ganha o nome e o id da pessoa. */
+export function destinosFixos(
+  numeros: string[],
+  canal: Pick<CanalDeAvisos, "telefonePorPessoa">,
+  equipe: { get(id: string): { id: string; nome: string } | undefined },
+): Destino[] {
+  return numeros.map((telefone) => {
+    const dono = [...canal.telefonePorPessoa].find(([, fone]) => mesmoTelefone(fone, telefone))?.[0];
+    const pessoa = dono ? equipe.get(dono) : undefined;
+    return { userId: pessoa?.id ?? null, nome: pessoa?.nome ?? null, telefone };
+  });
+}
+
+/**
+ * Como o aviso fica gravado em opa_avisos: a pessoa, quando há; sem pessoa, o
+ * número entra na marca (a chave única é lead, tipo, marca e pessoa).
+ */
+export function chaveDoDestino(d: Destino, marca: string): { userId: string | null; marca: string } {
+  return d.userId ? { userId: d.userId, marca } : { userId: null, marca: `${marca} tel:${d.telefone ?? ""}` };
+}
+
+/** Endereço que o WhatsApp reconhece para um número digitado (resolve o nono dígito). Vale enquanto o processo vive. */
+const enderecos = new Map<string, string>();
+
+async function enderecoDoNumero(sessao: string, telefone: string): Promise<string | null> {
+  const guardado = enderecos.get(telefone);
+  if (guardado) return guardado;
+  const waha = getWahaClient();
+  const formas = phoneLookupVariants(telefone).map((v) => v.replace(/\D/g, ""));
+  if (!waha || !formas.length) return null;
+  for (const forma of formas) {
+    try {
+      const r = await waha.checkExists(sessao, forma);
+      if (!r.numberExists) continue;
+      const digitos = [r.pn, r.chatId]
+        .map((id) => (id ? /^(\d+)@(?:c\.us|s\.whatsapp\.net)$/.exec(id)?.[1] : undefined))
+        .find((d): d is string => !!d && formas.includes(d));
+      const endereco = `${digitos ?? forma}@c.us`;
+      enderecos.set(telefone, endereco);
+      return endereco;
+    } catch {
+      // Não deu para consultar: manda para o número como foi digitado (sem guardar).
+      return `${formas[0]}@c.us`;
+    }
+  }
+  return null;
+}
+
+/** Manda o aviso ao destino. Nunca lança; "erro" = o WhatsApp não confirmou (não reenviar sozinho). */
+export async function avisarDestino(canal: CanalDeAvisos, d: Destino, texto: string): Promise<ResultadoAviso> {
+  if (!d.telefone) return d.userId ? avisarPessoa(canal, { id: d.userId, nome: d.nome ?? "" }, texto) : "sem_numero";
+  if (!canal.sessaoLembretes) return "sem_sessao";
+  const waha = getWahaClient();
+  if (!waha) return "sem_sessao";
+  const endereco = await enderecoDoNumero(canal.sessaoLembretes, d.telefone);
+  if (!endereco) return "sem_numero";
+  try {
+    await waha.sendMessage(canal.sessaoLembretes, endereco, texto);
+    return "enviado";
+  } catch {
+    return "erro";
+  }
+}
+
 // ---------------------------------------------------------------- textos
 
 export const primeiroNomeDe = (nome: string | null | undefined): string => (nome ?? "").trim().split(/\s+/)[0] || "Oi";
+
+/** "Marco, " quando se sabe de quem é o número; número fixo sem pessoa não leva nome. */
+const chamar = (nome: string | null | undefined): string => ((nome ?? "").trim() ? `${primeiroNomeDe(nome)}, ` : "");
+
+/** Um parágrafo por linha, com uma linha em branco entre eles (pedido do Allyson, 10/11/2026). */
+export const emParagrafos = (linhas: Array<string | null | false | undefined>): string => linhas.filter(Boolean).join("\n\n");
 
 /** "1 h 5 min", "35 min", "2 dias". */
 export function duracao(min: number): string {
@@ -126,37 +228,49 @@ export function textoAvisoDePrazo(p: {
     : p.faltaMin > 0
       ? `Faltam ${duracao(p.faltaMin)} para ele passar para o próximo da fila.`
       : "O prazo acabou.";
-  return [
+  return emParagrafos([
     `${primeiroNomeDe(p.corretor)}, ${p.lead} espera sua resposta há ${duracao(p.esperaMin)}.`,
     fim,
     p.whatsapp ? `Responder: https://wa.me/${p.whatsapp}` : null,
     `Ficha: ${p.link}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  ]);
+}
+
+/**
+ * Fora do horário de atendimento (10/11/2026): só um lembrete de que o lead chegou e
+ * está sem resposta. Não fala de prazo nem de fila, porque fora do horário o relógio
+ * do repasse está parado.
+ */
+export function textoForaDoHorario(p: { corretor: string; lead: string; esperaMin: number; link: string; whatsapp: string | null }): string {
+  return emParagrafos([
+    `${primeiroNomeDe(p.corretor)}, o lead ${p.lead} chegou e está sem resposta há ${duracao(p.esperaMin)}.`,
+    p.whatsapp ? `Responder: https://wa.me/${p.whatsapp}` : null,
+    `Ficha: ${p.link}`,
+  ]);
 }
 
 export function textoRepasseParaNovoDono(p: { corretor: string; lead: string; de: string; link: string; whatsapp: string | null }): string {
-  return [
+  return emParagrafos([
     `${primeiroNomeDe(p.corretor)}, lead novo para você: ${p.lead}.`,
     `Ele estava com ${primeiroNomeDe(p.de)} e passou para a sua vez por falta de resposta no prazo. Responda o quanto antes.`,
     p.whatsapp ? `Responder: https://wa.me/${p.whatsapp}` : null,
     `Ficha: ${p.link}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  ]);
 }
 
 export function textoRepasseParaQuemPerdeu(p: { corretor: string; lead: string; para: string }): string {
-  return `${primeiroNomeDe(p.corretor)}, ${p.lead} passou para ${primeiroNomeDe(p.para)}: ficou sem resposta além do prazo.`;
+  return `🔴 ${primeiroNomeDe(p.corretor)}, ${p.lead} passou para ${primeiroNomeDe(p.para)}: ficou sem resposta além do prazo.`;
 }
 
-export function textoRepasseParaGestor(p: { gestor: string; lead: string; de: string; para: string; link: string }): string {
-  return `${primeiroNomeDe(p.gestor)}, ${p.lead} saiu de ${primeiroNomeDe(p.de)} e foi para ${primeiroNomeDe(p.para)} por falta de resposta no prazo.\nFicha: ${p.link}`;
+export function textoRepasseParaGestor(p: { gestor: string | null; lead: string; de: string; para: string; link: string }): string {
+  return emParagrafos([
+    `${chamar(p.gestor)}${p.lead} saiu de ${primeiroNomeDe(p.de)} e foi para ${primeiroNomeDe(p.para)} por falta de resposta no prazo.`,
+    `Ficha: ${p.link}`,
+  ]);
 }
 
 export function textoEscala(p: {
-  gestor: string;
+  gestor: string | null;
   lead: string;
   dono: string | null;
   link: string;
@@ -166,36 +280,55 @@ export function textoEscala(p: {
   const motivo = p.motivo ?? "roleta";
   const abertura =
     motivo === "dono_saiu"
-      ? `${primeiroNomeDe(p.gestor)}, ${p.lead} está com alguém que saiu da equipe.`
+      ? `${chamar(p.gestor)}${p.lead} está com alguém que saiu da equipe.`
       : motivo === "sem_aviso"
-        ? `${primeiroNomeDe(p.gestor)}, ${p.lead} passou do prazo sem resposta e o aviso não chegou ao corretor, então ele não foi passado adiante.`
-        : `${primeiroNomeDe(p.gestor)}, ${p.lead} passou do prazo e ninguém mais da roleta pôde pegar.`;
-  return [
+        ? `${chamar(p.gestor)}${p.lead} passou do prazo sem resposta e o aviso não chegou ao corretor, então ele não foi passado adiante.`
+        : `${chamar(p.gestor)}${p.lead} passou do prazo e ninguém mais da roleta pôde pegar.`;
+  return emParagrafos([
     abertura,
     motivo === "dono_saiu" ? null : p.dono ? `Está com ${primeiroNomeDe(p.dono)}.` : "Está sem dono.",
     `Decida quem atende: ${p.link}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  ]);
 }
 
-export function textoParado(p: { corretor: string; lead: string; etapa: string; dias: number; link: string }): string {
-  return `${primeiroNomeDe(p.corretor)}, ${p.lead} está parado há ${p.dias} dias em ${p.etapa}. Vale retomar a conversa ou mover o card.\nFicha: ${p.link}`;
+/** "+55 12 99139-2393" a partir de qualquer grafia; número fora do padrão sai só com o "+". */
+export function telefoneLegivel(telefone: string | null | undefined): string | null {
+  const d = (telefone ?? "").replace(/\D/g, "");
+  if (!d) return null;
+  const m = /^55(\d{2})(\d{4,5})(\d{4})$/.exec(d);
+  return m ? `+55 ${m[1]} ${m[2]}-${m[3]}` : `+${d}`;
+}
+
+/**
+ * Lead que preencheu formulário, está com outro corretor e escreveu no WhatsApp de
+ * quem recebe este aviso (pedido do Allyson, 10/11/2026). Curto de propósito. O lead
+ * é dito pelo número, que é o que a pessoa vê na conversa; sem número, pelo nome.
+ */
+export function textoLeadDeOutroCorretor(p: { quemRecebeu: string; telefone: string | null; lead: string | null; responsavel: string }): string {
+  const quem = telefoneLegivel(p.telefone) ?? p.lead?.trim() ?? "que te escreveu agora";
+  return emParagrafos([
+    `${primeiroNomeDe(p.quemRecebeu)}, esse lead (${quem}) está com o corretor responsável ${primeiroNomeDe(p.responsavel)}.`,
+    "Obs.: avise esse lead para continuar a conversa com o número do corretor.",
+  ]);
+}
+
+/** Negócio parado. `corretor` é quem recebe: o dono do lead ou alguém da gestão (número fixo sem pessoa vem sem nome). */
+export function textoParado(p: { corretor: string | null; lead: string; etapa: string; dias: number; link: string }): string {
+  return emParagrafos([
+    `${chamar(p.corretor)}${p.lead} está parado há ${p.dias} dias em ${p.etapa}. Vale retomar a conversa ou mover o card.`,
+    `Ficha: ${p.link}`,
+  ]);
 }
 
 export function textoLembrete(p: { corretor: string; mensagem: string; lead: string | null; paraLead: boolean; link: string | null; whatsapp: string | null }): string {
   if (p.paraLead && p.lead) {
     const pronta = p.whatsapp ? `https://wa.me/${p.whatsapp}?text=${encodeURIComponent(p.mensagem)}` : null;
-    return [
+    return emParagrafos([
       `${primeiroNomeDe(p.corretor)}, hora de mandar a mensagem que você agendou para ${p.lead}:`,
       `"${p.mensagem}"`,
       pronta ? `Abrir com a mensagem pronta: ${pronta}` : null,
       p.link ? `Ficha: ${p.link}` : null,
-    ]
-      .filter(Boolean)
-      .join("\n");
+    ]);
   }
-  return [`${primeiroNomeDe(p.corretor)}, lembrete: ${p.mensagem}`, p.lead ? `Lead: ${p.lead}` : null, p.link ? `Ficha: ${p.link}` : null]
-    .filter(Boolean)
-    .join("\n");
+  return emParagrafos([`${primeiroNomeDe(p.corretor)}, lembrete: ${p.mensagem}`, p.lead ? `Lead: ${p.lead}` : null, p.link ? `Ficha: ${p.link}` : null]);
 }

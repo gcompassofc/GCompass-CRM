@@ -24,10 +24,15 @@ import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
 
 import {
+  avisarDestino,
   avisarPessoa,
   carregarCanalDeAvisos,
+  chaveDoDestino,
+  destinoDaPessoa,
+  destinosFixos,
   textoAvisoDePrazo,
   textoEscala,
+  textoForaDoHorario,
   textoLembrete,
   textoParado,
   textoRepasseParaGestor,
@@ -35,6 +40,7 @@ import {
   textoRepasseParaQuemPerdeu,
   duracao,
   type CanalDeAvisos,
+  type Destino,
   type ResultadoAviso,
 } from "./aviso-whatsapp";
 import { avancarRespondidos } from "./avanco";
@@ -66,6 +72,13 @@ const ORCAMENTO_MS = 45_000;
 const MAX_TENTATIVAS_LEMBRETE = 3;
 /** Quem já segurou o lead nesta janela não pega de novo no repasse. */
 const CICLO_REPASSE_MS = 3 * DIA_MS;
+/**
+ * Fora do horário de atendimento (10/11/2026): um lembrete só, quando o lead está há
+ * este tempo de relógio sem resposta. Vale a qualquer hora, inclusive de madrugada.
+ */
+const FORA_DO_HORARIO_MIN = 30;
+/** Passou disto sem o lembrete sair (rotina parada, número pausado): não manda lembrete velho. */
+const FORA_DO_HORARIO_ATE_MIN = 120;
 
 export interface ResultadoRotina {
   lembretes: number;
@@ -293,13 +306,19 @@ interface Contexto {
   canal: CanalDeAvisos;
   agora: number;
   r: ResultadoRotina;
-  gestores: Pessoa[];
+  /**
+   * Quem recebe os avisos da gestão: os números fixos de Configurações (avisos.gestor)
+   * ou, sem eles, quem tem o papel de gerente (administrador, se não há gerente).
+   */
+  gestores: Destino[];
   /** Avisos já gravados dos leads em análise (chaveDoAviso). */
   feitos: Set<string>;
   /** Quem já segurou cada lead por repasse, na janela do ciclo. */
   repassados: Map<string, string[]>;
   /** `lead|marca` de esperas em que algum aviso de prazo chegou ao corretor. */
   avisoSaiu: Set<string>;
+  /** Agora está fora do horário de atendimento de Configurações. */
+  foraDoHorario: boolean;
 }
 
 const chaveDaEspera = (leadId: string, marca: string) => `${leadId}|${marca}`;
@@ -319,6 +338,20 @@ async function avisar(c: Contexto, linha: Omit<LinhaAviso, "orgId">, pessoa: Pes
   await fecharAviso(c.admin, id, resultado);
   return true;
 }
+
+/** Aviso para alguém da gestão (pessoa ou número fixo). Devolve true se este aviso ainda não tinha sido reservado. */
+async function avisarGestao(c: Contexto, linha: { leadId: string; tipo: string; marca: string }, d: Destino, texto: string): Promise<boolean> {
+  const chave = chaveDoDestino(d, linha.marca);
+  const id = await reservarAviso(c.admin, { orgId: c.orgId, leadId: linha.leadId, userId: chave.userId, tipo: linha.tipo, marca: chave.marca }, c.feitos);
+  if (!id) return false;
+  const resultado = await avisarDestino(c.canal, d, texto);
+  if (resultado === "sem_numero") c.r.semNumero++;
+  await fecharAviso(c.admin, id, resultado);
+  return true;
+}
+
+/** O destino é esta pessoa? (o gestor que também é o corretor do lead não recebe a cópia da gestão) */
+const ehAPessoa = (d: Destino, pessoaId: string | null | undefined): boolean => Boolean(pessoaId) && d.userId === pessoaId;
 
 /** Carrega o que a rotina já mandou sobre estes leads (para não repetir e para saber quem já tentou). */
 async function carregarHistorico(c: Contexto, leadIds: string[]) {
@@ -364,9 +397,9 @@ async function processarFila(c: Contexto, inicio: number) {
       let enviou = false;
       for (const g of c.gestores) {
         enviou =
-          (await avisar(
+          (await avisarGestao(
             c,
-            { leadId: l.id, userId: g.id, tipo: "escala", marca: `dono-saiu:${donoId}` },
+            { leadId: l.id, tipo: "escala", marca: `dono-saiu:${donoId}` },
             g,
             textoEscala({ gestor: g.nome, lead: nomeDoLead(l), dono: null, link: link(l.id), motivo: "dono_saiu" }),
           )) || enviou;
@@ -396,14 +429,31 @@ async function processarFila(c: Contexto, inicio: number) {
     if (desde === null) continue;
 
     const esperaMin = esperaEmMinutos(desde, c.agora, c.config.horario);
-    if (esperaMin <= 0) continue;
     const pago = l.source === "meta" || (l.tags ?? []).includes("pago");
     const trilha = pago ? "pago" : "organico";
-    const { prazoMin } = prazosDaTrilha(c.config, trilha);
+    const { prazoMin, avisos: avisosDaTrilha } = prazosDaTrilha(c.config, trilha);
     const proprio = (l.tags ?? []).includes("proprio");
     const marca = new Date(desde).toISOString();
     const nome = nomeDoLead(l);
     const fone = digitos(l.contacts?.phone_number);
+
+    // Fora do horário: um lembrete só, pelo relógio de parede, sem prazo e sem repasse.
+    // Não sai se esta espera já teve aviso de prazo (o corretor já sabe do lead) e não
+    // conta como aviso de prazo: sozinho, não libera o repasse.
+    if (c.foraDoHorario) {
+      const relogioMin = Math.floor((c.agora - desde) / 60_000);
+      const jaSabe = avisosDaTrilha.some((a) => c.feitos.has(chaveDoAviso({ leadId: l.id, tipo: `aviso_${a}`, marca, userId: donoId })));
+      if (relogioMin >= FORA_DO_HORARIO_MIN && relogioMin < FORA_DO_HORARIO_ATE_MIN && !jaSabe) {
+        const novo = await avisar(
+          c,
+          { leadId: l.id, userId: donoId, tipo: "fora_do_horario", marca },
+          dono,
+          textoForaDoHorario({ corretor: dono.nome, lead: nome, esperaMin: relogioMin, link: link(l.id), whatsapp: fone }),
+        );
+        if (novo) c.r.avisos++;
+      }
+    }
+    if (esperaMin <= 0) continue;
 
     // 2. avisos de prazo: se a rotina ficou fora do ar, manda só o mais recente.
     if (esperaMin < prazoMin) {
@@ -494,16 +544,21 @@ async function processarFila(c: Contexto, inicio: number) {
       await aviso(decisao.para, "repasse_novo_dono", novo, textoRepasseParaNovoDono({ corretor: novo.nome, lead: nome, de: dono.nome, link: link(l.id), whatsapp: fone }));
       await aviso(donoId, "repasse_perdeu", dono, textoRepasseParaQuemPerdeu({ corretor: dono.nome, lead: nome, para: novo.nome }));
       for (const g of c.gestores) {
-        if (g.id === donoId || g.id === decisao.para) continue;
-        await aviso(g.id, "repasse_gestor", g, textoRepasseParaGestor({ gestor: g.nome, lead: nome, de: dono.nome, para: novo.nome, link: link(l.id) }));
+        if (ehAPessoa(g, donoId) || ehAPessoa(g, decisao.para)) continue;
+        await avisarGestao(
+          c,
+          { leadId: l.id, tipo: "repasse_gestor", marca: `${marca}>${decisao.para}` },
+          g,
+          textoRepasseParaGestor({ gestor: g.nome, lead: nome, de: dono.nome, para: novo.nome, link: link(l.id) }),
+        );
       }
     } else if (decisao.tipo === "escalar") {
       let enviou = false;
       for (const g of c.gestores) {
         enviou =
-          (await avisar(
+          (await avisarGestao(
             c,
-            { leadId: l.id, userId: g.id, tipo: "escala", marca },
+            { leadId: l.id, tipo: "escala", marca },
             g,
             textoEscala({ gestor: g.nome, lead: nome, dono: dono.nome, link: link(l.id), motivo: motivoEscala }),
           )) || enviou;
@@ -541,11 +596,11 @@ async function processarParados(c: Contexto) {
       const dono = l.owner_user_id ? c.equipe.get(l.owner_user_id) : undefined;
       const dias = Math.floor((c.agora - Date.parse(l.last_activity_at)) / DIA_MS);
       const marca = `${lim.etapa}:${diaSP(Date.parse(l.last_activity_at))}`;
-      const texto = (p: Pessoa) => textoParado({ corretor: p.nome, lead: nomeDoLead(l), etapa: l.crm_stages.name, dias, link: link(l.id) });
-      let enviou = dono ? await avisar(c, { leadId: l.id, userId: dono.id, tipo: "parado", marca }, dono, texto(dono)) : false;
+      const texto = (nomeDeQuemRecebe: string | null) => textoParado({ corretor: nomeDeQuemRecebe, lead: nomeDoLead(l), etapa: l.crm_stages.name, dias, link: link(l.id) });
+      let enviou = dono ? await avisar(c, { leadId: l.id, userId: dono.id, tipo: "parado", marca }, dono, texto(dono.nome)) : false;
       for (const g of c.gestores) {
-        if (g.id === dono?.id) continue;
-        enviou = (await avisar(c, { leadId: l.id, userId: g.id, tipo: "parado", marca }, g, texto(g))) || enviou;
+        if (ehAPessoa(g, dono?.id)) continue;
+        enviou = (await avisarGestao(c, { leadId: l.id, tipo: "parado", marca }, g, texto(g.nome))) || enviou;
       }
       if (enviou) c.r.parados++;
     }
@@ -567,8 +622,14 @@ async function processarRadar(c: Contexto) {
   const prazo = c.config.captacao.devolutiva_dias;
 
   // Tudo o que cada pessoa deve receber nesta rodada; sai numa mensagem só por pessoa.
-  const porPessoa = new Map<string, ItemRadar[]>();
-  const juntar = (p: Pessoa, item: ItemRadar) => porPessoa.set(p.id, [...(porPessoa.get(p.id) ?? []), item]);
+  // A chave é a pessoa; número fixo da gestão que não é de ninguém da equipe vale por si.
+  const porPessoa = new Map<string, { destino: Destino; itens: ItemRadar[] }>();
+  const juntar = (d: Destino, item: ItemRadar) => {
+    const chave = d.userId ?? `tel:${d.telefone ?? ""}`;
+    const atual = porPessoa.get(chave);
+    if (atual) atual.itens.push(item);
+    else porPessoa.set(chave, { destino: d, itens: [item] });
+  };
   for (const card of cards) {
     const devido = avisoDevidoRadar(
       { status: card.status, etapaSlug: card.etapa.slug, ultimoMovimento: card.ultimoMovimento, enviadoEm: card.radar.enviado_em, avisarChegada: card.radar.avisar_chegada },
@@ -578,20 +639,20 @@ async function processarRadar(c: Contexto) {
     if (!devido) continue;
     const dono = c.equipe.get(card.donoId!);
     const base = { card, tipo: devido.tipo, marca: devido.marca, dias: diasParado(card, c.agora), dono: dono?.nome ?? "corretor que saiu" };
-    if (dono) juntar(dono, base);
-    if (devido.tipo === "radar_prazo") for (const g of c.gestores) if (g.id !== dono?.id) juntar(g, { ...base, paraGestor: true });
+    if (dono) juntar(destinoDaPessoa(dono), base);
+    if (devido.tipo === "radar_prazo") for (const g of c.gestores) if (!ehAPessoa(g, dono?.id)) juntar(g, { ...base, paraGestor: true });
   }
 
-  for (const [pessoaId, itens] of porPessoa) {
-    const pessoa = c.equipe.get(pessoaId)!;
+  for (const { destino, itens } of porPessoa.values()) {
     const reservados: Array<ItemRadar & { avisoId: string }> = [];
     for (const it of itens) {
-      const avisoId = await reservarAviso(c.admin, { orgId: c.orgId, leadId: it.card.id, userId: pessoaId, tipo: it.tipo, marca: it.marca }, c.feitos);
+      const chave = chaveDoDestino(destino, it.marca);
+      const avisoId = await reservarAviso(c.admin, { orgId: c.orgId, leadId: it.card.id, userId: chave.userId, tipo: it.tipo, marca: chave.marca }, c.feitos);
       if (avisoId) reservados.push({ ...it, avisoId });
     }
     if (reservados.length === 0) continue;
     const texto = textoAvisoRadar(
-      pessoa.nome,
+      destino.nome,
       reservados.map((x) => ({
         tipo: x.tipo,
         paraGestor: Boolean(x.paraGestor),
@@ -604,7 +665,7 @@ async function processarRadar(c: Contexto) {
       })),
       `${env.NEXT_PUBLIC_APP_URL}/app/captacoes`,
     );
-    const resultado = await avisarPessoa(c.canal, pessoa, texto);
+    const resultado = await avisarDestino(c.canal, destino, texto);
     if (resultado === "sem_numero") c.r.semNumero++;
     for (const x of reservados) await fecharAviso(c.admin, x.avisoId, resultado);
     c.r.radar++;
@@ -659,9 +720,12 @@ export async function rodarRotinaLembretes(admin: Admin, agora = Date.now()): Pr
         canais.set(orgId, canal);
       }
       const gerentes = [...equipe.values()].filter((p) => p.papel === "manager");
-      // Sem gerente cadastrado, a gestão é o administrador.
-      const gestores = gerentes.length ? gerentes : [...equipe.values()].filter((p) => p.papel === "admin");
-      const c: Contexto = { admin, orgId, config, equipe, canal, agora, r, gestores, feitos: new Set(), repassados: new Map(), avisoSaiu: new Set() };
+      // Números fixos de Configurações mandam. Sem eles: os gerentes; sem gerente, o administrador.
+      const gestores = config.avisos.gestor.length
+        ? destinosFixos(config.avisos.gestor, canal, equipe)
+        : (gerentes.length ? gerentes : [...equipe.values()].filter((p) => p.papel === "admin")).map(destinoDaPessoa);
+      const foraDoHorario = minutosUteis(agora - 60_000, agora, config.horario) <= 0;
+      const c: Contexto = { admin, orgId, config, equipe, canal, agora, r, gestores, feitos: new Set(), repassados: new Map(), avisoSaiu: new Set(), foraDoHorario };
 
       // Lead respondido sai de "Lead recebido" para "Primeiro contato" antes da fila olhar (07/11/2026).
       try {

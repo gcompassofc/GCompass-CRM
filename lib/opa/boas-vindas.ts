@@ -2,6 +2,9 @@
  * Boas-vindas ao lead de formulário, pelo WhatsApp do corretor da vez (#498).
  * Especificação: opa/Tracking/37-boas-vindas-pelo-numero-do-corretor.md.
  *
+ * Só lead de formulário (site ou anúncio): a mensagem não responde nada que o lead
+ * escreveu, ela abre o contato depois do formulário (10/11/2026, veio-de-formulario.ts).
+ *
  * Regra em uma frase: o lead cai, a roleta escolhe, e o número DESSE corretor
  * manda a mensagem assinada com o nome dele. Nunca por outro número: sem a
  * conexão do dono, não manda e grava o motivo no histórico do lead.
@@ -23,11 +26,12 @@ import type { createAdminClient } from "@/lib/supabase/admin";
 
 import { env } from "@/lib/env";
 
-import { avisarPessoa, carregarCanalDeAvisos } from "./aviso-whatsapp";
+import { avisarDestino, carregarCanalDeAvisos, chaveDoDestino, emParagrafos, mesmoTelefone, type Destino } from "./aviso-whatsapp";
 import { modeloDoCorretor, montarBoasVindas } from "./boas-vindas-texto";
 import { mesclarCampos } from "./campos";
 import { carregarConfig } from "./config";
 import { entregarConversaAoDono } from "./conversa-do-lead";
+import { veioDeFormulario } from "./veio-de-formulario";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -56,31 +60,67 @@ async function registrar(admin: Admin, orgId: string, leadId: string, contactId:
 }
 
 /**
- * Aviso na hora de que a boas-vindas não saiu: para o dono do lead e para os
- * administradores (a G-Compass), pelo OPA Lembretes. Uma vez por tentativa
- * (`opa_avisos`, marca = hora da tentativa). Nunca lança.
+ * Aviso na hora de que a boas-vindas não saiu: para o dono do lead e para a
+ * administração (a G-Compass), pelo OPA Lembretes. A administração são os números
+ * fixos de Configurações (avisos.admin, 10/11/2026) ou, sem eles, quem tem o papel
+ * de administrador. Uma vez por tentativa (`opa_avisos`, marca = hora da tentativa).
+ * Nunca lança.
  */
-async function avisarFalha(admin: Admin, orgId: string, leadId: string, dono: string, corretor: string, nomeLead: string, motivo: string, marca: string) {
+async function avisarFalha(
+  admin: Admin,
+  orgId: string,
+  leadId: string,
+  dono: string,
+  corretor: string,
+  nomeLead: string,
+  motivo: string,
+  marca: string,
+  /** Números fixos da administração (Configurações, avisos.admin). Vazio = quem tem o papel de administrador. */
+  numerosAdmin: string[],
+) {
   try {
     const [canal, { data: membros }] = await Promise.all([
       carregarCanalDeAvisos(admin as never, orgId),
       admin.from("user_organizations").select("user_id, role").eq("organization_id", orgId).is("revoked_at", null),
     ]);
-    const admins = ((membros ?? []) as Array<{ user_id: string; role: string }>).filter((m) => m.role === "admin" && m.user_id !== dono).map((m) => m.user_id);
+    const administracao: Destino[] = [];
+    if (numerosAdmin.length) {
+      for (const telefone of numerosAdmin) {
+        // Número de alguém da equipe leva o nome da pessoa; os outros vão sem nome.
+        const id = [...canal.telefonePorPessoa].find(([, fone]) => mesmoTelefone(fone, telefone))?.[0] ?? null;
+        administracao.push({ userId: id, nome: id ? await nomeDaPessoa(admin, id) : null, telefone });
+      }
+    } else {
+      for (const m of (membros ?? []) as Array<{ user_id: string; role: string }>) {
+        if (m.role === "admin") administracao.push({ userId: m.user_id, nome: await nomeDaPessoa(admin, m.user_id), telefone: null });
+      }
+    }
     const link = `${env.NEXT_PUBLIC_APP_URL}/app/leads/${leadId}`;
-    for (const id of [dono, ...admins]) {
-      const { error } = await admin
+    const doDono: Destino = { userId: dono, nome: corretor, telefone: null };
+    for (const d of [doDono, ...administracao.filter((a) => a.userId !== dono)]) {
+      const chave = chaveDoDestino(d, marca);
+      const { data: reserva, error } = await admin
         .from("opa_avisos")
-        .insert({ organization_id: orgId, lead_id: leadId, user_id: id, tipo: "boas_vindas_falhou", marca, dados: { motivo } });
+        .insert({ organization_id: orgId, lead_id: leadId, user_id: chave.userId, tipo: "boas_vindas_falhou", marca: chave.marca, dados: { motivo } })
+        .select("id")
+        .single();
       if (error) continue; // já avisado nesta tentativa (ou sem tabela): não repete
-      const nome = id === dono ? corretor : await nomeDaPessoa(admin, id);
-      const primeiroNome = nome.split(/\s+/)[0] || "Oi";
+      const primeiroNome = (d.nome ?? "").split(/\s+/)[0] ?? "";
       const texto =
-        id === dono
-          ? `${primeiroNome}, a boas-vindas para ${nomeLead} não saiu: ${motivo}. Abra a ficha e use "Reenviar boas-vindas", ou chame o lead direto.\n${link}`
-          : `${primeiroNome}, a boas-vindas do lead ${nomeLead} (corretor ${corretor.split(/\s+/)[0]}) não saiu: ${motivo}.\n${link}`;
-      const r = await avisarPessoa(canal, { id, nome }, texto);
-      await admin.from("opa_avisos").update({ status: r === "enviado" ? "enviado" : r === "sem_numero" ? "sem_numero" : "falhou" }).eq("lead_id", leadId).eq("tipo", "boas_vindas_falhou").eq("marca", marca).eq("user_id", id);
+        d === doDono
+          ? emParagrafos([
+              `${primeiroNome || "Oi"}, a boas-vindas para ${nomeLead} não saiu: ${motivo}. Abra a ficha e use "Reenviar boas-vindas", ou chame o lead direto.`,
+              link,
+            ])
+          : emParagrafos([
+              `${primeiroNome ? `${primeiroNome}, a` : "A"} boas-vindas do lead ${nomeLead} (corretor ${corretor.split(/\s+/)[0]}) não saiu: ${motivo}.`,
+              link,
+            ]);
+      const r = await avisarDestino(canal, d, texto);
+      await admin
+        .from("opa_avisos")
+        .update({ status: r === "enviado" ? "enviado" : r === "sem_numero" ? "sem_numero" : "falhou" })
+        .eq("id", (reserva as { id: string }).id);
     }
   } catch (e) {
     console.error("[opa.boas-vindas] aviso de falha", e instanceof Error ? e.message : e);
@@ -93,7 +133,7 @@ export async function enviarBoasVindas(admin: Admin, orgId: string, leadId: stri
 
   const { data } = await admin
     .from("crm_leads")
-    .select("id, status, owner_user_id, contact_id, tags, custom_fields, contacts(name, phone_number)")
+    .select("id, status, owner_user_id, contact_id, source, tags, custom_fields, contacts(name, phone_number)")
     .eq("organization_id", orgId)
     .eq("id", leadId)
     .maybeSingle();
@@ -101,12 +141,16 @@ export async function enviarBoasVindas(admin: Admin, orgId: string, leadId: stri
     status: string;
     owner_user_id: string | null;
     contact_id: string;
+    source: string | null;
     tags: string[] | null;
     custom_fields: Record<string, unknown> | null;
     contacts: { name: string | null; phone_number: string | null } | null;
   } | null;
   if (!lead || lead.status !== "open" || !lead.owner_user_id) return { enviada: false, motivo: "lead sem dono", registrar: false };
   const cf = lead.custom_fields ?? {};
+  // Só para quem preencheu formulário (site ou anúncio). Quem escreveu primeiro no
+  // WhatsApp, mesmo vindo de anúncio, não recebe: a mensagem diz "Recebi o formulário".
+  if (!veioDeFormulario(cf, lead.source)) return { enviada: false, motivo: "o lead não veio de formulário", registrar: false };
   const anterior = cf.boas_vindas as { status?: string; em?: string } | undefined;
   // Reenvio (botão da ficha) só não repete a que saiu ou a que está saindo agora.
   const saindo = anterior?.status === "enviando" && Date.now() - Date.parse(anterior.em ?? "") < 2 * 60_000;
@@ -122,7 +166,7 @@ export async function enviarBoasVindas(admin: Admin, orgId: string, leadId: stri
   const falhou = async (motivo: string, registrarNoLead = true): Promise<ResultadoBoasVindas> => {
     if (registrarNoLead) {
       await registrar(admin, orgId, leadId, lead.contact_id, "boas_vindas_nao_enviada", `Boas-vindas não enviada: ${motivo}.`, { motivo, corretor: primeiro });
-      await avisarFalha(admin, orgId, leadId, dono, corretor, lead.contacts?.name?.trim() || "o lead novo", motivo, tentativa);
+      await avisarFalha(admin, orgId, leadId, dono, corretor, lead.contacts?.name?.trim() || "o lead novo", motivo, tentativa, config.avisos.admin);
     }
     return { enviada: false, motivo, registrar: registrarNoLead };
   };

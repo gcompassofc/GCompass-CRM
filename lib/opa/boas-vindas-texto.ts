@@ -8,15 +8,24 @@
  * Versão de 10/11/2026 (Allyson): texto em parágrafos, pede um telefonema de
  * 10 minutos e assina no fim. A Luana tem o texto próprio dela (MODELO_LUANA), e
  * qualquer corretor pode ter um texto próprio em Configurações > Mensagens.
+ *
+ * Mesmo dia, mais tarde (Allyson): a boas-vindas é só de quem preencheu formulário
+ * (site ou anúncio), então o texto diz "Recebi o formulário", não "Recebi a mensagem".
  */
 
-export const MODELO_BOAS_VINDAS = [
-  "Oi, {primeiro_nome}, tudo bem?",
-  "Aqui é o {corretor}, da OPA Imóveis, em Ilhabela.",
-  "Recebi a mensagem sobre seu interesse {no_imovel} {do_bairro} e resolvi entrar em contato diretamente.",
-  "Quando seria um bom momento para conversarmos por telefone? Podemos falar por uns 10 minutinhos para eu entender melhor o que você está buscando.",
-  "Um abraço\n{corretor}",
-].join("\n\n");
+const PARAGRAFOS = (recebi: string) =>
+  [
+    "Oi, {primeiro_nome}, tudo bem?",
+    "Aqui é o {corretor}, da OPA Imóveis, em Ilhabela.",
+    `${recebi} sobre seu interesse {no_imovel} {do_bairro} e resolvi entrar em contato diretamente.`,
+    "Quando seria um bom momento para conversarmos por telefone? Podemos falar por uns 10 minutinhos para eu entender melhor o que você está buscando.",
+    "Um abraço\n{corretor}",
+  ].join("\n\n");
+
+export const MODELO_BOAS_VINDAS = PARAGRAFOS("Recebi o formulário");
+
+/** O primeiro texto de 10/11/2026 ("Recebi a mensagem"). Conta salva com ele passa a usar o novo. */
+export const MODELO_10_11_MENSAGEM = PARAGRAFOS("Recebi a mensagem");
 
 /** Texto da Luana Machado (10/11/2026), em todas as mensagens padrão dela. */
 export const MODELO_LUANA =
@@ -174,9 +183,9 @@ export function montarBoasVindas(d: DadosBoasVindas): string {
     "{situacao}": d.publicado ? "está disponível" : "saiu do site, mas tenho opções parecidas",
     "{vi_no_formulario}": frasesDoFormulario(d.respostas ?? {}, d.imovelCodigo),
   };
-  const salvo = d.modelo?.trim();
-  const antigo = salvo === MODELO_ANTERIOR || salvo === MODELO_09_11;
-  let texto = (salvo && !antigo ? salvo : MODELO_BOAS_VINDAS).replace(/\r\n?/g, "\n");
+  const salvo = d.modelo?.replace(/\r\n?/g, "\n").trim();
+  const antigo = salvo === MODELO_ANTERIOR || salvo === MODELO_09_11 || salvo === MODELO_10_11_MENSAGEM;
+  let texto = salvo && !antigo ? salvo : MODELO_BOAS_VINDAS;
   // Sem código: some o ", código {codigo}" inteiro.
   const codigo = (d.imovelCodigo ?? "").trim();
   texto = codigo ? texto.split("{codigo}").join(codigo) : texto.replace(/,\s*código\s*\{codigo\}\s*,/g, "").replace(/,?\s*código\s*\{codigo\}/g, "").split("{codigo}").join("");

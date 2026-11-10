@@ -313,7 +313,7 @@ export interface ItemDoAviso {
  * retorno e (para a gestão) os que passaram do prazo. Na primeira rodada depois de
  * importar, vários cards antigos vencem juntos; separado, isso viraria uma rajada.
  */
-export function textoAvisoRadar(pessoa: string, itens: ItemDoAviso[], link: string): string {
+export function textoAvisoRadar(pessoa: string | null, itens: ItemDoAviso[], link: string): string {
   const novos = itens.filter((i) => i.tipo === "radar_chegada");
   const meus = itens.filter((i) => i.tipo !== "radar_chegada" && !i.paraGestor).sort((a, b) => b.dias - a.dias);
   const equipe = itens.filter((i) => i.paraGestor).sort((a, b) => b.dias - a.dias);
@@ -326,12 +326,15 @@ export function textoAvisoRadar(pessoa: string, itens: ItemDoAviso[], link: stri
   if (meus.length) {
     const titulo = `${meus.length === 1 ? "Esta captação está" : "Estas captações estão"} sem retorno:`;
     const lista = meus.map((i) => `${i.titulo} (${i.dist}), ${i.dias} dias${i.tipo === "radar_prazo" ? ", chegou o prazo" : ""}`);
-    blocos.push([titulo, ...lista, "Conte na ficha como está, ou marque Não serve se não deu."].join("\n"));
+    blocos.push([[titulo, ...lista].join("\n"), "Conte na ficha como está, ou marque Não serve se não deu."].join("\n\n"));
   }
   if (equipe.length) {
     const titulo = `${equipe.length === 1 ? "Uma captação da equipe passou" : `${equipe.length} captações da equipe passaram`} do prazo sem retorno:`;
     const lista = equipe.map((i) => `${primeiro(i.corretor)}: ${i.titulo} (${i.dist}), ${i.dias} dias`);
-    blocos.push([titulo, ...lista, "Decida na ficha: cobrar, dar mais prazo ou passar para outro corretor."].join("\n"));
+    blocos.push([[titulo, ...lista].join("\n"), "Decida na ficha: cobrar, dar mais prazo ou passar para outro corretor."].join("\n\n"));
   }
-  return [`Oi, ${primeiro(pessoa)}. ${blocos.join("\n\n")}`, `Captações do Radar: ${link}`].join("\n\n");
+  // Um parágrafo por assunto, com linha em branco entre eles; só a lista de imóveis fica junta (10/11/2026).
+  // Número fixo da gestão que não é de ninguém da equipe vem sem nome.
+  const saudacao = (pessoa ?? "").trim() ? `Oi, ${primeiro(pessoa!)}.` : "Oi.";
+  return [saudacao, ...blocos, `Captações do Radar: ${link}`].join("\n\n");
 }
