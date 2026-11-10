@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { leadComOutroCorretor, origemDeFormulario, preencheuFormulario, veioDeFormulario } from "./veio-de-formulario";
+import { leadComOutroCorretor, origemDeFormulario, preencheuFormulario, temPrazoDeResposta, veioDeFormulario } from "./veio-de-formulario";
 
 describe("lead de formulário", () => {
   it("formulário do anúncio e do site contam", () => {
@@ -26,6 +26,28 @@ describe("lead de formulário", () => {
     const campos = { origem: { canal: "whatsapp", via: "whatsapp" }, voltou: { em: "2026-11-10", vez: 2, origem: { canal: "meta" } } };
     expect(veioDeFormulario(campos)).toBe(false);
     expect(preencheuFormulario(campos)).toBe(true);
+  });
+});
+
+describe("quem entra nos prazos do OPA Lembretes", () => {
+  it("lead do site (formulário ou botão do imóvel) e de formulário de anúncio", () => {
+    expect(temPrazoDeResposta({ origem: { canal: "site" } })).toBe(true);
+    expect(temPrazoDeResposta({ origem: { canal: "site", via: "whatsapp" } })).toBe(true);
+    expect(temPrazoDeResposta({ origem: { canal: "meta" } })).toBe(true);
+    expect(temPrazoDeResposta({}, "meta")).toBe(true);
+  });
+
+  it("anúncio que caiu direto no WhatsApp do corretor fica fora; se depois preencheu o formulário, entra (Roberto Monção)", () => {
+    expect(temPrazoDeResposta({ origem: { canal: "meta", via: "whatsapp" } }, "meta")).toBe(false);
+    const roberto = { origem: { canal: "meta", via: "whatsapp" }, voltou: { em: "2026-11-10T10:59:48.505Z", vez: 2, origem: { canal: "meta" } } };
+    expect(temPrazoDeResposta(roberto, "meta")).toBe(true);
+  });
+
+  it("o que o corretor trouxe fica fora: Lead OPA marcado no WhatsApp, link da bio, indicação, cadastro", () => {
+    expect(temPrazoDeResposta({ origem: { canal: "whatsapp", via: "whatsapp" } }, "whatsapp")).toBe(false);
+    expect(temPrazoDeResposta({ origem: { canal: "linkbio" } })).toBe(false);
+    expect(temPrazoDeResposta({ origem: { canal: "indicacao" } })).toBe(false);
+    expect(temPrazoDeResposta(null, null)).toBe(false);
   });
 });
 

@@ -707,7 +707,8 @@ export function searchable(isPlatformAdmin: boolean, role: Role | null): NavDest
  * papel mínimo continuam vindo de NAV_DESTINATIONS.
  */
 export const MENU_IMOBILIARIA = {
-  principal: ["/app/hoje", "/app/pipeline", "/app/inbox", "/app/fila", "/app/lembretes", "/app/imoveis", "/app/kit", "/app/meu-whatsapp"],
+  // Leads voltou ao menu em 10/11/2026 (pedido do Allyson): a lista de todos os leads, logo depois do Funil.
+  principal: ["/app/hoje", "/app/pipeline", "/app/leads", "/app/inbox", "/app/fila", "/app/lembretes", "/app/imoveis", "/app/kit", "/app/meu-whatsapp"],
   // Webhooks e automações (03/11/2026): regras que agem sozinhas quando um lead
   // entra, muda de etapa, ganha etiqueta ou manda mensagem; inclui avisar outro sistema.
   configuracao: ["/app/conexoes", "/app/membros", "/app/integracoes", "/app/webhooks", "/app/configuracoes"],
@@ -720,7 +721,7 @@ export const MENU_IMOBILIARIA = {
  * etapa de cada lead num olhar e o "Mandar para todos" da etapa. No celular
  * eles entram pelo "Mais", como para o gestor (a barra já tem cinco alvos).
  */
-const MENU_CORRETOR = ["/app/hoje", "/app/pipeline", "/app/inbox", "/app/fila", "/app/lembretes", "/app/imoveis", "/app/kit", "/app/meu-whatsapp"];
+const MENU_CORRETOR = ["/app/hoje", "/app/pipeline", "/app/leads", "/app/inbox", "/app/fila", "/app/lembretes", "/app/imoveis", "/app/kit", "/app/meu-whatsapp"];
 /**
  * "Multi-atendimento" (03/11/2026, pedido do Allyson): a tela das conversas,
  * no estilo do WhatsApp, que é o que o corretor já conhece. Fica logo abaixo
@@ -766,13 +767,14 @@ export function gruposImobiliaria(isPlatformAdmin: boolean, role: Role | null): 
       .map((d) => (rotulos[d.href] ? { ...d, label: rotulos[d.href]! } : d));
   const grupos: GrupoMenuOpa[] = [
     { id: "inicio", rotulo: "Início", icone: IconeAtendimento, itens: achar(["/app/hoje"]) },
-    // 09/11/2026 (pedido do Allyson): o funil abre o Atendimento e Leads é o mesmo lugar
-    // (o seletor Lista | Funil troca a vista), por isso "Clientes" saiu do menu.
+    // 09/11/2026 (pedido do Allyson): o funil abre o Atendimento e "Clientes" saiu do menu.
+    // 10/11/2026: Leads voltou como item próprio, logo depois do Funil (a lista de todos os
+    // leads, com corretor, entrada e tempo de resposta). O seletor Lista | Funil continua.
     {
       id: "atendimento",
       rotulo: "Atendimento",
       icone: IconeAtendimento,
-      itens: achar(["/app/pipeline", "/app/inbox", "/app/fila", "/app/lembretes"]).map((d) => (d.href === "/app/pipeline" ? { ...d, label: "Funil" } : d)),
+      itens: achar(["/app/pipeline", "/app/leads", "/app/inbox", "/app/fila", "/app/lembretes"]).map((d) => (d.href === "/app/pipeline" ? { ...d, label: "Funil" } : d)),
     },
     {
       id: "imoveis",

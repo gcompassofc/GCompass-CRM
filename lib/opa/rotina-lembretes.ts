@@ -44,6 +44,7 @@ import {
   type ResultadoAviso,
 } from "./aviso-whatsapp";
 import { avancarRespondidos } from "./avanco";
+import { temPrazoDeResposta } from "./veio-de-formulario";
 import { avisoDevidoRadar, diasParado, textoAvisoRadar } from "./radar-captacoes";
 import { carregarCardsRadar, type CardRadar } from "./radar-captacoes-dados";
 import { boasVindasEnviadaEm, esperaDesde, esperaEmMinutos, minutosUteis, saidaDoCorretor } from "./atendimento";
@@ -350,6 +351,28 @@ async function avisarGestao(c: Contexto, linha: { leadId: string; tipo: string; 
   return true;
 }
 
+/** A escalada entra no histórico do lead (10/11/2026): antes só existia em opa_avisos, que a ficha não lê. */
+async function registrarEscalada(c: Contexto, leadId: string, contactId: string | null, motivo: "roleta" | "sem_aviso" | "dono_saiu"): Promise<void> {
+  const frase =
+    motivo === "dono_saiu"
+      ? "O corretor do lead saiu da equipe."
+      : motivo === "sem_aviso"
+        ? "O aviso de prazo não chegou ao corretor, então o lead não trocou de corretor."
+        : "Ninguém mais da roleta pôde pegar.";
+  const { error } = await c.admin.from("crm_lead_activities").insert({
+    organization_id: c.orgId,
+    lead_id: leadId,
+    contact_id: contactId,
+    source_module: "opa",
+    type: "lead_escalado",
+    payload: { motivo },
+    performed_at: new Date(c.agora).toISOString(),
+    actor_kind: "system",
+    reason: frase,
+  });
+  if (error) logger.warn("[opa-lembretes] escalada sem registro no histórico", { leadId, error: error.message });
+}
+
 /** O destino é esta pessoa? (o gestor que também é o corretor do lead não recebe a cópia da gestão) */
 const ehAPessoa = (d: Destino, pessoaId: string | null | undefined): boolean => Boolean(pessoaId) && d.userId === pessoaId;
 
@@ -404,12 +427,18 @@ async function processarFila(c: Contexto, inicio: number) {
             textoEscala({ gestor: g.nome, lead: nomeDoLead(l), dono: null, link: link(l.id), motivo: "dono_saiu" }),
           )) || enviou;
       }
-      if (enviou) c.r.escaladas++;
+      if (enviou) {
+        c.r.escaladas++;
+        await registrarEscalada(c, l.id, l.contact_id, "dono_saiu");
+      }
       continue;
     }
     const cf = (l.custom_fields ?? {}) as { voltou?: { em?: string }; respondido_em?: string; lembretes_desligados?: boolean };
     // Lembretes desligados no lead: nem aviso nem repasse (A2).
     if (cf.lembretes_desligados) continue;
+    // Prazo, repasse e escalada só para lead do site ou de formulário de anúncio (10/11/2026).
+    // O que o corretor trouxe (inclusive anúncio próprio no número dele) fica com ele, sem relógio.
+    if (!temPrazoDeResposta(l.custom_fields, l.source)) continue;
     const conv = l.contact_id ? conversas.get(l.contact_id) : undefined;
     // Só a espera pelo PRIMEIRO atendimento gera aviso e repasse (A2).
     const boasVindasEm = boasVindasEnviadaEm(cf as unknown as Record<string, unknown>);
@@ -563,7 +592,10 @@ async function processarFila(c: Contexto, inicio: number) {
             textoEscala({ gestor: g.nome, lead: nome, dono: dono.nome, link: link(l.id), motivo: motivoEscala }),
           )) || enviou;
       }
-      if (enviou) c.r.escaladas++;
+      if (enviou) {
+        c.r.escaladas++;
+        await registrarEscalada(c, l.id, l.contact_id, motivoEscala);
+      }
     }
   }
 }
@@ -589,7 +621,10 @@ async function processarParados(c: Contexto) {
       .lte("last_activity_at", corte)
       .limit(200);
     if (error) throw new Error(`parados: ${error.message}`);
-    const achados = (data ?? []) as unknown as Array<LinhaLead & { last_activity_at: string; crm_stages: { slug: string; name: string } }>;
+    // Mesma regra dos prazos: só lead do site ou de formulário de anúncio (10/11/2026).
+    const achados = ((data ?? []) as unknown as Array<LinhaLead & { last_activity_at: string; crm_stages: { slug: string; name: string } }>).filter((l) =>
+      temPrazoDeResposta(l.custom_fields, l.source),
+    );
     await carregarHistorico(c, achados.map((l) => l.id));
     for (const l of achados) {
       // Dono que saiu da equipe: o aviso vai só para a gestão (C1).

@@ -38,6 +38,28 @@ export function preencheuFormulario(campos: Record<string, unknown> | null | und
   return origemDeFormulario(voltou?.origem);
 }
 
+/**
+ * O lead entra nos prazos do OPA Lembretes? (regra do Allyson, 10/11/2026)
+ *
+ * Aviso de prazo de primeira resposta, repasse da roleta, escalada para a gestão,
+ * lembrete fora do horário e aviso de negócio parado valem SÓ para lead que veio por
+ * ação da OPA: o site (formulário ou botão do imóvel) e o formulário de anúncio.
+ *
+ * Fica de fora o que o corretor trouxe: contato que ele marcou como Lead OPA no
+ * WhatsApp, clique em anúncio que caiu direto no número dele (ele pode ter campanha
+ * própria, caso do Rodrigo), cadastro à mão, link da bio e indicação. Para incluir
+ * outra entrada, é aqui: a lista é fechada de propósito.
+ *
+ * Preencher o formulário depois também conta: o Roberto Monção nasceu de anúncio no
+ * WhatsApp do Rodrigo em 09/11 e preencheu o formulário da OPA em 10/11 (conferido
+ * pelo Allyson), então é lead de formulário e entra nos prazos.
+ */
+export function temPrazoDeResposta(campos: Record<string, unknown> | null | undefined, source?: string | null): boolean {
+  const origem = (campos ?? {}).origem;
+  if (origem && typeof origem === "object" && (origem as OrigemGravada).canal === "site") return true;
+  return preencheuFormulario(campos, source);
+}
+
 export interface LeadAbertoDoContato {
   id: string;
   owner_user_id: string | null;

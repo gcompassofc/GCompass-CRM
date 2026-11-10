@@ -19,6 +19,8 @@ import {
 } from "@/lib/opa/dados";
 import { contarEtiquetas, etiquetasDoLead } from "@/lib/opa/etiquetas";
 import { afinidade, fotoUrl, precoCheio, precoPrincipal } from "@/lib/opa/imoveis";
+import { montarHistorico, tempoGasto, type AtividadeDoLead } from "@/lib/opa/historico";
+import { temPrazoDeResposta } from "@/lib/opa/veio-de-formulario";
 import { pedidoInicial, resumoDoPedidoRadar } from "@/lib/opa/pedido-radar";
 import { diasParado, ERROS_RADAR, MOTIVOS_RADAR } from "@/lib/opa/radar-captacoes";
 import { ErroNoAnuncio } from "../../captacoes/_componentes";
@@ -187,10 +189,37 @@ const ICONE_GRUPO: Record<string, Icone> = {
   momento: Clock,
 };
 
-/** Ícone e tom de cada tipo de item do histórico. */
+/** Estados de envio (mensagem agendada, evento do Meta) como a pessoa lê. */
+const ESTADO_DO_ENVIO: Record<string, string> = {
+  na_fila: "na fila",
+  pendente: "aguardando a hora",
+  enviando: "saindo agora",
+  enviado: "enviado",
+  enviada: "enviada",
+  falhou: "não saiu",
+  erro: "não saiu",
+  cancelado: "cancelada",
+  cancelada: "cancelada",
+};
+
+/** Ícone e tom de cada tipo de item do histórico (lib/opa/historico.ts e os desta página). */
 const ICONE_HISTORICO: Record<string, [Icone, "claro" | "acao" | "escuro" | "ok" | "aviso"]> = {
   entrada: [UserPlus, "claro"],
   atividade: [ArrowsClockwise, "claro"],
+  resposta: [Check, "ok"],
+  sem_resposta: [Timer, "aviso"],
+  repasse: [ArrowsClockwise, "aviso"],
+  escalada: [Warning, "aviso"],
+  alerta: [Warning, "aviso"],
+  dono: [UserCircle, "claro"],
+  voltou: [ClockCounterClockwise, "acao"],
+  etapa: [ArrowRight, "claro"],
+  ligacao: [Phone, "claro"],
+  selecao: [PaperPlaneTilt, "claro"],
+  perda: [Prohibit, "aviso"],
+  pessoal: [Lock, "claro"],
+  nome: [IdentificationCard, "claro"],
+  conversa_apagada: [X, "aviso"],
   venda: [Trophy, "ok"],
   meta: [Infinito, "acao"],
   visita: [CalendarBlank, "claro"],
@@ -281,9 +310,11 @@ export default async function LeadPage({
       .from("crm_lead_activities")
       .select("type, payload, performed_at, reason")
       .eq("lead_id", id)
-      .neq("type", "nota")
+      // Sem as anotações (lidas à parte) e sem a medição interna do sistema, que enchia
+      // o limite e empurrava para fora a entrada, a boas-vindas e o repasse (10/11/2026).
+      .not("type", "in", "(nota,lead_cooled,lead_reactivated,reactivation_expired,ai_turn)")
       .order("performed_at", { ascending: false })
-      .limit(30),
+      .limit(200),
     supabase.from("eventos_meta").select("evento, valor_cents, status, created_at").eq("lead_id", id),
     supabase.from("lembretes_agendados").select("quando, mensagem, status, created_at").eq("lead_id", id),
     supabase.from("copiloto_sugestoes").select("campo, valor, decidido_em").eq("lead_id", id).eq("status", "aceita"),
@@ -397,37 +428,36 @@ export default async function LeadPage({
     ? [lead.radar.enviado_em, ...notas.map((n) => n.em)].sort().at(-1) ?? lead.radar.enviado_em
     : "";
 
-  // Histórico: tudo o que aconteceu com o negócio, do mais novo ao mais velho.
-  const historico = [
-    { em: lead.criadoEm, texto: `Entrou por ${rotuloOrigem(lead.origem, "nova entrada")}${entrada ? `, imóvel ${entrada.codigo}` : ""}`, tipo: "entrada" },
-    ...((atividadesRaw ?? []) as Array<{ type: string; payload: Record<string, unknown>; performed_at: string; reason: string | null }>).map((a) => ({
-      em: a.performed_at,
-      texto:
-        a.type === "boas_vindas_enviada" || a.type === "boas_vindas_nao_enviada" || a.type === "lead_do_whatsapp" || a.type === "etapa_automatica"
-          ? (a.reason ?? a.type.replace(/_/g, " "))
-          : a.type === "selecao_enviada"
-            ? `Seleção enviada pelo WhatsApp${Array.isArray(a.payload.imoveis) && a.payload.imoveis.length ? `: ${(a.payload.imoveis as string[]).join(", ")}` : ""}`
-          : a.type === "lead_voltou"
-          ? `Voltou por outro formulário (${a.payload.vez}º), sem roleta`
-          : a.type === "ligacao"
-            ? `Ligação: ${a.payload.resultado === "atendeu" ? "atendeu" : a.payload.resultado === "retorno" ? "pediu retorno" : "não atendeu"}`
-          : a.type === "venda_realizada"
-            ? `Negócio ganho: VGV ${precoCheio(a.payload.vgv_cents as number)}, comissão ${precoCheio(a.payload.comissao_cents as number)}`
-          : a.type === "respondido"
-            ? "Corretor marcou como respondido"
-          : a.type === "mudou_de_funil"
-            ? `Passou para o funil ${String(a.payload.para ?? "")}`
-          : a.type === "nome_alterado"
-            ? "Nome do lead alterado"
-          : a.type === "reaberto"
-            ? `Negócio reaberto${a.payload.motivo_da_perda ? ` (tinha sido perdido por: ${String(a.payload.motivo_da_perda)})` : ""}`
-            : a.type.replace(/_/g, " "),
-      tipo: a.type === "venda_realizada" ? "venda" : a.type === "boas_vindas_enviada" ? "boas_vindas" : "atividade",
-    })),
+  // Histórico: tudo o que aconteceu com o negócio, do mais novo ao mais velho, em
+  // português e com ícone. A regra das frases fica em lib/opa/historico.ts (10/11/2026).
+  const atividades = (atividadesRaw ?? []) as AtividadeDoLead[];
+  const primeiraSaida = mensagens.find(
+    (m) => m.direction === "outbound" && m.status !== "failed" && (m.metadata as { boas_vindas?: boolean } | null | undefined)?.boas_vindas !== true,
+  );
+  const atendimento = montarHistorico({
+    criadoEm: lead.criadoEm,
+    entrada: rotuloOrigem(lead.origem, "nova entrada"),
+    imovelCodigo: entrada?.codigo ?? null,
+    donoAtualId: lead.donoId,
+    aberto,
+    atividades,
+    primeiraSaidaEm: primeiraSaida?.sent_at ?? null,
+    nomeDe: (pessoaId) => primeiroNome(equipe.get(pessoaId ?? "")?.nome) || "alguém que saiu da equipe",
+  });
+  const conversaApagada = atividades.find((a) => a.type === "conversa_apagada") ?? null;
+  const historico: Array<{ em: string; texto: string; tipo: string; detalhe?: string | null }> = [
+    ...atendimento.itens,
+    ...atividades
+      .filter((a) => a.type === "venda_realizada")
+      .map((a) => ({
+        em: a.performed_at,
+        texto: `Negócio ganho: VGV ${precoCheio(a.payload?.vgv_cents as number)}, comissão ${precoCheio(a.payload?.comissao_cents as number)}`,
+        tipo: "venda",
+      })),
     ...notas.map((n) => ({ em: n.em, texto: `Anotação de ${n.autor}: “${n.texto.slice(0, 120)}${n.texto.length > 120 ? "…" : ""}”`, tipo: "nota" })),
     ...((eventosRaw ?? []) as Array<{ evento: string; valor_cents: number | null; status: string; created_at: string }>).map((e) => ({
       em: e.created_at,
-      texto: `Evento “${e.evento}” para o Meta${e.valor_cents ? `, valor ${precoCheio(e.valor_cents)}` : ""} (${e.status === "na_fila" ? "na fila" : e.status})`,
+      texto: `Evento “${e.evento}” para o Meta${e.valor_cents ? `, valor ${precoCheio(e.valor_cents)}` : ""} (${ESTADO_DO_ENVIO[e.status] ?? e.status})`,
       tipo: "meta",
     })),
     ...visitas.map((v) => ({
@@ -440,7 +470,7 @@ export default async function LeadPage({
     })),
     ...((agendadosRaw ?? []) as Array<{ quando: string; mensagem: string; status: string; created_at: string }>).map((m) => ({
       em: m.created_at,
-      texto: `Mensagem agendada para ${hora(m.quando)} (${m.status}): “${m.mensagem.slice(0, 60)}${m.mensagem.length > 60 ? "…" : ""}”`,
+      texto: `Mensagem agendada para ${hora(m.quando)} (${ESTADO_DO_ENVIO[m.status] ?? m.status}): “${m.mensagem.slice(0, 60)}${m.mensagem.length > 60 ? "…" : ""}”`,
       tipo: "agenda",
     })),
     ...((aceitasRaw ?? []) as Array<{ campo: string; valor: string; decidido_em: string | null }>)
@@ -821,9 +851,21 @@ export default async function LeadPage({
                       </p>
                     </div>
                   ))}
-                  {mensagens.length === 0 && (
-                    <Vazio ilustracao={<IlustraConversa />} titulo="Nenhuma mensagem ainda" texto="Quando o lead escrever no WhatsApp do corretor, a conversa aparece aqui." />
-                  )}
+                  {mensagens.length === 0 &&
+                    (conversaApagada || lead.boasVindas?.status === "enviada" ? (
+                      // A boas-vindas saiu (ou há registro da exclusão) e não há mensagem: a conversa foi apagada do CRM.
+                      <Vazio
+                        ilustracao={<IlustraConversa />}
+                        titulo="A conversa não está mais no CRM"
+                        texto={
+                          conversaApagada
+                            ? `Foi apagada do CRM em ${hora(conversaApagada.performed_at)}. No celular do corretor nada mudou. Se o lead escrever de novo, a conversa recomeça aqui.`
+                            : `A boas-vindas saiu em ${hora(lead.boasVindas!.em)}, mas a conversa foi apagada do CRM depois. No celular do corretor ela continua. Se o lead escrever de novo, a conversa recomeça aqui.`
+                        }
+                      />
+                    ) : (
+                      <Vazio ilustracao={<IlustraConversa />} titulo="Nenhuma mensagem ainda" texto="Quando o lead escrever no WhatsApp do corretor, a conversa aparece aqui." />
+                    ))}
                 </div>
               </Cartao>
               )}
@@ -990,10 +1032,18 @@ export default async function LeadPage({
                   )}
                 <div className="mt-4 flex items-center justify-between gap-3 border-t border-[#e7eef2] pt-4">
                   <p className="flex items-center gap-2.5 text-[14px] text-[#34566b]">
-                    {lead.lembretesDesligados ? <BellSlash className="size-5 text-[#5b7284]" /> : <Bell className="size-5 text-[#2a7ca8]" />}
-                    {lead.lembretesDesligados ? "Avisos desligados" : "OPA Lembretes avisa nos prazos"}
+                    {lead.lembretesDesligados || !temPrazoDeResposta({ origem: lead.origem }) ? (
+                      <BellSlash className="size-5 text-[#5b7284]" />
+                    ) : (
+                      <Bell className="size-5 text-[#2a7ca8]" />
+                    )}
+                    {lead.lembretesDesligados
+                      ? "Avisos desligados"
+                      : temPrazoDeResposta({ origem: lead.origem })
+                        ? "OPA Lembretes avisa nos prazos"
+                        : "Sem prazo de resposta: não veio do site nem de formulário"}
                   </p>
-                  {(gestorDaTela || lead.proprio || lead.lembretesDesligados) && (
+                  {temPrazoDeResposta({ origem: lead.origem }) && (gestorDaTela || lead.proprio || lead.lembretesDesligados) && (
                     <FormComRetorno action={alternarLembretes} sucesso={lead.lembretesDesligados ? "Avisos ligados." : "Avisos desligados."}>
                       <input type="hidden" name="leadId" value={lead.id} />
                       <BotaoEnvio className="inline-flex h-11 items-center gap-1.5 rounded-full bg-[#eef3f6] px-4 text-[13px] font-semibold text-[#0a2d40] hover:bg-[#e7f0f5]">
@@ -1328,6 +1378,46 @@ export default async function LeadPage({
         {aba === "historico" && (
           <Cartao bloco>
             <TituloBloco icone={ClockCounterClockwise} titulo="Histórico" sub="Tudo o que aconteceu com este negócio, do mais novo ao mais antigo" />
+            {/* O atendimento em quatro respostas: quando entrou, com quem está, quanto levou a resposta e se trocou de corretor. */}
+            <dl className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+              {(
+                [
+                  [UserPlus, "claro", "Entrou", hora(atendimento.resumo.entrouEm), atendimento.resumo.entrada, "bg-[#f2f6f9]"],
+                  [
+                    UserCircle,
+                    "claro",
+                    "Corretor",
+                    atendimento.resumo.corretorAtual,
+                    atendimento.resumo.primeiroCorretor !== atendimento.resumo.corretorAtual ? `Começou com ${atendimento.resumo.primeiroCorretor}` : "Desde a entrada",
+                    "bg-[#f2f6f9]",
+                  ],
+                  atendimento.resumo.resposta
+                    ? [Check, "ok", "Primeira resposta", tempoGasto(atendimento.resumo.resposta.minutos), `${atendimento.resumo.resposta.quem}, ${atendimento.resumo.resposta.como}`, "bg-[#e9f6ef]"]
+                    : atendimento.resumo.semRespostaMin !== null
+                      ? [Timer, "aviso", "Primeira resposta", "Sem resposta", `Espera há ${tempoGasto(atendimento.resumo.semRespostaMin)}`, "bg-[#fdf0e6]"]
+                      : [Timer, "claro", "Primeira resposta", "Não registrada", "Negócio encerrado sem resposta anotada", "bg-[#f2f6f9]"],
+                  atendimento.resumo.repasses.length
+                    ? [
+                        ArrowsClockwise,
+                        "aviso",
+                        "Repasses",
+                        String(atendimento.resumo.repasses.length),
+                        atendimento.resumo.repasses.map((r) => `${r.de} para ${r.para}`).join("; "),
+                        "bg-[#fdf0e6]",
+                      ]
+                    : [ArrowsClockwise, "claro", "Repasses", "Nenhum", "Não trocou de corretor por prazo", "bg-[#f2f6f9]"],
+                ] as Array<[Icone, "claro" | "ok" | "aviso", string, string, string, string]>
+              ).map(([I, tom, rotulo, valor, apoio, fundo]) => (
+                <div key={rotulo} className={cn("flex min-w-0 flex-col gap-2 rounded-[20px] p-4", fundo)}>
+                  <IconeRedondo icone={I} tom={tom} tamanho="sm" className={tom === "claro" ? "bg-white" : undefined} />
+                  <dt className="text-[12px] font-semibold text-[#5b7284]">{rotulo}</dt>
+                  <dd className="min-w-0">
+                    <span className="block truncate text-[18px] font-semibold tracking-[-0.01em] text-[#0a2d40]">{valor}</span>
+                    <span className="mt-0.5 block text-[12px] text-[#5b7284]">{apoio}</span>
+                  </dd>
+                </div>
+              ))}
+            </dl>
             <ol className="mt-6 flex flex-col">
               {historico.map((h, i) => {
                 const [I, tom] = ICONE_HISTORICO[h.tipo] ?? ICONE_HISTORICO.atividade!;
@@ -1336,8 +1426,9 @@ export default async function LeadPage({
                     {i < historico.length - 1 && <span className="absolute left-5 top-11 h-[calc(100%-2.75rem)] w-px bg-[#e1eaf0]" aria-hidden />}
                     <IconeRedondo icone={I} tom={tom} />
                     <div className="min-w-0 pt-1">
-                      <p className="text-[14px] text-[#0a2d40]">{h.texto}</p>
-                      <p className="mt-0.5 text-[12px] text-[#5b7284]">{hora(h.em)}</p>
+                      <p className="text-[14px] font-medium text-[#0a2d40]">{h.texto}</p>
+                      {h.detalhe && <p className="mt-0.5 text-[13px] text-[#34566b]">{h.detalhe}</p>}
+                      <p className="mt-0.5 text-[12px] text-[#5b7284]">{h.tipo === "sem_resposta" ? "agora" : hora(h.em)}</p>
                     </div>
                   </li>
                 );

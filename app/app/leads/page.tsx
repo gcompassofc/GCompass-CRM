@@ -3,11 +3,14 @@ import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { carregarEquipe, carregarImoveis, carregarLeads, chaveOrigem, filtrarCorretor, ROTULO_ORIGEM, rotuloOrigem, type LeadOpa } from "@/lib/opa/dados";
+import { montarHistorico, tempoGasto, type AtividadeDoLead } from "@/lib/opa/historico";
+import { carregarRespostasDosLeads } from "@/lib/opa/inicio";
 import { createClient } from "@/lib/supabase/server";
 import {
   ArrowsClockwise,
   BellSlash,
   ChatCircle,
+  Check,
   DownloadSimple,
   Fire,
   Globe,
@@ -21,6 +24,7 @@ import {
   Snowflake,
   Target,
   Thermometer,
+  Timer,
   UserPlus,
   UsersThree,
   WhatsappLogo,
@@ -119,6 +123,45 @@ export default async function LeadsPage({
   const paginas = Math.max(1, Math.ceil(lista.length / POR_PAGINA));
   const pagina = Math.min(paginas, Math.max(1, Number.parseInt(paginaBruta ?? "1", 10) || 1));
   const visiveis = lista.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
+
+  // O atendimento de cada lead da página (10/11/2026): com quem começou, quanto levou a
+  // primeira resposta e se trocou de corretor. Mesma regra da aba Histórico da ficha
+  // (lib/opa/historico.ts). Só os 50 da página: duas consultas, não uma por lead.
+  const idsVisiveis = visiveis.map((l) => l.id);
+  const [respostas, { data: trocasBrutas }] = await Promise.all([
+    carregarRespostasDosLeads(org.orgId, idsVisiveis),
+    idsVisiveis.length
+      ? supabase
+          .from("crm_lead_activities")
+          .select("lead_id, type, payload, performed_at, reason")
+          .eq("organization_id", org.orgId)
+          .in("lead_id", idsVisiveis)
+          .in("type", ["lead_repassado", "dono_trocado", "etapa_automatica", "respondido", "ligacao"])
+      : Promise.resolve({ data: [] }),
+  ]);
+  const atividadesPorLead = new Map<string, AtividadeDoLead[]>();
+  for (const a of (trocasBrutas ?? []) as Array<AtividadeDoLead & { lead_id: string }>) {
+    atividadesPorLead.set(a.lead_id, [...(atividadesPorLead.get(a.lead_id) ?? []), a]);
+  }
+  const atendimentoDe = new Map(
+    visiveis.map((l) => {
+      const r = respostas.get(l.id);
+      return [
+        l.id,
+        montarHistorico({
+          criadoEm: l.criadoEm,
+          entrada: rotuloOrigem(l.origem, "nova entrada"),
+          donoAtualId: l.donoId,
+          aberto: l.status === "open",
+          atividades: atividadesPorLead.get(l.id) ?? [],
+          primeiraSaidaEm: r?.resposta ? new Date(r.resposta).toISOString() : null,
+          nomeDe: (pessoaId) => (equipe.get(pessoaId ?? "")?.nome ?? "").trim().split(/\s+/)[0] || "alguém que saiu da equipe",
+        }).resumo,
+      ] as const;
+    }),
+  );
+  const diaEHora = (iso: string) =>
+    new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "America/Sao_Paulo" }).format(new Date(iso));
   const esperando = base.filter((l) => l.conversa?.esperandoMin != null).length;
   const offMarket = base.filter((l) => l.offMarket !== null).length;
   const link = (a: string, pg = 1) => {
@@ -154,6 +197,8 @@ export default async function LeadsPage({
             const temp = TEMPERATURA[l.copiloto.temperatura ?? ""];
             const espera = l.conversa?.esperandoMin != null;
             const etapas = etapasDoFunil.get(l.pipelineId) ?? [];
+            const at = atendimentoDe.get(l.id);
+            const ultimoRepasse = at?.repasses.at(-1);
             return (
               <li key={l.id} data-linha-lead className="group flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[22px] px-2 py-3 transition-colors hover:bg-[#f2f6f9] md:flex-nowrap">
                 <MarcarLead id={l.id} nome={l.nome} />
@@ -207,16 +252,37 @@ export default async function LeadsPage({
                     </Chip>
                   ) : null}
                 </div>
+                {/* Primeira resposta: o tempo que levou, ou há quanto tempo o lead espera (âmbar). */}
+                <div className="hidden w-[150px] shrink-0 lg:block">
+                  {at?.resposta ? (
+                    <span title={`${at.resposta.quem} respondeu, ${at.resposta.como}`}>
+                      <Chip icone={Check} tom="ok">
+                        Respondeu em {tempoGasto(at.resposta.minutos)}
+                      </Chip>
+                    </span>
+                  ) : at?.semRespostaMin != null ? (
+                    <Chip icone={Timer} tom="aviso">
+                      Sem resposta há {tempoGasto(at.semRespostaMin)}
+                    </Chip>
+                  ) : null}
+                </div>
+                {/* Com quem está, pelo nome; se veio de outro corretor por prazo, de quem. */}
                 {gestor && (
-                  <span title={dono?.nome ?? "Sem corretor"} className="hidden shrink-0 md:block">
-                    <Avatar texto={dono?.iniciais ?? "?"} foto={dono?.foto} tom="acao" className="size-8 text-[11px]" />
+                  <span title={dono?.nome ?? "Sem corretor"} className="hidden shrink-0 items-center gap-2 md:flex xl:w-[132px]">
+                    <Avatar texto={dono?.iniciais ?? "?"} foto={dono?.foto} tom="acao" className="size-8 shrink-0 text-[11px]" />
+                    <span className="hidden min-w-0 xl:block">
+                      <span className="block truncate text-[13px] font-medium text-[#0a2d40]">{at?.corretorAtual ?? "Sem corretor"}</span>
+                      {ultimoRepasse && (
+                        <span className="flex items-center gap-1 truncate text-[11px] text-[#a4410e]">
+                          <ArrowsClockwise className="size-3 shrink-0" aria-hidden /> veio de {ultimoRepasse.de}
+                        </span>
+                      )}
+                    </span>
                   </span>
                 )}
-                {gestor && (
-                  <span className="hidden w-20 shrink-0 text-right text-[12px] tabular-nums text-[#5b7284] 2xl:block">
-                    {new Date(l.criadoEm).toLocaleDateString("pt-BR", { day: "2-digit", month: "short", timeZone: "America/Sao_Paulo" }).replace(".", "")}
-                  </span>
-                )}
+                <span className="hidden w-[92px] shrink-0 text-right text-[12px] tabular-nums text-[#5b7284] xl:block" title="Quando entrou">
+                  {diaEHora(l.criadoEm).replace(",", "")}
+                </span>
               </li>
             );
           })}
@@ -252,7 +318,7 @@ export default async function LeadsPage({
 
   return (
     <>
-      <CabecalhoOpa titulo={gestor ? "Leads" : "Meus leads"} subtitulo="Toque num lead para ver o resumo e o próximo passo" icone={UserPlus} semBusca />
+      <CabecalhoOpa titulo={gestor ? "Leads" : "Meus leads"} subtitulo="Todos os leads em lista: etapa, corretor, quando entrou e o tempo da primeira resposta" icone={UserPlus} semBusca />
       <CorpoOpa>
         <AtualizaSozinho />
         {/* A busca da lista: filtra aqui mesmo. A do topo procura em tudo e faz ações. */}
@@ -351,7 +417,10 @@ export default async function LeadsPage({
             <Lock weight="fill" className="size-3.5" /> off market
           </span>
           <span className="inline-flex items-center gap-1">
-            <ArrowsClockwise className="size-3.5" /> voltou por outro formulário
+            <ArrowsClockwise className="size-3.5" /> voltou por outro formulário, ou veio de outro corretor por prazo
+          </span>
+          <span className="inline-flex items-center gap-1">
+            <Check className="size-3.5" /> tempo da primeira resposta
           </span>
           <span className="inline-flex items-center gap-1">
             <BellSlash className="size-3.5" /> lembretes desligados
