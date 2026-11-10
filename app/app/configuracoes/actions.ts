@@ -108,22 +108,34 @@ export async function alternarBoasVindas() {
   await gravar(orgId, { boas_vindas: { ...config.boas_vindas, ligada: !config.boas_vindas.ligada } });
 }
 
-/** Como cada corretor assina a boas-vindas (uma palavra, sem travessão). */
+/** Quebras de linha guardadas (até um parágrafo em branco), sem espaço sobrando. */
+function textoEmParagrafos(v: string): string {
+  return v.replace(/\r\n?/g, "\n").replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/** Como cada corretor assina a boas-vindas (uma palavra, sem travessão) e o texto próprio dele. */
 export async function salvarAssinaturas(formData: FormData) {
   const { orgId, config } = await gestor();
   const assinaturas: Record<string, string> = {};
+  const modelos: Record<string, string> = { ...(config.boas_vindas.modelos ?? {}) };
   for (const [k, v] of formData.entries()) {
-    if (!k.startsWith("assina_")) continue;
-    const nome = String(v).trim().replace(/[\u2013\u2014]/g, "").slice(0, 40);
-    if (nome) assinaturas[k.slice(7)] = nome;
+    if (k.startsWith("assina_")) {
+      const nome = String(v).trim().replace(/[\u2013\u2014]/g, "").slice(0, 40);
+      if (nome) assinaturas[k.slice(7)] = nome;
+    } else if (k.startsWith("texto_")) {
+      const t = textoEmParagrafos(String(v));
+      if (t.length > 600) throw new Error("Texto próprio com até 600 caracteres.");
+      if (/[\u2013\u2014]/.test(t)) throw new Error("Sem travessão: use vírgula, ponto ou dois-pontos.");
+      modelos[k.slice(6)] = t;
+    }
   }
-  await gravar(orgId, { boas_vindas: { ...config.boas_vindas, assinaturas } });
+  await gravar(orgId, { boas_vindas: { ...config.boas_vindas, assinaturas, modelos } });
 }
 
 /** Texto da boas-vindas. Vazio volta ao texto da casa. */
 export async function salvarModeloBoasVindas(formData: FormData) {
   const { orgId, config } = await gestor();
-  const modelo = texto(formData, "modelo").replace(/\s*\r?\n+\s*/g, " ");
+  const modelo = textoEmParagrafos(texto(formData, "modelo"));
   if (modelo.length > 600) throw new Error("Texto com até 600 caracteres.");
   if (/[\u2013\u2014]/.test(modelo)) throw new Error("Sem travessão: use vírgula, ponto ou dois-pontos.");
   await gravar(orgId, { boas_vindas: { ...config.boas_vindas, modelo } });

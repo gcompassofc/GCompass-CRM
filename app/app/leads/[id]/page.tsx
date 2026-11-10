@@ -35,6 +35,7 @@ import { SeloLendo } from "./_lendo";
 import { MontarSelecao } from "./_selecao";
 import { RegistrarLigacao } from "./_ligacao";
 import { proximaMensagem } from "@/lib/opa/mensagens";
+import { modeloDoCorretor, montarBoasVindas } from "@/lib/opa/boas-vindas-texto";
 import { createClient } from "@/lib/supabase/server";
 import {
   CaretDown,
@@ -329,7 +330,20 @@ export default async function LeadPage({
 
   const dono = equipe.get(lead.donoId ?? "");
   const feitos = diagnosticoCompleto(lead.campos);
+  const assinatura = dono ? config.boas_vindas.assinaturas[dono.id]?.trim() : "";
+  const primeiroContato = dono
+    ? montarBoasVindas({
+        modelo: modeloDoCorretor(config.boas_vindas, dono.id, [dono.nome, assinatura]),
+        nomeLead: lead.nome,
+        corretor: assinatura || dono.nome,
+        imovelCodigo: entrada?.codigo ?? lead.imovelCodigo,
+        bairro: entrada?.bairro ?? null,
+        canal: lead.origem?.canal === "site" ? "site" : "meta",
+        publicado: true,
+      })
+    : null;
   const modelo = proximaMensagem({
+    primeiroContato,
     nome: lead.nome,
     corretor: primeiroNome(dono?.nome) || "o corretor",
     etapa: lead.etapa.slug,

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { MODELO_ANTERIOR, montarBoasVindas, tipoDoImovel } from "./boas-vindas-texto";
+import { MODELO_09_11, MODELO_ANTERIOR, MODELO_LUANA, modeloDoCorretor, montarBoasVindas, textoProprioNaTela, tipoDoImovel } from "./boas-vindas-texto";
 import { camposDoCorretorDasRespostas, diagnosticoDasRespostas, lerRespostas, soOQueFalta } from "./formulario";
 
 describe("respostas do formulário", () => {
@@ -47,51 +47,42 @@ describe("respostas do formulário", () => {
 });
 
 describe("boas-vindas", () => {
-  it("texto de 09/11: imóvel com bairro e código, o que o formulário disse e a pergunta da visita", () => {
+  const CASA = (nome: string, corretor: string, onde: string) =>
+    `Oi, ${nome}, tudo bem?\n\nAqui é o ${corretor}, da OPA Imóveis, em Ilhabela.\n\nRecebi a mensagem sobre seu interesse ${onde} e resolvi entrar em contato diretamente.\n\nQuando seria um bom momento para conversarmos por telefone? Podemos falar por uns 10 minutinhos para eu entender melhor o que você está buscando.\n\nUm abraço\n${corretor}`;
+
+  it("texto da casa de 10/11: parágrafos, imóvel com bairro, assinatura no fim", () => {
     expect(
-      montarBoasVindas({
-        nomeLead: "marlene souza",
-        corretor: "Cristian Spengler",
-        imovelCodigo: "CA006779",
-        bairro: "Siriúba",
-        canal: "meta",
-        publicado: true,
-        respostas: { relacao: "ja_vim_algumas", finalidade: "moradia_veraneio" },
-      }),
-    ).toBe(
-      "Oi Marlene, tudo bem? Aqui é Cristian, da OPA. A casa do Siriúba, código CA006779, está disponível. Vi no formulário que você já veio algumas vezes a Ilhabela e busca casa para morar ou passar temporadas. Para eu te ajudar melhor: você já tem uma data em mente para vir conhecer?",
+      montarBoasVindas({ nomeLead: "marlene souza", corretor: "Cristian Spengler", imovelCodigo: "CA006779", bairro: "Siriúba", canal: "meta", publicado: true }),
+    ).toBe(CASA("Marlene", "Cristian", "na casa do Siriúba"));
+    expect(montarBoasVindas({ nomeLead: "Ana", corretor: "Marco", imovelCodigo: "CA1", bairro: "Barra Velha", canal: "meta", publicado: true })).toContain(
+      "interesse na casa da Barra Velha e",
     );
   });
 
-  it("sem resposta do formulário, a frase some; aceita o texto que a ficha mostra", () => {
-    expect(montarBoasVindas({ nomeLead: "Aristides", corretor: "Marco", imovelCodigo: "CA006944", bairro: "Barra Velha", canal: "meta", publicado: true })).toBe(
-      "Oi Aristides, tudo bem? Aqui é Marco, da OPA. A casa da Barra Velha, código CA006944, está disponível. Para eu te ajudar melhor: você já tem uma data em mente para vir conhecer?",
+  it("apartamento, sem bairro, sem nome", () => {
+    expect(montarBoasVindas({ nomeLead: "", corretor: "Paulo", imovelCodigo: "AP001", canal: "site", publicado: false })).toBe(
+      CASA("", "Paulo", "no apartamento que você viu no site").replace("Oi, , tudo bem?", "Oi, tudo bem?"),
     );
-    expect(
-      montarBoasVindas({ nomeLead: "Ana", corretor: "Luana", imovelCodigo: "AP001", bairro: "Perequê", canal: "site", publicado: true, respostas: { finalidade: "Investimento" } }),
-    ).toContain("Vi no formulário que você busca apartamento para investir.");
-    expect(
-      montarBoasVindas({ nomeLead: "Ana", corretor: "Luana", imovelCodigo: "AP001", canal: "site", publicado: true, respostas: { finalidade: "ainda_nao_sei", relacao: "Nunca vim" } }),
-    ).toContain("Vi no formulário que você ainda não conhece Ilhabela. Para");
-    expect(montarBoasVindas({ nomeLead: "Ana", corretor: "Luana", imovelCodigo: "CA1", bairro: "Água Branca", canal: "meta", publicado: true })).toContain("A casa da Água Branca");
+    expect(montarBoasVindas({ nomeLead: "Ana", corretor: "Paulo", imovelCodigo: null, canal: "meta", publicado: true })).toContain("interesse no imóvel do anúncio e");
   });
 
-  it("sem bairro e imóvel fora do ar; sem nome", () => {
-    expect(montarBoasVindas({ nomeLead: "", corretor: "Luana", imovelCodigo: "AP001", canal: "site", publicado: false })).toBe(
-      "Oi, tudo bem? Aqui é Luana, da OPA. O apartamento que você viu no site, código AP001, saiu do site, mas tenho opções parecidas. Para eu te ajudar melhor: você já tem uma data em mente para vir conhecer?",
-    );
+  it("conta salva com um texto antigo passa a usar o novo", () => {
+    for (const modelo of [MODELO_ANTERIOR, MODELO_09_11]) {
+      expect(montarBoasVindas({ modelo, nomeLead: "Ana", corretor: "Paulo", imovelCodigo: "CA1", bairro: "Curral", canal: "meta", publicado: true })).toBe(
+        CASA("Ana", "Paulo", "na casa do Curral"),
+      );
+    }
   });
 
-  it("sem código, o trecho do código some", () => {
-    expect(montarBoasVindas({ nomeLead: "Ana", corretor: "Luana", imovelCodigo: null, canal: "meta", publicado: true })).toBe(
-      "Oi Ana, tudo bem? Aqui é Luana, da OPA. O imóvel do anúncio está disponível. Para eu te ajudar melhor: você já tem uma data em mente para vir conhecer?",
-    );
-  });
-
-  it("conta salva com o modelo antigo passa a usar o novo", () => {
-    expect(
-      montarBoasVindas({ modelo: MODELO_ANTERIOR, nomeLead: "Ana", corretor: "Luana", imovelCodigo: "CA1", bairro: "Curral", canal: "meta", publicado: true }),
-    ).toContain("A casa do Curral, código CA1, está disponível.");
+  it("a Luana tem o texto dela; texto próprio salvo manda; vazio salvo volta ao da casa", () => {
+    const bv = { modelo: "", modelos: {} as Record<string, string> };
+    expect(modeloDoCorretor(bv, "l1", ["Luana Machado", undefined])).toBe(MODELO_LUANA);
+    expect(montarBoasVindas({ modelo: MODELO_LUANA, nomeLead: "Ana", corretor: "Luana", imovelCodigo: "CA1", canal: "meta", publicado: true })).toBe(MODELO_LUANA);
+    expect(modeloDoCorretor(bv, "c1", ["Cristian Spengler", ""])).toBe("");
+    expect(modeloDoCorretor({ modelo: "", modelos: { c1: "Olá {primeiro_nome}" } }, "c1", ["Cristian"])).toBe("Olá {primeiro_nome}");
+    expect(modeloDoCorretor({ modelo: "", modelos: { l1: "" } }, "l1", ["Luana Machado"])).toBe("");
+    expect(textoProprioNaTela(bv, "l1", ["Luana Machado"])).toBe(MODELO_LUANA);
+    expect(textoProprioNaTela(bv, "c1", ["Cristian"])).toBe("");
   });
 
   it("tipo pelo prefixo do código", () => {
@@ -99,9 +90,9 @@ describe("boas-vindas", () => {
     expect(tipoDoImovel(null)).toBe("O imóvel");
   });
 
-  it("modelo do gestor, em uma linha", () => {
+  it("modelo do gestor guarda as quebras de linha", () => {
     expect(montarBoasVindas({ modelo: "Olá {primeiro_nome}!\nSou {corretor}.", nomeLead: "Ana", corretor: "paulo martin", imovelCodigo: null, canal: "meta", publicado: true })).toBe(
-      "Olá Ana! Sou Paulo.",
+      "Olá Ana!\nSou Paulo.",
     );
   });
 });

@@ -35,6 +35,8 @@ export function proximaMensagem(args: {
   offMarket?: "comprador" | "proprietario" | null;
   /** Imóvel pelo qual o lead que já tinha dono acabou de voltar. */
   voltouCom?: Imovel | null;
+  /** O primeiro contato já montado com o texto padrão do corretor (o mesmo da boas-vindas). */
+  primeiroContato?: string | null;
 }): MensagemSugerida {
   const primeiro = args.nome.split(" ")[0] ?? args.nome;
   const reservado = args.offMarket === "comprador";
@@ -51,6 +53,10 @@ export function proximaMensagem(args: {
     };
   }
   const faltando = (Object.keys(PERGUNTAS) as Array<keyof typeof PERGUNTAS>).filter((k) => !args.campos[k]);
+
+  if (args.etapa === "lead-recebido" && args.primeiroContato) {
+    return { motivo: "Primeiro contato: o texto padrão do corretor.", texto: args.primeiroContato };
+  }
 
   if (args.etapa === "lead-recebido") {
     const im = args.imovelEntrada;

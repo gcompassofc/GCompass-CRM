@@ -84,12 +84,14 @@ export async function executarRemocao(
   const tirar = (ids: string[]) => ids.filter((id) => id !== alvo);
   const assinaturas = { ...config.boas_vindas.assinaturas };
   delete assinaturas[alvo];
+  const modelos = { ...(config.boas_vindas.modelos ?? {}) };
+  delete modelos[alvo];
   await salvarConfig(admin, orgId, {
     roleta: tirar(config.roleta),
     roleta_pausados: tirar(config.roleta_pausados),
     roleta_ultimo: config.roleta_ultimo === alvo ? null : config.roleta_ultimo,
     captacao: { ...config.captacao, ordem: tirar(config.captacao.ordem) },
-    boas_vindas: { ...config.boas_vindas, assinaturas },
+    boas_vindas: { ...config.boas_vindas, assinaturas, modelos },
   });
 
   // 3. WhatsApp pessoal desconectado e arquivado (o histórico fica).

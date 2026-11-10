@@ -24,7 +24,7 @@ import type { createAdminClient } from "@/lib/supabase/admin";
 import { env } from "@/lib/env";
 
 import { avisarPessoa, carregarCanalDeAvisos } from "./aviso-whatsapp";
-import { montarBoasVindas } from "./boas-vindas-texto";
+import { modeloDoCorretor, montarBoasVindas } from "./boas-vindas-texto";
 import { mesclarCampos } from "./campos";
 import { carregarConfig } from "./config";
 import { entregarConversaAoDono } from "./conversa-do-lead";
@@ -115,7 +115,8 @@ export async function enviarBoasVindas(admin: Admin, orgId: string, leadId: stri
 
   const dono = lead.owner_user_id;
   // Assinatura escolhida em Configurações (Paulo Martin assina "Martin"); sem ela, o primeiro nome do perfil.
-  const corretor = config.boas_vindas.assinaturas[dono]?.trim() || (await nomeDaPessoa(admin, dono)) || "corretor";
+  const nomePerfil = await nomeDaPessoa(admin, dono);
+  const corretor = config.boas_vindas.assinaturas[dono]?.trim() || nomePerfil || "corretor";
   const primeiro = corretor.split(/\s+/)[0]!;
   const tentativa = new Date().toISOString();
   const falhou = async (motivo: string, registrarNoLead = true): Promise<ResultadoBoasVindas> => {
@@ -167,7 +168,7 @@ export async function enviarBoasVindas(admin: Admin, orgId: string, leadId: stri
   const resposta = (k: string) => respostas.find((r) => r.chave === k)?.resposta ?? null;
   const canal = (cf.origem as { canal?: string } | undefined)?.canal === "site" ? "site" : "meta";
   const texto = montarBoasVindas({
-    modelo: config.boas_vindas.modelo,
+    modelo: modeloDoCorretor(config.boas_vindas, dono, [nomePerfil, config.boas_vindas.assinaturas[dono]]),
     nomeLead: lead.contacts?.name,
     corretor,
     imovelCodigo: codigo,

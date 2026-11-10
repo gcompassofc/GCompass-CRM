@@ -125,6 +125,8 @@ export interface ConfigOpa {
     modelo: string;
     /** Como cada corretor assina (id -> nome). Vazio = primeiro nome do perfil. Ex.: Paulo Martin assina "Martin". */
     assinaturas: Record<string, string>;
+    /** Texto próprio de cada corretor (id -> texto). Sem chave = regra da casa (a Luana tem o dela); "" = texto da casa. */
+    modelos?: Record<string, string>;
   };
 }
 
@@ -294,7 +296,7 @@ export const PADRAO: ConfigOpa = {
   cruzamento: { pesos: { bairro: 30, preco: 25, suites: 20, atributos: 15, demanda: 10 }, minimo: 60 },
   volta_dias: 90,
   gerente_ve_receita: false,
-  boas_vindas: { ligada: true, modelo: "", assinaturas: {} },
+  boas_vindas: { ligada: true, modelo: "", assinaturas: {}, modelos: {} },
 };
 
 // ---------------------------------------------------------------- leitura e gravação
@@ -312,7 +314,7 @@ export function mesclarConfig(salvo: Partial<ConfigOpa> | null | undefined): Con
       ...(s.cruzamento ?? {}),
       pesos: { ...PADRAO.cruzamento.pesos, ...(s.cruzamento?.pesos ?? {}) },
     },
-    boas_vindas: { ...PADRAO.boas_vindas, ...(s.boas_vindas ?? {}), assinaturas: { ...(s.boas_vindas?.assinaturas ?? {}) } },
+    boas_vindas: { ...PADRAO.boas_vindas, ...(s.boas_vindas ?? {}), assinaturas: { ...(s.boas_vindas?.assinaturas ?? {}) }, modelos: { ...(s.boas_vindas?.modelos ?? {}) } },
   };
 }
 

@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { carregarConfig, type CampoLead, type ConfigOpa, type GrupoEtiqueta } from "@/lib/opa/config";
-import { MODELO_BOAS_VINDAS, montarBoasVindas, VARIAVEIS_BOAS_VINDAS } from "@/lib/opa/boas-vindas-texto";
+import { MODELO_BOAS_VINDAS, montarBoasVindas, textoProprioNaTela, VARIAVEIS_BOAS_VINDAS } from "@/lib/opa/boas-vindas-texto";
 import { carregarEquipe, type Pessoa } from "@/lib/opa/dados";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -416,7 +416,7 @@ function AbaMensagens({ config, equipe }: { config: ConfigOpa; equipe: Map<strin
           </form>
         }
       />
-      <div className="mt-5 rounded-[20px] bg-[#e7f6ee] px-4 py-3 text-[14px] leading-relaxed text-[#0a2d40]">{exemplo}</div>
+      <div className="mt-5 whitespace-pre-line rounded-[20px] bg-[#e7f6ee] px-4 py-3 text-[14px] leading-relaxed text-[#0a2d40]">{exemplo}</div>
       <ul className="mt-4 flex flex-col gap-2 text-[13px] text-[#34566b]">
         <li className="flex items-start gap-2">
           <Info className="mt-0.5 size-4 shrink-0 text-[#2a7ca8]" /> Só para lead novo do formulário do anúncio ou do site. Quem volta, quem já conversa com o corretor e contato particular não recebem.
@@ -430,27 +430,38 @@ function AbaMensagens({ config, equipe }: { config: ConfigOpa; equipe: Map<strin
       </ul>
       {naRoleta.length > 0 && (
         <FormComRetorno action={salvarAssinaturas} sucesso="Assinaturas salvas." className="mt-5 flex flex-col gap-3">
-          <p className="text-[13px] font-semibold text-[#5b7284]">Como cada corretor assina (&ldquo;Aqui é ...&rdquo;)</p>
+          <p className="text-[13px] font-semibold text-[#5b7284]">Como cada corretor assina (&ldquo;Aqui é o ...&rdquo;) e o texto próprio dele</p>
           <ul className="grid gap-2 sm:grid-cols-2">
             {naRoleta.map((p) => (
-              <li key={p.id} className="flex items-center gap-2.5 rounded-[18px] bg-[#f2f6f9] px-3 py-2">
-                <Avatar texto={iniciaisDe(p.nome)} foto={p.foto} tom="claro" />
-                <label className="min-w-0 flex-1">
-                  <span className="block truncate text-[12px] text-[#5b7284]">{p.nome}</span>
-                  <input
-                    name={`assina_${p.id}`}
-                    defaultValue={config.boas_vindas.assinaturas[p.id] ?? ""}
-                    placeholder={p.nome.split(" ")[0]}
-                    maxLength={40}
-                    className="h-9 w-full rounded-full bg-white px-3 text-[14px] font-semibold text-[#0a2d40] outline-none focus:ring-2 focus:ring-[#8fc4dd]"
-                  />
-                </label>
+              <li key={p.id} className="flex flex-col gap-2 rounded-[18px] bg-[#f2f6f9] px-3 py-2">
+                <div className="flex items-center gap-2.5">
+                  <Avatar texto={iniciaisDe(p.nome)} foto={p.foto} tom="claro" />
+                  <label className="min-w-0 flex-1">
+                    <span className="block truncate text-[12px] text-[#5b7284]">{p.nome}</span>
+                    <input
+                      name={`assina_${p.id}`}
+                      defaultValue={config.boas_vindas.assinaturas[p.id] ?? ""}
+                      placeholder={p.nome.split(" ")[0]}
+                      maxLength={40}
+                      className="h-9 w-full rounded-full bg-white px-3 text-[14px] font-semibold text-[#0a2d40] outline-none focus:ring-2 focus:ring-[#8fc4dd]"
+                    />
+                  </label>
+                </div>
+                <textarea
+                  name={`texto_${p.id}`}
+                  aria-label={`Texto próprio de ${p.nome}`}
+                  rows={3}
+                  maxLength={600}
+                  defaultValue={textoProprioNaTela(config.boas_vindas, p.id, [p.nome, config.boas_vindas.assinaturas[p.id]])}
+                  placeholder="Vazio usa o texto da casa"
+                  className="w-full resize-y rounded-[14px] bg-white px-3 py-2 text-[13px] text-[#0a2d40] outline-none placeholder:text-[#8aa0ae] focus:ring-2 focus:ring-[#8fc4dd]"
+                />
               </li>
             ))}
           </ul>
           <div>
             <button type="submit" className={botaoPrimario}>
-              Salvar assinaturas
+              Salvar assinaturas e textos
             </button>
           </div>
         </FormComRetorno>
@@ -462,7 +473,7 @@ function AbaMensagens({ config, equipe }: { config: ConfigOpa; equipe: Map<strin
         <textarea
           id="modelo-boas-vindas"
           name="modelo"
-          rows={4}
+          rows={9}
           maxLength={600}
           defaultValue={config.boas_vindas.modelo}
           placeholder={MODELO_BOAS_VINDAS}
