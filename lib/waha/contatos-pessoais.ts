@@ -45,6 +45,7 @@ import {
   type Situacao,
 } from "@/lib/opa/contatos-whatsapp";
 import { avisarLeadDeOutroCorretor } from "@/lib/opa/aviso-outro-corretor";
+import { chaveDoTelefone } from "@/lib/opa/aviso-whatsapp";
 import { entregarConversaAoDono } from "@/lib/opa/conversa-do-lead";
 import { registrarLeadDoContato } from "@/lib/opa/entrada";
 import { avisarMudancaDeEtapa } from "@/lib/opa/eventos-lead";
@@ -398,6 +399,26 @@ export async function filtrarEventoDoCorretor(
   return { acao: "seguir", registrarCorpo: false };
 }
 
+/**
+ * Os números de WhatsApp da própria empresa (OPA Lembretes e o de cada corretor), pela
+ * chave DDD + 8 últimos dígitos. Guardado por um minuto: é consultado a cada mensagem.
+ */
+const equipePorOrg = new Map<string, { em: number; numeros: Set<string> }>();
+const EQUIPE_VALE_MS = 60_000;
+
+export async function numerosDaEquipe(admin: Admin, orgId: string, agora = Date.now()): Promise<Set<string>> {
+  const guardado = equipePorOrg.get(orgId);
+  if (guardado && agora - guardado.em < EQUIPE_VALE_MS) return guardado.numeros;
+  const { data, error } = await admin.from("channel_sessions").select("phone_number").eq("organization_id", orgId).is("archived_at", null);
+  // Sem conseguir ler, não descarta nada: melhor um contato a classificar do que perder um lead.
+  if (error) return guardado?.numeros ?? new Set();
+  const numeros = new Set(
+    ((data ?? []) as Array<{ phone_number: string | null }>).map((s) => chaveDoTelefone(s.phone_number)).filter((c): c is string => Boolean(c)),
+  );
+  equipePorOrg.set(orgId, { em: agora, numeros });
+  return numeros;
+}
+
 /** Mensagem mais velha que isto é reentrega (número reconectou), não contato de agora. */
 const AVISO_SO_MENSAGEM_RECENTE_MS = 10 * 60_000;
 
@@ -434,6 +455,14 @@ async function filtrarMensagem(admin: Admin, sessao: SessaoDoCorretor, p: WahaPa
   const direcao = daMensagem.direcao;
   let chatId = daMensagem.chatId;
   if (chatIgnorado(chatId)) return { acao: "descartar", motivo: "grupo, status ou canal" };
+  // Número da própria equipe (o OPA Lembretes e os outros corretores) nunca é lead nem
+  // contato a classificar (10/11/2026): os avisos do OPA Lembretes levam o link do CRM,
+  // foram lidos como "mensagem do site" e viraram um lead com o número da própria OPA.
+  // Vem antes de tudo, inclusive de quem já estava marcado como lead por engano.
+  const telefoneDoChat = parseChatId(chatId).phone ?? (parseChatId(chatId).kind === "lid" ? telefoneAlternativo(p, direcao) : null);
+  if (telefoneDoChat && (await numerosDaEquipe(admin, sessao.organization_id)).has(chaveDoTelefone(telefoneDoChat) ?? "")) {
+    return { acao: "descartar", motivo: "número da própria equipe" };
+  }
   let chave = chaveDoChat(sessao.organization_id, chatId);
   // Formato desconhecido: o ingest emite o aviso e não grava. Sem corpo no log.
   if (!chave) return { acao: "seguir", registrarCorpo: false };

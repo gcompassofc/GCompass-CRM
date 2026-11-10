@@ -137,7 +137,9 @@ export interface Sinal {
 }
 
 const CODIGO_IMOVEL = /\b([A-Z]{2}\d{6})\b/;
-const TEXTO_DO_SITE = /(opailhabela\.com\.br|tenho interesse no im[oó]vel|quero saber mais sobre o im[oó]vel)/i;
+// O endereço do CRM (crm.opailhabela.com.br) não é o site: ele vem nos avisos do OPA
+// Lembretes ("Ficha: https://crm..."), e sem esta exceção o aviso virava lead (10/11/2026).
+const TEXTO_DO_SITE = /((?<!crm\.)opailhabela\.com\.br|tenho interesse no im[oó]vel|quero saber mais sobre o im[oó]vel)/i;
 // Em minúsculas: a grafia muda de um motor do WAHA para o outro.
 
 /** "FB_Ads", "ctwa_ad", "ig_ads": o valor diz que veio de anúncio. "contact_card" ou "global_search" não. */

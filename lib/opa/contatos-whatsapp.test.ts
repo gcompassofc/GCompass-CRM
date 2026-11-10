@@ -69,6 +69,13 @@ describe("sinais de anúncio e do site", () => {
     expect(sinalDeEntrada({ body: "Olá! Quero saber mais sobre o imóvel Casa no Perequê." })).toEqual({ origem: "site", imovelCodigo: null });
   });
 
+  it("aviso do OPA Lembretes leva o link do CRM, e isso não é mensagem do site (10/11/2026)", () => {
+    const aviso = "Luana, João Silva espera sua resposta há 20 min.\n\nFicha: https://crm.opailhabela.com.br/app/leads/6caadaf7";
+    expect(sinalDeEntrada({ body: aviso })).toBeNull();
+    // O site continua valendo, com ou sem www.
+    expect(sinalDeEntrada({ body: "vi em www.opailhabela.com.br/imovel/ca006634" })?.origem).toBe("site");
+  });
+
   it("anúncio de clique para o WhatsApp, nas grafias dos dois motores", () => {
     const noweb = { message: { extendedTextMessage: { contextInfo: { conversionSource: "FB_Ads", externalAdReply: { sourceType: "ad", ctwaClid: "abc" } } } } };
     expect(sinalDeEntrada({ body: "oi", _data: noweb })).toEqual({ origem: "campanha", imovelCodigo: null });
