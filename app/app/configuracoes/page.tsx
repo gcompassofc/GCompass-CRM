@@ -849,6 +849,12 @@ function AbaHorario({ config }: { config: ConfigOpa }) {
           <span className="text-[13px] font-semibold text-[#5b7284]">Administração: boas-vindas que não saiu</span>
           <textarea name="admin" rows={3} defaultValue={config.avisos.admin.map((n) => telefoneLegivel(n) ?? n).join("\n")} placeholder="12 99999-0000" className={campoNumeros} />
         </label>
+        <label className={cn("flex flex-col gap-1.5 rounded-[18px] p-3", config.avisos.teste.length ? "bg-[#fdf0e6]" : "bg-transparent p-0")}>
+          <span className="text-[13px] font-semibold text-[#5b7284]">
+            Modo de teste: enquanto houver número aqui, o OPA Lembretes só manda para ele. Todo o resto fica retido.
+          </span>
+          <textarea name="teste" rows={2} defaultValue={config.avisos.teste.map((n) => telefoneLegivel(n) ?? n).join("\n")} placeholder="Vazio = manda para todos" className={campoNumeros} />
+        </label>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Nota>Lista vazia: recebe quem tem o papel de gerente ou administrador, no número que conectou no CRM.</Nota>
           <button type="submit" className={botaoPrimario}>

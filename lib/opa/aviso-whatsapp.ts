@@ -14,9 +14,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { phoneLookupVariants } from "@/lib/channels/phone-variants";
+import { numerosDeAviso } from "@/lib/opa/config";
 import { getWahaClient } from "@/lib/waha/client";
 
-export type ResultadoAviso = "enviado" | "sem_numero" | "sem_sessao" | "erro";
+/** "retido" = modo de teste: o destino não está na lista de teste, então nada saiu (e não sai depois). */
+export type ResultadoAviso = "enviado" | "sem_numero" | "sem_sessao" | "erro" | "retido";
 
 export function semAcento(s: string): string {
   return s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
@@ -31,6 +33,16 @@ export interface CanalDeAvisos {
   telefonePorNome: Map<string, string>;
   /** Quem tem sessão própria (com ou sem número): nunca é achado pelo nome. */
   comSessaoPropria: Set<string>;
+  /**
+   * Modo de teste (Configurações, avisos.teste): com número aqui, o OPA Lembretes só
+   * manda para eles. Vazio = manda para todos.
+   */
+  soPara: string[];
+}
+
+/** No modo de teste, este número pode receber? Fora do teste, todos podem. */
+export function liberadoNoTeste(canal: Pick<CanalDeAvisos, "soPara">, telefone: string | null | undefined): boolean {
+  return canal.soPara.length === 0 || canal.soPara.some((n) => mesmoTelefone(n, telefone));
 }
 
 interface SessaoDoCanal {
@@ -42,7 +54,7 @@ interface SessaoDoCanal {
 }
 
 /** Monta o canal a partir das sessões ativas da org (separado para testar sem banco). */
-export function montarCanalDeAvisos(sessoes: SessaoDoCanal[]): CanalDeAvisos {
+export function montarCanalDeAvisos(sessoes: SessaoDoCanal[], soPara: string[] = []): CanalDeAvisos {
   const lembretes = sessoes.find((s) => s.waha_session_name === "opa-lembretes" && s.status === "WORKING");
   const telefonePorPessoa = new Map<string, string>();
   const comSessaoPropria = new Set<string>();
@@ -62,7 +74,7 @@ export function montarCanalDeAvisos(sessoes: SessaoDoCanal[]): CanalDeAvisos {
   }
   const telefonePorNome = new Map<string, string>();
   for (const [nome, digitos] of porNome) if (digitos) telefonePorNome.set(nome, digitos);
-  return { sessaoLembretes: lembretes?.waha_session_name ?? null, telefonePorPessoa, telefonePorNome, comSessaoPropria };
+  return { sessaoLembretes: lembretes?.waha_session_name ?? null, telefonePorPessoa, telefonePorNome, comSessaoPropria, soPara };
 }
 
 /** O WhatsApp da pessoa: o da sessão dela; pelo nome só se ela não tem sessão própria. */
@@ -81,7 +93,11 @@ export async function carregarCanalDeAvisos(admin: SupabaseClient, orgId: string
     .eq("organization_id", orgId)
     .is("archived_at", null);
   if (error) throw new Error(`carregarCanalDeAvisos: ${error.message}`);
-  return montarCanalDeAvisos((data ?? []) as SessaoDoCanal[]);
+  // A lista de teste vem junto: quem manda pelo canal não precisa lembrar de conferir.
+  const { data: org, error: erroOrg } = await admin.from("organizations").select("settings").eq("id", orgId).maybeSingle();
+  if (erroOrg) throw new Error(`carregarCanalDeAvisos: ${erroOrg.message}`);
+  const teste = (org as { settings: { opa?: { avisos?: { teste?: unknown } } } | null } | null)?.settings?.opa?.avisos?.teste;
+  return montarCanalDeAvisos((data ?? []) as SessaoDoCanal[], numerosDeAviso(teste));
 }
 
 /**
@@ -93,6 +109,7 @@ export async function avisarPessoa(canal: CanalDeAvisos, pessoa: { id: string; n
   if (!canal.sessaoLembretes) return "sem_sessao";
   const telefone = telefoneDaPessoa(canal, pessoa);
   if (!telefone) return "sem_numero";
+  if (!liberadoNoTeste(canal, telefone)) return "retido";
   const waha = getWahaClient();
   if (!waha) return "sem_sessao";
   try {
@@ -182,6 +199,7 @@ async function enderecoDoNumero(sessao: string, telefone: string): Promise<strin
 /** Manda o aviso ao destino. Nunca lança; "erro" = o WhatsApp não confirmou (não reenviar sozinho). */
 export async function avisarDestino(canal: CanalDeAvisos, d: Destino, texto: string): Promise<ResultadoAviso> {
   if (!d.telefone) return d.userId ? avisarPessoa(canal, { id: d.userId, nome: d.nome ?? "" }, texto) : "sem_numero";
+  if (!liberadoNoTeste(canal, d.telefone)) return "retido";
   if (!canal.sessaoLembretes) return "sem_sessao";
   const waha = getWahaClient();
   if (!waha) return "sem_sessao";

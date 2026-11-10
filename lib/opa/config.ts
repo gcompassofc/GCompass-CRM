@@ -133,9 +133,27 @@ export interface ConfigOpa {
    * Só dígitos, com 55. Lista vazia = regra antiga: quem tem o papel de gerente
    * (ou administrador), pelo número que a pessoa conectou no CRM.
    *  - gestor: repasse, escalada, negócio parado e prazo das Captações do Radar;
-   *  - admin: boas-vindas que não saiu.
+   *  - admin: boas-vindas que não saiu;
+   *  - teste: enquanto houver número aqui, o OPA Lembretes SÓ manda para eles (avisos,
+   *    lembretes, código de entrada e respostas do assistente). Todo o resto fica
+   *    retido e não é reenviado depois. Vazio = funcionamento normal.
    */
-  avisos: { gestor: string[]; admin: string[] };
+  avisos: { gestor: string[]; admin: string[]; teste: string[] };
+  /**
+   * Assistente no número OPA Lembretes (10/11/2026): a equipe pergunta pelo WhatsApp e
+   * o CRM responde (lib/opa/assistente). Só responde a quem está em `numeros`; quem
+   * não está não recebe resposta nenhuma. `usuario` liga o número a uma pessoa do CRM
+   * (para "meus leads"); sem ele, administrador e gestor veem a equipe toda.
+   */
+  assistente: { ligado: boolean; numeros: NumeroDoAssistente[] };
+}
+
+export interface NumeroDoAssistente {
+  /** Só dígitos, com 55. */
+  numero: string;
+  nome: string;
+  papel: "admin" | "manager" | "agent";
+  usuario?: string | null;
 }
 
 // ---------------------------------------------------------------- padrões do protótipo
@@ -305,8 +323,23 @@ export const PADRAO: ConfigOpa = {
   volta_dias: 90,
   gerente_ve_receita: false,
   boas_vindas: { ligada: true, modelo: "", assinaturas: {}, modelos: {} },
-  avisos: { gestor: [], admin: [] },
+  avisos: { gestor: [], admin: [], teste: [] },
+  assistente: { ligado: false, numeros: [] },
 };
+
+/** Lista limpa de quem fala com o assistente: número válido, nome e papel conhecidos, sem repetir. */
+export function numerosDoAssistente(lista: unknown): NumeroDoAssistente[] {
+  if (!Array.isArray(lista)) return [];
+  const saida: NumeroDoAssistente[] = [];
+  for (const item of lista as Array<Record<string, unknown> | null>) {
+    const numero = numeroDeAviso(String(item?.numero ?? ""));
+    const nome = String(item?.nome ?? "").trim().slice(0, 40);
+    const papel = item?.papel === "admin" || item?.papel === "manager" || item?.papel === "agent" ? item.papel : null;
+    if (!numero || !nome || !papel || saida.some((s) => s.numero === numero)) continue;
+    saida.push({ numero, nome, papel, usuario: typeof item?.usuario === "string" && item.usuario ? item.usuario : null });
+  }
+  return saida;
+}
 
 /** "16 98830-1706" vira "5516988301706". Número que não fecha (10 a 13 dígitos) vira null. */
 export function numeroDeAviso(bruto: string): string | null {
@@ -337,7 +370,8 @@ export function mesclarConfig(salvo: Partial<ConfigOpa> | null | undefined): Con
       pesos: { ...PADRAO.cruzamento.pesos, ...(s.cruzamento?.pesos ?? {}) },
     },
     boas_vindas: { ...PADRAO.boas_vindas, ...(s.boas_vindas ?? {}), assinaturas: { ...(s.boas_vindas?.assinaturas ?? {}) }, modelos: { ...(s.boas_vindas?.modelos ?? {}) } },
-    avisos: { gestor: numerosDeAviso(s.avisos?.gestor), admin: numerosDeAviso(s.avisos?.admin) },
+    avisos: { gestor: numerosDeAviso(s.avisos?.gestor), admin: numerosDeAviso(s.avisos?.admin), teste: numerosDeAviso(s.avisos?.teste) },
+    assistente: { ligado: s.assistente?.ligado === true, numeros: numerosDoAssistente(s.assistente?.numeros) },
   };
 }
 

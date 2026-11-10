@@ -17,6 +17,7 @@ import { fail, ok } from "@/lib/api/wrappers";
 import { audit } from "@/lib/audit";
 import { ARCHIVED_AT, queryTolerantToMissingArchived } from "@/lib/channels/archived";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { tratarMensagemDoAssistente } from "@/lib/opa/assistente";
 import { COLUNAS_SESSAO_DO_CORRETOR, filtrarEventoDoCorretor } from "@/lib/waha/contatos-pessoais";
 import { dispatchWahaEvent, type WahaEnvelope } from "@/lib/waha/ingest";
 import { authenticateWahaWebhook } from "@/lib/waha/webhook-auth";
@@ -103,6 +104,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   // Número do corretor (Meu WhatsApp): contato pessoal ou a classificar não deixa
   // corpo em lugar nenhum, nem neste log. Decide ANTES de gravar qualquer coisa.
   // Regra em lib/opa/contatos-whatsapp.ts; número sem dono passa direto.
+  // Assistente da equipe no OPA Lembretes (10/11/2026): mensagem de quem está na lista do
+  // assistente é dele e não vira conversa nem lead. Para todo o resto, nada muda.
+  try {
+    const assistente = await tratarMensagemDoAssistente(admin, session, envelope, requestId);
+    if (assistente.consumiu) {
+      if (assistente.depois) after(assistente.depois);
+      return ok({ accepted: true }, { requestId });
+    }
+  } catch (err) {
+    console.error("[waha.webhook] assistente falhou", err instanceof Error ? err.message : String(err));
+  }
+
   const filtro = await filtrarEventoDoCorretor(admin, session, envelope, requestId);
   if (filtro.acao === "descartar") {
     return ok({ accepted: true }, { requestId });

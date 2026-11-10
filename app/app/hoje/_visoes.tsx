@@ -669,6 +669,16 @@ export async function VisaoGestor({
           )}
         </div>
       )}
+      {/* Modo de teste (10/11/2026): o número está ligado, mas só fala com a lista de teste. */}
+      {!lembretesFora && config.avisos.teste.length > 0 && (
+        <div role="status" className="flex items-start gap-2.5 rounded-[24px] bg-[#fdf0e6] p-5 text-[14px] leading-relaxed text-[#7a3209]">
+          <Warning className="mt-0.5 size-5 shrink-0 text-[#c4561a]" />
+          <span>
+            <strong className="font-semibold">O OPA Lembretes está em teste.</strong> Os avisos de prazo, os repasses e as escaladas não estão chegando no
+            WhatsApp da equipe: só o número de teste recebe. Acompanhe a Fila por aqui.
+          </span>
+        </div>
+      )}
 
       {admin && <SaudeDoSistema orgId={orgId} sessoes={sessoes} />}
 

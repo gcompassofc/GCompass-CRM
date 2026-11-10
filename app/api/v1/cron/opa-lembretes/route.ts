@@ -19,6 +19,7 @@ import type { NextRequest } from "next/server";
 import { fail, ok } from "@/lib/api/wrappers";
 import { env } from "@/lib/env";
 import { logger } from "@/lib/logger";
+import { apagarRegistroVelhoDoAssistente } from "@/lib/opa/assistente";
 import { rodarRotinaLembretes } from "@/lib/opa/rotina-lembretes";
 import { mesmoSegredo } from "@/lib/opa/segredos";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -44,6 +45,10 @@ async function handle(req: NextRequest): Promise<Response> {
     const esperaApagadas = await apagarEsperaVencida(admin).catch((e: unknown) => {
       logger.warn("[opa-lembretes.cron] limpeza das mensagens em espera falhou", { error: String(e), requestId });
       return 0;
+    });
+    // De carona (10/11/2026): o registro do assistente some depois de 30 dias.
+    await apagarRegistroVelhoDoAssistente(admin).catch((e: unknown) => {
+      logger.warn("[opa-lembretes.cron] limpeza do registro do assistente falhou", { error: String(e), requestId });
     });
     // A cada 5 minutos: etiquetas que estão no aparelho e o CRM ainda não sabe.
     const etiquetasConciliadas =

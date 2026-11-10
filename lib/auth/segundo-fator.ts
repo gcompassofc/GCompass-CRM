@@ -19,6 +19,8 @@ import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { env } from "@/lib/env";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendEmail } from "@/lib/email/resend";
+import { mesmoTelefone } from "@/lib/opa/aviso-whatsapp";
+import { numerosDeAviso } from "@/lib/opa/config";
 import { getWahaClient } from "@/lib/waha/client";
 import { cookieSecure } from "@/lib/supabase/cookie-secure";
 import { COOKIE_SEGUNDO_FATOR, assinarSegundoFator } from "./segundo-fator-cookie";
@@ -89,18 +91,30 @@ export type ResultadoEnvio =
 
 /** A sessão de avisos da OPA conectada, em qualquer empresa de que a pessoa faça parte. */
 async function sessaoDeAvisos(admin: SupabaseClient, userId: string): Promise<string | null> {
+  return (await sessaoDeAvisosComOrg(admin, userId))?.nome ?? null;
+}
+
+async function sessaoDeAvisosComOrg(admin: SupabaseClient, userId: string): Promise<{ nome: string; orgId: string } | null> {
   const { data: orgs } = await admin.from("user_organizations").select("organization_id").eq("user_id", userId);
   const ids = (orgs ?? []).map((o: { organization_id: string }) => o.organization_id);
   if (ids.length === 0) return null;
   const { data } = await admin
     .from("channel_sessions")
-    .select("waha_session_name")
+    .select("waha_session_name, organization_id")
     .in("organization_id", ids)
     .eq("waha_session_name", SESSAO_AVISOS)
     .eq("status", "WORKING")
     .is("archived_at", null)
     .limit(1);
-  return (data?.[0] as { waha_session_name: string } | undefined)?.waha_session_name ?? null;
+  const linha = data?.[0] as { waha_session_name: string; organization_id: string } | undefined;
+  return linha ? { nome: linha.waha_session_name, orgId: linha.organization_id } : null;
+}
+
+/** Modo de teste do OPA Lembretes (settings.opa.avisos.teste): o código só sai para número da lista. */
+async function retidoNoTeste(admin: SupabaseClient, orgId: string, destino: string): Promise<boolean> {
+  const { data } = await admin.from("organizations").select("settings").eq("id", orgId).maybeSingle();
+  const teste = numerosDeAviso((data as { settings: { opa?: { avisos?: { teste?: unknown } } } | null } | null)?.settings?.opa?.avisos?.teste);
+  return teste.length > 0 && !teste.some((n) => mesmoTelefone(n, destino));
 }
 
 /** O que dá para usar nesta instalação, para a tela mostrar só o que funciona. */
@@ -139,8 +153,10 @@ export async function enviarCodigo(p: {
 
   let sessao: string | null = null;
   if (p.canal === "whatsapp") {
-    sessao = await sessaoDeAvisos(admin, p.userId);
+    const achada = await sessaoDeAvisosComOrg(admin, p.userId);
+    sessao = achada?.nome ?? null;
     if (!sessao || !getWahaClient()) return { ok: false, erro: "whatsapp_indisponivel" };
+    if (achada && (await retidoNoTeste(admin, achada.orgId, p.destino))) return { ok: false, erro: "whatsapp_indisponivel" };
   } else if ((process.env.RESEND_API_KEY ?? "").length < 10) {
     return { ok: false, erro: "email_indisponivel" };
   }

@@ -165,7 +165,7 @@ export async function salvarDestinosDosAvisos(formData: FormData) {
     }
     return numeros;
   };
-  await gravar(orgId, { avisos: { gestor: ler("gestor"), admin: ler("admin") } });
+  await gravar(orgId, { avisos: { gestor: ler("gestor"), admin: ler("admin"), teste: ler("teste") } });
 }
 
 export async function salvarPrazos(formData: FormData) {

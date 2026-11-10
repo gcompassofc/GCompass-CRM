@@ -4,8 +4,11 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("@/lib/waha/client", () => ({ getWahaClient: () => null }));
 
 import {
+  avisarDestino,
+  avisarPessoa,
   chaveDoDestino,
   destinosFixos,
+  liberadoNoTeste,
   mesmoTelefone,
   montarCanalDeAvisos,
   telefoneDaPessoa,
@@ -19,7 +22,7 @@ import {
   textoRepasseParaNovoDono,
   textoRepasseParaQuemPerdeu,
 } from "./aviso-whatsapp";
-import { numeroDeAviso, numerosDeAviso } from "./config";
+import { numeroDeAviso, numerosDeAviso, numerosDoAssistente } from "./config";
 
 const sessao = (s: { nome?: string | null; fone?: string | null; dono?: string | null; nomeSessao?: string; status?: string }) => ({
   waha_session_name: s.nomeSessao ?? `s-${Math.random()}`,
@@ -121,6 +124,39 @@ describe("textos com respiro (10/11/2026)", () => {
     expect(textoRepasseParaGestor({ gestor: "Marco Henrique", lead: "João", de: "Luana", para: "Martin", link: "L" })).toMatch(/^Marco, João saiu de Luana/);
     expect(textoEscala({ gestor: null, lead: "João", dono: "Luana", link: "L" })).toBe("João passou do prazo e ninguém mais da roleta pôde pegar.\n\nEstá com Luana.\n\nDecida quem atende: L");
     expect(textoParado({ corretor: null, lead: "João", etapa: "Proposta feita", dias: 7, link: "L" })).toMatch(/^João está parado há 7 dias em Proposta feita\./);
+  });
+});
+
+describe("modo de teste do OPA Lembretes (10/11/2026)", () => {
+  it("com número de teste, só ele pode receber; sem número, todos", () => {
+    const emTeste = montarCanalDeAvisos([], ["5516988301706"]);
+    expect(liberadoNoTeste(emTeste, "+55 16 98830-1706")).toBe(true);
+    expect(liberadoNoTeste(emTeste, "551688301706")).toBe(true);
+    expect(liberadoNoTeste(emTeste, "5512992096501")).toBe(false);
+    expect(liberadoNoTeste(emTeste, null)).toBe(false);
+    expect(liberadoNoTeste(montarCanalDeAvisos([]), "5512992096501")).toBe(true);
+  });
+
+  it("aviso para quem não está na lista fica retido, sem chegar ao WhatsApp", async () => {
+    const canal = montarCanalDeAvisos(
+      [sessao({ nomeSessao: "opa-lembretes", nome: "OPA", fone: "5512999990007" }), sessao({ nome: "Luana", fone: "5512999990001", dono: "luana" })],
+      ["5516988301706"],
+    );
+    expect(await avisarPessoa(canal, { id: "luana", nome: "Luana" }, "teste")).toBe("retido");
+    expect(await avisarDestino(canal, { userId: null, nome: null, telefone: "5512992096501" }, "teste")).toBe("retido");
+  });
+
+  it("quem fala com o assistente: só número válido, com nome e papel conhecidos", () => {
+    expect(
+      numerosDoAssistente([
+        { numero: "16 98830-1706", nome: " Allyson ", papel: "admin" },
+        { numero: "5516988301706", nome: "Repetido", papel: "admin" },
+        { numero: "123", nome: "Curto", papel: "admin" },
+        { numero: "12 99999-0000", nome: "Sem papel", papel: "dono" },
+        null,
+      ]),
+    ).toEqual([{ numero: "5516988301706", nome: "Allyson", papel: "admin", usuario: null }]);
+    expect(numerosDoAssistente("x")).toEqual([]);
   });
 });
 

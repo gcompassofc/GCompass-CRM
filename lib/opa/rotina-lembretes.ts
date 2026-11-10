@@ -202,6 +202,7 @@ async function enviarAgendados(admin: Admin, agora: number, canais: Map<string, 
         resultado = await avisarPessoa(canal, pessoa, texto);
         if (resultado === "sem_numero") erro = "A pessoa não tem WhatsApp conectado com o nome dela.";
         if (resultado === "sem_sessao") erro = "O OPA Lembretes não está conectado.";
+        if (resultado === "retido") erro = "O OPA Lembretes está em teste: este lembrete não saiu.";
         if (resultado === "erro") erro = "O WhatsApp não confirmou o envio. Pode ter saído: confira antes de agendar de novo.";
       }
     } catch (e) {
@@ -210,7 +211,8 @@ async function enviarAgendados(admin: Admin, agora: number, canais: Map<string, 
       erro = e instanceof Error ? e.message.slice(0, 200) : "Falha ao preparar o envio.";
     }
 
-    const destino = destinoDoLembrete(resultado, l.tentativas, Boolean(l.para_user_id), MAX_TENTATIVAS_LEMBRETE);
+    // Retido no teste não volta para a fila: sairia fora de hora quando o teste acabasse.
+    const destino = resultado === "retido" ? "falhou" : destinoDoLembrete(resultado, l.tentativas, Boolean(l.para_user_id), MAX_TENTATIVAS_LEMBRETE);
     if (destino === "enviado") {
       await admin.from("lembretes_agendados").update({ status: "enviado", enviado_em: new Date().toISOString(), erro: null }).eq("id", l.id);
       r.lembretes++;
