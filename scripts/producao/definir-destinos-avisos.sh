@@ -10,6 +10,9 @@
 #   & "C:\Program Files\Git\bin\bash.exe" "D:/3. GCompass/GCompass-CRM/scripts/producao/definir-destinos-avisos.sh" --gestor=NUM1,NUM2 --admin=NUM1
 #       -> grava (acrescente --seco para só conferir)
 #   ... --teste=NUM                      -> modo de teste: o OPA Lembretes só manda para esse número ("--teste=" sai do teste)
+#   ... --desligados=repasse,parado,radar   -> tipos de aviso que não saem por enquanto ("--desligados=" liga todos)
+#       tipos: lead_novo, prazo, outro_corretor, repasse, parado, radar
+#   ... --lembretes=20,60                -> minutos sem resposta em que o corretor é lembrado
 #   ... --assistente=NUM:Nome:admin --assistente-ligado=sim   -> quem fala com o assistente e se ele está ligado
 set -euo pipefail
 
@@ -21,11 +24,12 @@ NO_APP="cd /opt/crm && docker compose -f docker-compose.prod.yml exec -T app"
 ARGS=""
 for a in "$@"; do
   case "$a" in
-    --gestor=* | --admin=* | --teste=* | --assistente-ligado=* | --seco) ARGS="$ARGS $(printf '%s' "$a" | tr -cd '0-9a-z=,-')" ;;
+    --gestor=* | --admin=* | --teste=* | --lembretes=* | --assistente-ligado=* | --seco) ARGS="$ARGS $(printf '%s' "$a" | tr -cd '0-9a-z=,-')" ;;
+    --desligados=*) ARGS="$ARGS $(printf '%s' "$a" | tr -cd 'a-z_=,-')" ;;
     # NUMERO:Nome:papel. Só letras, números, dois-pontos e vírgula passam (o nome vai sem espaço nem acento).
     --assistente=*) ARGS="$ARGS $(printf '%s' "$a" | tr -cd '0-9A-Za-z=,:-')" ;;
     *)
-      echo "Use: definir-destinos-avisos.sh [--gestor=NUM,NUM] [--admin=NUM,NUM] [--teste=NUM] [--assistente=NUM:Nome:papel] [--assistente-ligado=sim|nao] [--seco]" >&2
+      echo "Use: definir-destinos-avisos.sh [--gestor=NUM,NUM] [--admin=NUM,NUM] [--teste=NUM] [--desligados=tipo,tipo] [--lembretes=20,60] [--assistente=NUM:Nome:papel] [--assistente-ligado=sim|nao] [--seco]" >&2
       exit 1
       ;;
   esac

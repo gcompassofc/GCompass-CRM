@@ -1,6 +1,8 @@
 // Grava a configuração do OPA Lembretes do CRM da OPA (organizations.settings.opa):
 //   - avisos.gestor e avisos.admin: números que recebem os avisos da gestão e da administração;
 //   - avisos.teste: modo de teste. Com número aqui, o OPA Lembretes SÓ manda para ele;
+//   - avisos.desligados: tipos de aviso que o OPA Lembretes não manda por enquanto
+//     (lead_novo, prazo, outro_corretor, repasse, parado, radar). Vazio = todos ligados;
 //   - assistente: quem fala com o assistente do número e se ele está ligado.
 //
 // É o mesmo que salvar em Configurações > Horário > Quem recebe os avisos (a parte do
@@ -11,6 +13,8 @@
 //   node definir-destinos-avisos.mjs                       -> só mostra o que está gravado
 //   ... --gestor=NUM,NUM --admin=NUM                       -> destinos dos avisos
 //   ... --teste=NUM            (ou --teste= para sair do teste)
+//   ... --desligados=repasse,parado,radar   (ou --desligados= para ligar todos)
+//   ... --lembretes=20,60      minutos sem resposta em que o corretor é lembrado (lead pago e orgânico)
 //   ... --assistente=NUM:Nome:papel[,NUM:Nome:papel]  --assistente-ligado=sim|nao
 //       papel: admin, manager ou agent
 //   ... --seco                                             -> só confere, não grava
@@ -68,6 +72,30 @@ function pessoas(valor) {
   return saida;
 }
 
+/** Igual a AVISOS_OPA de lib/opa/config.ts. */
+const AVISOS = ["lead_novo", "prazo", "outro_corretor", "repasse", "parado", "radar"];
+
+function tipos(valor) {
+  if (valor === undefined) return undefined;
+  const partes = valor === true ? [] : String(valor).split(",").map((p) => p.trim()).filter(Boolean);
+  for (const p of partes) if (!AVISOS.includes(p)) sair(`Tipo de aviso desconhecido em --desligados: "${p}". Use: ${AVISOS.join(", ")}.`);
+  return AVISOS.filter((a) => partes.includes(a));
+}
+
+/** "20,60" -> [20, 60]: minutos inteiros, de 1 a 1440, em ordem e sem repetir. */
+function minutos(valor) {
+  if (valor === undefined) return undefined;
+  const partes = valor === true ? [] : String(valor).split(",").map((p) => p.trim()).filter(Boolean);
+  const lista = [];
+  for (const p of partes) {
+    const n = Number(p);
+    if (!Number.isInteger(n) || n < 1 || n > 1440) sair(`Minuto inválido em --lembretes: "${p}". Use números inteiros, como 20,60.`);
+    if (!lista.includes(n)) lista.push(n);
+  }
+  if (!lista.length) sair("Diga ao menos um minuto em --lembretes (para parar os lembretes, use --desligados=prazo).");
+  return lista.sort((a, b) => a - b);
+}
+
 const mascarar = (n) => `${n.slice(0, 4)}*****${n.slice(-4)}`;
 const mostrar = (l) => (l ?? []).map(mascarar).join(", ");
 
@@ -79,20 +107,34 @@ async function main() {
   const avisosAtuais = org.settings?.opa?.avisos ?? {};
   const assistenteAtual = org.settings?.opa?.assistente ?? {};
   const descrever = (av, as) =>
-    `gestão ${mostrar(av.gestor) || "(por papel)"} | administração ${mostrar(av.admin) || "(por papel)"} | teste ${mostrar(av.teste) || "(desligado: manda para todos)"} | assistente ${as.ligado ? "ligado" : "desligado"} para ${(as.numeros ?? []).map((p) => `${p.nome} (${p.papel}, ${mascarar(p.numero)})`).join(", ") || "ninguém"}`;
+    `gestão ${mostrar(av.gestor) || "(por papel)"} | administração ${mostrar(av.admin) || "(por papel)"} | teste ${mostrar(av.teste) || "(desligado: manda para todos)"} | avisos desligados ${(av.desligados ?? []).join(", ") || "(nenhum: todos ligados)"} | assistente ${as.ligado ? "ligado" : "desligado"} para ${(as.numeros ?? []).map((p) => `${p.nome} (${p.papel}, ${mascarar(p.numero)})`).join(", ") || "ninguém"}`;
   console.info(`Gravado hoje: ${descrever(avisosAtuais, assistenteAtual)}`);
 
   const gestor = lista(args.gestor, "gestor");
   const admin = lista(args.admin, "admin");
   const teste = lista(args.teste, "teste");
+  const desligados = tipos(args.desligados);
+  const lembretes = minutos(args.lembretes);
+  const prazosAtuais = org.settings?.opa?.prazos ?? {};
+  console.info(`Lembretes de prazo gravados: pago ${(prazosAtuais.avisos_pago ?? ["padrão"]).join(", ")} min | orgânico ${(prazosAtuais.avisos_organico ?? ["padrão"]).join(", ")} min`);
   const numeros = pessoas(args.assistente);
   const ligado = args["assistente-ligado"] === undefined ? undefined : ["sim", "true", "1"].includes(String(args["assistente-ligado"]).toLowerCase());
-  if ([gestor, admin, teste, numeros, ligado].every((x) => x === undefined)) return;
+  if ([gestor, admin, teste, desligados, lembretes, numeros, ligado].every((x) => x === undefined)) return;
 
   // O banco troca cada chave de primeiro nível inteira: manda o objeto completo de cada uma.
   const parcial = {};
-  if (gestor !== undefined || admin !== undefined || teste !== undefined) {
-    parcial.avisos = { gestor: gestor ?? avisosAtuais.gestor ?? [], admin: admin ?? avisosAtuais.admin ?? [], teste: teste ?? avisosAtuais.teste ?? [] };
+  if (gestor !== undefined || admin !== undefined || teste !== undefined || desligados !== undefined) {
+    parcial.avisos = {
+      gestor: gestor ?? avisosAtuais.gestor ?? [],
+      admin: admin ?? avisosAtuais.admin ?? [],
+      teste: teste ?? avisosAtuais.teste ?? [],
+      desligados: desligados ?? avisosAtuais.desligados ?? [],
+    };
+  }
+  // Só as duas listas mudam: o prazo de cada trilha (pago_min, organico_min) fica como está.
+  if (lembretes !== undefined) {
+    parcial.prazos = { ...prazosAtuais, avisos_pago: lembretes, avisos_organico: lembretes };
+    console.info(`${seco ? "[seco] Gravaria" : "Gravando"} lembretes de prazo: ${lembretes.join(", ")} min (pago e orgânico)`);
   }
   if (numeros !== undefined || ligado !== undefined) {
     parcial.assistente = { ligado: ligado ?? assistenteAtual.ligado === true, numeros: numeros ?? assistenteAtual.numeros ?? [] };

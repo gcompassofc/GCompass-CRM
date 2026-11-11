@@ -238,14 +238,18 @@ export function textoAvisoDePrazo(p: {
   esperaMin: number;
   faltaMin: number;
   proprio: boolean;
+  /** Repasse desligado: o lead fica com o corretor, então o lembrete não fala de fila. */
+  semRepasse?: boolean;
   link: string;
   whatsapp: string | null;
 }): string {
-  const fim = p.proprio
-    ? "Ele é lead seu, então não troca de corretor."
-    : p.faltaMin > 0
-      ? `Faltam ${duracao(p.faltaMin)} para ele passar para o próximo da fila.`
-      : "O prazo acabou.";
+  const fim = p.semRepasse
+    ? null
+    : p.proprio
+      ? "Ele é lead seu, então não troca de corretor."
+      : p.faltaMin > 0
+        ? `Faltam ${duracao(p.faltaMin)} para ele passar para o próximo da fila.`
+        : "O prazo acabou.";
   return emParagrafos([
     `${primeiroNomeDe(p.corretor)}, ${p.lead} espera sua resposta há ${duracao(p.esperaMin)}.`,
     fim,
@@ -262,6 +266,30 @@ export function textoAvisoDePrazo(p: {
 export function textoForaDoHorario(p: { corretor: string; lead: string; esperaMin: number; link: string; whatsapp: string | null }): string {
   return emParagrafos([
     `${primeiroNomeDe(p.corretor)}, o lead ${p.lead} chegou e está sem resposta há ${duracao(p.esperaMin)}.`,
+    p.whatsapp ? `Responder: https://wa.me/${p.whatsapp}` : null,
+    `Ficha: ${p.link}`,
+  ]);
+}
+
+/**
+ * Lead que acabou de chegar pelo formulário (10/11/2026): sai na hora, para o corretor da
+ * vez. Curto: quem é, de onde veio e os dois links. Quem volta por outro formulário e já
+ * está com o corretor recebe a versão "preencheu de novo".
+ */
+export function textoLeadNovo(p: {
+  corretor: string;
+  lead: string;
+  imovel: string | null;
+  /** "site" ou "meta" (formulário do anúncio). */
+  canal: string | null;
+  voltou: boolean;
+  link: string;
+  whatsapp: string | null;
+}): string {
+  const de = p.canal === "site" ? "formulário do site" : "formulário do anúncio";
+  return emParagrafos([
+    p.voltou ? `${primeiroNomeDe(p.corretor)}, ${p.lead} preencheu o formulário de novo.` : `${primeiroNomeDe(p.corretor)}, lead novo para você: ${p.lead}.`,
+    p.imovel ? `Imóvel ${p.imovel}, ${de}.` : `Veio pelo ${de}.`,
     p.whatsapp ? `Responder: https://wa.me/${p.whatsapp}` : null,
     `Ficha: ${p.link}`,
   ]);

@@ -60,6 +60,21 @@ export function temPrazoDeResposta(campos: Record<string, unknown> | null | unde
   return preencheuFormulario(campos, source);
 }
 
+/**
+ * O que o aviso "lead novo para você" diz sobre a entrada: de qual formulário e qual
+ * imóvel. Quem voltou por outro formulário fala da volta, não da primeira entrada.
+ */
+export function dadosDaEntrada(
+  campos: Record<string, unknown> | null | undefined,
+  voltou: boolean,
+): { canal: string | null; imovel: string | null } {
+  const cf = campos ?? {};
+  const daVolta = (cf.voltou ?? {}) as { origem?: OrigemGravada; imovel_codigo?: string | null };
+  const origem = (voltou ? daVolta.origem : cf.origem) as OrigemGravada | undefined;
+  const imovel = voltou ? daVolta.imovel_codigo : (cf.imovel_codigo as string | null | undefined);
+  return { canal: origem?.canal ?? null, imovel: imovel || null };
+}
+
 export interface LeadAbertoDoContato {
   id: string;
   owner_user_id: string | null;

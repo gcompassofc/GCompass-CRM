@@ -137,8 +137,10 @@ export interface ConfigOpa {
    *  - teste: enquanto houver número aqui, o OPA Lembretes SÓ manda para eles (avisos,
    *    lembretes, código de entrada e respostas do assistente). Todo o resto fica
    *    retido e não é reenviado depois. Vazio = funcionamento normal.
+   *  - desligados: tipos de aviso que o OPA Lembretes não manda por enquanto (10/11/2026,
+   *    ver AVISOS_OPA). Vazio = todos ligados.
    */
-  avisos: { gestor: string[]; admin: string[]; teste: string[] };
+  avisos: { gestor: string[]; admin: string[]; teste: string[]; desligados: AvisoOpa[] };
   /**
    * Assistente no número OPA Lembretes (10/11/2026): a equipe pergunta pelo WhatsApp e
    * o CRM responde (lib/opa/assistente). Só responde a quem está em `numeros`; quem
@@ -146,6 +148,32 @@ export interface ConfigOpa {
    * (para "meus leads"); sem ele, administrador e gestor veem a equipe toda.
    */
   assistente: { ligado: boolean; numeros: NumeroDoAssistente[] };
+}
+
+/**
+ * Os tipos de aviso do OPA Lembretes que se ligam e desligam um a um (pedido do Allyson,
+ * 10/11/2026: voltar com poucos avisos e ligar o resto aos poucos).
+ *  - lead_novo: "lead novo para você", na hora em que o formulário chega;
+ *  - prazo: lembretes de lead sem resposta (20 min, 1 h...) e o lembrete fora do horário;
+ *  - outro_corretor: o lead escreveu no WhatsApp de quem não é o responsável;
+ *  - repasse: o lead passa para o próximo da roleta no fim do prazo (e a escalada à gestão).
+ *    Desligado, o lead fica com o corretor e só os lembretes saem;
+ *  - parado: negócio parado em proposta, negociação e fechamento;
+ *  - radar: Captações do Radar.
+ * Lembrete que a própria pessoa agendou e o aviso de boas-vindas que não saiu não entram aqui.
+ */
+export const AVISOS_OPA = ["lead_novo", "prazo", "outro_corretor", "repasse", "parado", "radar"] as const;
+export type AvisoOpa = (typeof AVISOS_OPA)[number];
+
+/** Lista limpa dos avisos desligados: só tipo conhecido, sem repetir. */
+export function avisosDesligados(lista: unknown): AvisoOpa[] {
+  if (!Array.isArray(lista)) return [];
+  return AVISOS_OPA.filter((a) => lista.includes(a));
+}
+
+/** Este tipo de aviso está ligado? */
+export function avisoAtivo(config: Pick<ConfigOpa, "avisos">, aviso: AvisoOpa): boolean {
+  return !config.avisos.desligados.includes(aviso);
 }
 
 export interface NumeroDoAssistente {
@@ -323,7 +351,7 @@ export const PADRAO: ConfigOpa = {
   volta_dias: 90,
   gerente_ve_receita: false,
   boas_vindas: { ligada: true, modelo: "", assinaturas: {}, modelos: {} },
-  avisos: { gestor: [], admin: [], teste: [] },
+  avisos: { gestor: [], admin: [], teste: [], desligados: [] },
   assistente: { ligado: false, numeros: [] },
 };
 
@@ -370,7 +398,12 @@ export function mesclarConfig(salvo: Partial<ConfigOpa> | null | undefined): Con
       pesos: { ...PADRAO.cruzamento.pesos, ...(s.cruzamento?.pesos ?? {}) },
     },
     boas_vindas: { ...PADRAO.boas_vindas, ...(s.boas_vindas ?? {}), assinaturas: { ...(s.boas_vindas?.assinaturas ?? {}) }, modelos: { ...(s.boas_vindas?.modelos ?? {}) } },
-    avisos: { gestor: numerosDeAviso(s.avisos?.gestor), admin: numerosDeAviso(s.avisos?.admin), teste: numerosDeAviso(s.avisos?.teste) },
+    avisos: {
+      gestor: numerosDeAviso(s.avisos?.gestor),
+      admin: numerosDeAviso(s.avisos?.admin),
+      teste: numerosDeAviso(s.avisos?.teste),
+      desligados: avisosDesligados(s.avisos?.desligados),
+    },
     assistente: { ligado: s.assistente?.ligado === true, numeros: numerosDoAssistente(s.assistente?.numeros) },
   };
 }

@@ -4,7 +4,7 @@
  * conta como parado. O que roda de verdade fica em `rotina-lembretes.ts`; aqui
  * mora só a decisão, para testar com número e não com WhatsApp.
  */
-import type { ConfigOpa, RegraLembrete, Trilha } from "./config";
+import { avisoAtivo, type ConfigOpa, type RegraLembrete, type Trilha } from "./config";
 
 export type TrilhaDeResposta = Extract<Trilha, "pago" | "organico">;
 
@@ -15,11 +15,17 @@ export function minutosDaRegra(quando: string): number | null {
   return Number(m[1]) * (m[2]!.toLowerCase() === "h" ? 60 : 1);
 }
 
-/** O prazo de primeira resposta e os avisos da trilha, vindos de Configurações. */
+/**
+ * O prazo de primeira resposta e os avisos da trilha, vindos de Configurações. Com o
+ * repasse valendo, aviso no fim do prazo ou depois dele não existe (o lead já passou
+ * adiante). Com o repasse desligado (10/11/2026), o lead fica com o corretor e todos os
+ * lembretes configurados saem, inclusive o de 1 h de um prazo de 1 h.
+ */
 export function prazosDaTrilha(config: ConfigOpa, trilha: TrilhaDeResposta): { prazoMin: number; avisos: number[] } {
   const prazoMin = trilha === "pago" ? config.prazos.pago_min : config.prazos.organico_min;
-  const avisos = (trilha === "pago" ? config.prazos.avisos_pago : config.prazos.avisos_organico)
-    .filter((a) => a > 0 && a < prazoMin)
+  const teto = repasseAtivo(config, trilha) ? prazoMin : Number.POSITIVE_INFINITY;
+  const avisos = [...new Set(trilha === "pago" ? config.prazos.avisos_pago : config.prazos.avisos_organico)]
+    .filter((a) => a > 0 && a < teto)
     .sort((a, b) => a - b);
   return { prazoMin, avisos };
 }
@@ -42,6 +48,22 @@ export function avisoLigado(config: ConfigOpa, trilha: TrilhaDeResposta, minuto:
 export function repasseLigado(config: ConfigOpa, trilha: TrilhaDeResposta): boolean {
   const regras = regrasDa(config, trilha).filter((r) => /passa para o pr[óo]ximo/i.test(r.oQue) && /sem resposta/i.test(r.quando));
   return regras.length === 0 || regras.some((r) => r.ativa);
+}
+
+/** O lead troca de corretor no fim do prazo? Precisa do tipo "repasse" ligado e da regra da trilha. */
+export function repasseAtivo(config: ConfigOpa, trilha: TrilhaDeResposta): boolean {
+  return avisoAtivo(config, "repasse") && repasseLigado(config, trilha);
+}
+
+/**
+ * Lembrete de prazo só sai perto da hora dele (10/11/2026). Atrasado além disto (rotina
+ * parada, número pausado, tipo de aviso religado depois), fica registrado e não é mandado:
+ * lembrete velho só confunde.
+ */
+export const ATRASO_MAX_DO_AVISO_MIN = 15;
+
+export function avisoNaHora(avisoMin: number, esperaMin: number): boolean {
+  return esperaMin >= avisoMin && esperaMin - avisoMin <= ATRASO_MAX_DO_AVISO_MIN;
 }
 
 /** Avisos que já deviam ter saído com a espera de `esperaMin` minutos (do menor para o maior). */

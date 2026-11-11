@@ -19,7 +19,7 @@ import {
 } from "@/lib/opa/dados";
 import { contarEtiquetas, etiquetasDoLead } from "@/lib/opa/etiquetas";
 import { afinidade, fotoUrl, precoCheio, precoPrincipal } from "@/lib/opa/imoveis";
-import { montarHistorico, tempoGasto, type AtividadeDoLead } from "@/lib/opa/historico";
+import { itensDePassagem, montarHistorico, tempoGasto, type AtividadeDoLead } from "@/lib/opa/historico";
 import { temPrazoDeResposta } from "@/lib/opa/veio-de-formulario";
 import { pedidoInicial, resumoDoPedidoRadar } from "@/lib/opa/pedido-radar";
 import { diasParado, ERROS_RADAR, MOTIVOS_RADAR } from "@/lib/opa/radar-captacoes";
@@ -227,6 +227,7 @@ const ICONE_HISTORICO: Record<string, [Icone, "claro" | "acao" | "escuro" | "ok"
   copiloto: [Sparkle, "escuro"],
   nota: [Notepad, "claro"],
   boas_vindas: [WhatsappLogo, "ok"],
+  conversa: [WhatsappLogo, "claro"],
 };
 
 function ChipTemperatura({ valor }: { valor?: "quente" | "morno" | "frio" }) {
@@ -444,9 +445,45 @@ export default async function LeadPage({
     primeiraSaidaEm: primeiraSaida?.sent_at ?? null,
     nomeDe: (pessoaId) => primeiroNome(equipe.get(pessoaId ?? "")?.nome) || "alguém que saiu da equipe",
   });
+  // Quem passou a conversa para quem (10/11/2026): a troca de atendente fica gravada com
+  // o autor em conversation_assignment_events, e a ficha não contava. Falha de leitura
+  // só deixa o histórico sem essas linhas.
+  const { data: passagensRaw } = lead.contatoId
+    ? await supabase
+        .from("conversation_assignment_events")
+        .select("from_user_id, to_user_id, changed_by, created_at, conversations!inner(contact_id, channel_session_id)")
+        .eq("organization_id", org.orgId)
+        .eq("conversations.contact_id", lead.contatoId)
+        .not("changed_by", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(50)
+    : { data: [] };
+  const passagensLidas = (passagensRaw ?? []) as unknown as Array<{
+    from_user_id: string | null;
+    to_user_id: string | null;
+    changed_by: string | null;
+    created_at: string;
+    conversations: { channel_session_id: string | null } | null;
+  }>;
+  const numerosDasPassagens = [...new Set(passagensLidas.map((x) => x.conversations?.channel_session_id).filter((x): x is string => Boolean(x)))];
+  const { data: numerosRaw } = numerosDasPassagens.length
+    ? await supabase.from("channel_sessions").select("id, owner_user_id").eq("organization_id", org.orgId).in("id", numerosDasPassagens)
+    : { data: [] };
+  const donoDoNumero = new Map(((numerosRaw ?? []) as Array<{ id: string; owner_user_id: string | null }>).map((s) => [s.id, s.owner_user_id]));
+  const passagens = itensDePassagem(
+    passagensLidas.map((x) => ({
+      em: x.created_at,
+      de: x.from_user_id,
+      para: x.to_user_id,
+      por: x.changed_by,
+      numeroDe: donoDoNumero.get(x.conversations?.channel_session_id ?? "") ?? null,
+    })),
+    (pessoaId) => primeiroNome(equipe.get(pessoaId ?? "")?.nome) || "alguém que saiu da equipe",
+  );
   const conversaApagada = atividades.find((a) => a.type === "conversa_apagada") ?? null;
   const historico: Array<{ em: string; texto: string; tipo: string; detalhe?: string | null }> = [
     ...atendimento.itens,
+    ...passagens,
     ...atividades
       .filter((a) => a.type === "venda_realizada")
       .map((a) => ({

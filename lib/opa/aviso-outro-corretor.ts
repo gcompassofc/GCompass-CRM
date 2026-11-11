@@ -21,6 +21,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { logger } from "@/lib/logger";
 
 import { avisarPessoa, carregarCanalDeAvisos, textoLeadDeOutroCorretor, type ResultadoAviso } from "./aviso-whatsapp";
+import { avisoAtivo, carregarConfig } from "./config";
 import { carregarEquipe } from "./dados";
 import { diaSP } from "./periodo";
 import { leadComOutroCorretor, type LeadAbertoDoContato } from "./veio-de-formulario";
@@ -52,6 +53,8 @@ export async function avisarLeadDeOutroCorretor(
     if (error) throw new Error(error.message);
     const lead = leadComOutroCorretor((data ?? []) as unknown as LeadLido[], p.receptorId);
     if (!lead?.owner_user_id) return "nada";
+    // Desliga em Configurações (avisos.desligados). Lido só aqui: a maioria das mensagens para antes.
+    if (!avisoAtivo(await carregarConfig(admin, p.orgId), "outro_corretor")) return "nada";
 
     const equipe = await carregarEquipe(p.orgId);
     const receptor = equipe.get(p.receptorId);

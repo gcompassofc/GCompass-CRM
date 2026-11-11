@@ -150,7 +150,7 @@ export async function salvarModeloBoasVindas(formData: FormData) {
  * pelo número que cada um conectou no CRM.
  */
 export async function salvarDestinosDosAvisos(formData: FormData) {
-  const { orgId } = await gestor();
+  const { orgId, config } = await gestor();
   const ler = (campo: string): string[] => {
     const linhas = texto(formData, campo)
       .split(/[\n,;]+/)
@@ -165,7 +165,8 @@ export async function salvarDestinosDosAvisos(formData: FormData) {
     }
     return numeros;
   };
-  await gravar(orgId, { avisos: { gestor: ler("gestor"), admin: ler("admin"), teste: ler("teste") } });
+  // O banco troca `avisos` inteiro: os tipos desligados (sem campo nesta tela) seguem como estão.
+  await gravar(orgId, { avisos: { gestor: ler("gestor"), admin: ler("admin"), teste: ler("teste"), desligados: config.avisos.desligados } });
 }
 
 export async function salvarPrazos(formData: FormData) {

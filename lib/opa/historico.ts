@@ -31,6 +31,7 @@ export type TipoHistorico =
   | "pessoal"
   | "nome"
   | "conversa_apagada"
+  | "conversa"
   | "atividade";
 
 export interface ItemHistorico {
@@ -75,6 +76,34 @@ export interface ResumoDoAtendimento {
   /** Lead aberto ainda sem resposta: há quantos minutos espera o corretor atual. */
   semRespostaMin: number | null;
   repasses: Array<{ em: string; de: string; para: string }>;
+}
+
+/** Uma troca de atendente da conversa (conversation_assignment_events), já com quem fez. */
+export interface PassagemDeConversa {
+  em: string;
+  de: string | null;
+  para: string | null;
+  /** Quem fez a troca. null = o próprio sistema (roleta, entrada do lead). */
+  por: string | null;
+  /** Dono do número de WhatsApp em que a conversa acontece, quando se sabe. */
+  numeroDe?: string | null;
+}
+
+/**
+ * "Marco passou a conversa para Luana" (pedido do Allyson, 10/11/2026: a ficha tem de
+ * dizer QUEM fez cada coisa). Só o que uma pessoa fez: a entrega automática da conversa
+ * ao corretor da vez já aparece na entrada do lead.
+ */
+export function itensDePassagem(passagens: PassagemDeConversa[], nomeDe: (id: string | null | undefined) => string): ItemHistorico[] {
+  return passagens
+    .filter((p) => p.por)
+    .map((p) => {
+      const quem = nomeDe(p.por);
+      const frase = !p.para ? `${quem} soltou a conversa` : p.para === p.por ? `${quem} assumiu a conversa` : `${quem} passou a conversa para ${nomeDe(p.para)}`;
+      const antes = p.de && p.de !== p.por && p.de !== p.para ? `Estava com ${nomeDe(p.de)}.` : null;
+      const numero = p.numeroDe ? `Conversa no WhatsApp de ${nomeDe(p.numeroDe)}.` : null;
+      return { em: p.em, tipo: "conversa" as const, texto: frase, detalhe: [numero, antes].filter(Boolean).join(" ") || null };
+    });
 }
 
 /** "8 min", "1 h 5 min", "2 dias". */

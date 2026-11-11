@@ -95,7 +95,8 @@ export const crmGetConversation: McpToolDefinition<typeof getInputShape> = {
   name: "crm_get_conversation",
   description:
     "Retorna detalhes de uma conversa pelo UUID. Inclui status, atribuicao, contato, ultima atividade. " +
-    "Governança: assignee_kind ('user'|'ai'|null), assigned_to_user_id + assigned_to_user_name (só o nome, sem email/telefone), tags[], e queue_position (1-based na fila do inbox — null quando não está na fila).",
+    "Governança: assignee_kind ('user'|'ai'|null), assigned_to_user_id + assigned_to_user_name (só o nome, sem email/telefone), tags[], e queue_position (1-based na fila do inbox — null quando não está na fila). " +
+    "assignment_events[] conta QUEM mexeu na atribuição (mais recentes primeiro, até 20): at, reason (claim|transfer|release|routing|handoff), from_user_name, to_user_name e changed_by_name; changed_by_kind 'system' = foi o próprio CRM (roleta, entrada do lead), 'user' = uma pessoa.",
   inputSchema: getInputShape,
   category: "read",
   requiresRole: "agent",
@@ -110,7 +111,26 @@ export const crmGetConversation: McpToolDefinition<typeof getInputShape> = {
       },
       input.conversation_id,
     );
-    const names = await resolveUserNames(ctx.supabase, [conv.assigned_to_user_id]);
+    // Quem atribuiu a conversa a quem (10/11/2026): sem isto, o conector via o atendente
+    // de agora e não quem tinha feito a troca. Falha de leitura devolve lista vazia.
+    const { data: eventosRaw } = await ctx.supabase
+      .from("conversation_assignment_events")
+      .select("from_user_id, to_user_id, changed_by, reason, created_at")
+      .eq("organization_id", ctx.organizationId)
+      .eq("conversation_id", conv.id)
+      .order("created_at", { ascending: false })
+      .limit(20);
+    const eventos = (eventosRaw ?? []) as Array<{
+      from_user_id: string | null;
+      to_user_id: string | null;
+      changed_by: string | null;
+      reason: string;
+      created_at: string;
+    }>;
+    const names = await resolveUserNames(ctx.supabase, [
+      conv.assigned_to_user_id,
+      ...eventos.flatMap((e) => [e.from_user_id, e.to_user_id, e.changed_by]),
+    ]);
     const queue_position = isInQueue(conv)
       ? ((await getQueuePositions(ctx.supabase, ctx.organizationId)).get(conv.id) ?? null)
       : null;
@@ -135,6 +155,14 @@ export const crmGetConversation: McpToolDefinition<typeof getInputShape> = {
       is_group: conv.is_group,
       group_chat_id: conv.group_chat_id,
       created_at: conv.created_at,
+      assignment_events: eventos.map((e) => ({
+        at: e.created_at,
+        reason: e.reason,
+        from_user_name: e.from_user_id ? (names.get(e.from_user_id) ?? null) : null,
+        to_user_name: e.to_user_id ? (names.get(e.to_user_id) ?? null) : null,
+        changed_by_kind: e.changed_by ? "user" : "system",
+        changed_by_name: e.changed_by ? (names.get(e.changed_by) ?? null) : null,
+      })),
     };
   },
 };

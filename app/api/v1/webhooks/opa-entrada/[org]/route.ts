@@ -15,6 +15,7 @@ import { after, type NextRequest } from "next/server";
 import { z } from "zod";
 
 import { fail, ok } from "@/lib/api/wrappers";
+import { avisarLeadNovo } from "@/lib/opa/aviso-lead-novo";
 import { enviarBoasVindas } from "@/lib/opa/boas-vindas";
 import { registrarEntrada } from "@/lib/opa/entrada";
 import { lerCorpoLimitado, mesmoSegredo, tokenDeEntrada } from "@/lib/opa/segredos";
@@ -100,6 +101,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ org
       if (r.tipo === "novo" && (b.origem === "meta" || b.origem === "site")) {
         const orgId = linha.id;
         after(() => enviarBoasVindas(admin, orgId, r.leadId).catch((e) => console.error("[opa-entrada] boas-vindas", e instanceof Error ? e.message : e)));
+      }
+      // "Lead novo para você" pelo OPA Lembretes, na hora (10/11/2026). À parte da
+      // boas-vindas: uma não espera a outra. Quem volta por outro formulário também avisa.
+      if (b.origem === "meta" || b.origem === "site") {
+        const orgId = linha.id;
+        const volta = r.tipo === "voltou" ? { voltou: true, vez: r.vez } : {};
+        after(() => avisarLeadNovo(admin, orgId, r.leadId, volta).then(() => undefined));
       }
       // Só o necessário para quem chamou; quem é o dono fica dentro do CRM.
       return ok({ tipo: r.tipo, leadId: r.leadId });

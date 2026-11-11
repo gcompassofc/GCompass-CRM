@@ -48,20 +48,21 @@ import { temPrazoDeResposta } from "./veio-de-formulario";
 import { avisoDevidoRadar, diasParado, textoAvisoRadar } from "./radar-captacoes";
 import { carregarCardsRadar, type CardRadar } from "./radar-captacoes-dados";
 import { boasVindasEnviadaEm, esperaDesde, esperaEmMinutos, minutosUteis, saidaDoCorretor } from "./atendimento";
-import { carregarConfig, type ConfigOpa } from "./config";
+import { avisoAtivo, carregarConfig, type ConfigOpa } from "./config";
 import { carregarEquipe, type Pessoa } from "./dados";
 import { emLotes } from "./lotes";
 import { diaSP } from "./periodo";
 import {
   aguardaPrimeiraResposta,
+  avisoNaHora,
   avisosDevidos,
   avisosLigados,
   decidirRepasse,
   destinoDoLembrete,
   limitesDeParado,
   prazosDaTrilha,
+  repasseAtivo,
   repasseLiberado,
-  repasseLigado,
   roletaDaEquipe,
 } from "./repasse";
 
@@ -462,6 +463,9 @@ async function processarFila(c: Contexto, inicio: number) {
     const esperaMin = esperaEmMinutos(desde, c.agora, c.config.horario);
     const pago = l.source === "meta" || (l.tags ?? []).includes("pago");
     const trilha = pago ? "pago" : "organico";
+    // Tipos de aviso ligados em Configurações (10/11/2026): lembretes de prazo e repasse.
+    const lembraPrazo = avisoAtivo(c.config, "prazo");
+    const repassa = repasseAtivo(c.config, trilha);
     const { prazoMin, avisos: avisosDaTrilha } = prazosDaTrilha(c.config, trilha);
     const proprio = (l.tags ?? []).includes("proprio");
     const marca = new Date(desde).toISOString();
@@ -471,7 +475,7 @@ async function processarFila(c: Contexto, inicio: number) {
     // Fora do horário: um lembrete só, pelo relógio de parede, sem prazo e sem repasse.
     // Não sai se esta espera já teve aviso de prazo (o corretor já sabe do lead) e não
     // conta como aviso de prazo: sozinho, não libera o repasse.
-    if (c.foraDoHorario) {
+    if (c.foraDoHorario && lembraPrazo) {
       const relogioMin = Math.floor((c.agora - desde) / 60_000);
       const jaSabe = avisosDaTrilha.some((a) => c.feitos.has(chaveDoAviso({ leadId: l.id, tipo: `aviso_${a}`, marca, userId: donoId })));
       if (relogioMin >= FORA_DO_HORARIO_MIN && relogioMin < FORA_DO_HORARIO_ATE_MIN && !jaSabe) {
@@ -486,8 +490,9 @@ async function processarFila(c: Contexto, inicio: number) {
     }
     if (esperaMin <= 0) continue;
 
-    // 2. avisos de prazo: se a rotina ficou fora do ar, manda só o mais recente.
-    if (esperaMin < prazoMin) {
+    // 2. avisos de prazo: se a rotina ficou fora do ar, manda só o mais recente, e só se
+    // ainda está na hora dele. Sem repasse, os lembretes não param no fim do prazo.
+    if (lembraPrazo && (!repassa || esperaMin < prazoMin)) {
       const devidos = avisosDevidos(c.config, trilha, esperaMin);
       const novos: Array<{ a: number; id: string }> = [];
       for (const a of devidos) {
@@ -495,14 +500,14 @@ async function processarFila(c: Contexto, inicio: number) {
         if (id) novos.push({ a, id });
       }
       for (const [i, n] of novos.entries()) {
-        if (i < novos.length - 1) {
+        if (i < novos.length - 1 || !avisoNaHora(n.a, esperaMin)) {
           await fecharAviso(c.admin, n.id, "pulado");
           continue;
         }
         const resultado = await avisarPessoa(
           c.canal,
           dono,
-          textoAvisoDePrazo({ corretor: dono.nome, lead: nome, esperaMin, faltaMin: prazoMin - esperaMin, proprio, link: link(l.id), whatsapp: fone }),
+          textoAvisoDePrazo({ corretor: dono.nome, lead: nome, esperaMin, faltaMin: prazoMin - esperaMin, proprio, semRepasse: !repassa, link: link(l.id), whatsapp: fone }),
         );
         if (resultado === "sem_numero") c.r.semNumero++;
         if (resultado === "enviado") c.avisoSaiu.add(chaveDaEspera(l.id, marca));
@@ -516,7 +521,7 @@ async function processarFila(c: Contexto, inicio: number) {
       esperaMin,
       prazoMin,
       proprio,
-      repasseLigado: repasseLigado(c.config, trilha),
+      repasseLigado: repassa,
       donoId,
       roleta: roletaDaEquipe(c.config.roleta, c.equipe),
       pausados: c.config.roleta_pausados,
@@ -525,7 +530,7 @@ async function processarFila(c: Contexto, inicio: number) {
     // O dono não foi avisado (OPA Lembretes fora, corretor sem número): não tira o lead dele,
     // leva para a gestão (C4).
     let motivoEscala: "roleta" | "sem_aviso" = "roleta";
-    if (decisao.tipo === "passar" && !repasseLiberado({ avisoSaiu: c.avisoSaiu.has(chaveDaEspera(l.id, marca)), avisosDaTrilha: avisosLigados(c.config, trilha).length })) {
+    if (decisao.tipo === "passar" && !repasseLiberado({ avisoSaiu: c.avisoSaiu.has(chaveDaEspera(l.id, marca)), avisosDaTrilha: lembraPrazo ? avisosLigados(c.config, trilha).length : 0 })) {
       decisao = { tipo: "escalar" };
       motivoEscala = "sem_aviso";
     }
@@ -776,11 +781,13 @@ export async function rodarRotinaLembretes(admin: Admin, agora = Date.now()): Pr
       const { hora, minuto } = horaEMinuto(agora);
       const aberto = minutosUteis(agora - 10 * 60_000, agora, config.horario) > 0;
       if (aberto && hora >= 9 && hora < 19 && minuto % 10 === 0) {
-        await processarParados(c);
-        try {
-          await processarRadar(c);
-        } catch (e) {
-          logger.warn("[opa-lembretes] falha nas Captações do Radar", { orgId, error: String(e) });
+        if (avisoAtivo(config, "parado")) await processarParados(c);
+        if (avisoAtivo(config, "radar")) {
+          try {
+            await processarRadar(c);
+          } catch (e) {
+            logger.warn("[opa-lembretes] falha nas Captações do Radar", { orgId, error: String(e) });
+          }
         }
       }
     } catch (e) {
