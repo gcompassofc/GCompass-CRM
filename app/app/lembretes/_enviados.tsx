@@ -48,6 +48,8 @@ interface Linha {
   em: string;
   paraChave: string;
   paraNome: string;
+  /** Iniciais da pessoa; número sem pessoa (destino fixo da gestão) leva "#". */
+  paraIniciais: string;
   paraFoto: string | null;
   tipo: TipoEnviado;
   texto: string;
@@ -90,7 +92,7 @@ function LinhaEnviada({ m }: { m: Linha }) {
     <li>
       <details className="group rounded-[18px] bg-[#f6f9fb] transition-colors open:bg-[#eef3f6] hover:bg-[#eef3f6]">
         <summary className="flex min-h-[60px] cursor-pointer list-none items-start gap-3 px-3 py-3 [&::-webkit-details-marker]:hidden">
-          <Avatar texto={iniciaisDe(m.paraNome)} foto={m.paraFoto} />
+          <Avatar texto={m.paraIniciais} foto={m.paraFoto} />
           <span className="min-w-0 flex-1">
             <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
               <b className="text-[15px] font-semibold text-[#0a2d40]">{m.paraNome}</b>
@@ -205,6 +207,7 @@ export async function Enviados({
       em: m.sent_at,
       paraChave: pessoa?.id ?? chave,
       paraNome: pessoa ? primeiroNome(pessoa.nome) : (telefoneLegivel(contato?.phone_number) ?? contato?.name ?? "Número sem nome"),
+      paraIniciais: pessoa ? iniciaisDe(pessoa.nome) : "#",
       paraFoto: pessoa?.foto ?? null,
       tipo,
       texto: textoVisivel(tipo, m.body),
@@ -215,7 +218,7 @@ export async function Enviados({
   });
 
   // Quem recebeu no período, do que mais recebeu ao que menos recebeu.
-  const destinatarios = [...todas.reduce((mapa, m) => mapa.set(m.paraChave, { nome: m.paraNome, foto: m.paraFoto, n: (mapa.get(m.paraChave)?.n ?? 0) + 1 }), new Map<string, { nome: string; foto: string | null; n: number }>())]
+  const destinatarios = [...todas.reduce((mapa, m) => mapa.set(m.paraChave, { nome: m.paraNome, iniciais: m.paraIniciais, foto: m.paraFoto, n: (mapa.get(m.paraChave)?.n ?? 0) + 1 }), new Map<string, { nome: string; iniciais: string; foto: string | null; n: number }>())]
     .map(([chave, d]) => ({ chave, ...d }))
     .sort((a, b) => b.n - a.n);
   const filtro = para && destinatarios.some((d) => d.chave === para) ? para : null;
@@ -291,7 +294,7 @@ export async function Enviados({
                   filtro === d.chave ? "bg-[#0a2d40] text-white" : "bg-[#f2f6f9] text-[#0a2d40] hover:bg-[#e7f0f5]",
                 )}
               >
-                <Avatar texto={iniciaisDe(d.nome)} foto={d.foto} className="size-8" />
+                <Avatar texto={d.iniciais} foto={d.foto} className="size-8" />
                 {d.nome} <span className="tabular-nums opacity-70">{d.n}</span>
               </Link>
             ))}
