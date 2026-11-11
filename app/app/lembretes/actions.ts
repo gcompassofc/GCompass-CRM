@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
+import { TAMANHO_MAX_DO_AVISO, enviarAvisoManual, fraseDoResultado } from "@/lib/opa/aviso-manual";
 import { mesclarCampos } from "@/lib/opa/campos";
 import { carregarConfig, salvarConfig, type RegraLembrete, type Trilha } from "@/lib/opa/config";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -19,6 +20,31 @@ async function contexto() {
   const org = await resolveActiveOrg(user);
   if (!org) throw new Error("Sem organização ativa.");
   return { user, org, gestor: org.role === "manager" || org.role === "admin", supabase: await createClient() };
+}
+
+/**
+ * Aviso escrito na hora, pelo OPA Lembretes, para quem da equipe o gestor escolher
+ * (Agenda > Enviados, 10/11/2026). Só gerente e administrador. A mensagem fica gravada
+ * com quem mandou; aqui só volta o resumo para a tela.
+ */
+export async function mandarAviso(formData: FormData): Promise<{ ok: true; enviados: number; falhas: string[] } | { ok: false; erro: string }> {
+  const { user, org, gestor } = await contexto();
+  if (!gestor) return { ok: false, erro: "Só o gestor manda aviso pelo OPA Lembretes." };
+  const texto = String(formData.get("texto") ?? "").trim();
+  const para = formData.getAll("para").map(String).filter(Boolean);
+  if (!texto) return { ok: false, erro: "Escreva a mensagem." };
+  if (texto.length > TAMANHO_MAX_DO_AVISO) return { ok: false, erro: `A mensagem passa de ${TAMANHO_MAX_DO_AVISO} caracteres.` };
+  if (!para.length) return { ok: false, erro: "Escolha quem recebe." };
+  if (para.length > 30) return { ok: false, erro: "Muita gente de uma vez: até 30 pessoas." };
+
+  const resultados = await enviarAvisoManual(createAdminClient(), { orgId: org.orgId, autorId: user.id, paraIds: para, texto });
+  if (!resultados.length) return { ok: false, erro: "Ninguém da lista está na equipe." };
+  revalidatePath("/app/lembretes");
+  return {
+    ok: true,
+    enviados: resultados.filter((r) => r.resultado === "enviado").length,
+    falhas: resultados.filter((r) => r.resultado !== "enviado").map((r) => `${r.nome.split(/\s+/)[0]}: ${fraseDoResultado(r.resultado)}.`),
+  };
 }
 
 async function regras(orgId: string): Promise<RegraLembrete[]> {

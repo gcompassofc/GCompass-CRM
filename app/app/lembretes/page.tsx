@@ -33,17 +33,20 @@ import { IlustraAgenda, IlustraSino } from "../_opa/ilustracoes";
 import { AbasPilula, Avatar, Cartao, Chip, IconeRedondo, TituloBloco, Vazio, iniciaisDe, type Icone } from "../_opa/ui";
 import { alternarRegra, cancelarAgendada, editarRegra, excluirRegra, novaRegra, religarLembretes } from "./actions";
 import { AgendarMensagem } from "./_componentes";
+import { Enviados } from "./_enviados";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Agenda" };
 
-type Aba = "agenda" | "avisos" | "desligados";
+type Aba = "agenda" | "avisos" | "desligados" | "enviados";
 type Trilha = "pago" | "organico" | "captacao";
 
 const ABAS: Array<[Aba, string, Icone]> = [
   ["agenda", "Minha agenda", CalendarBlank],
   ["avisos", "Avisos", Bell],
   ["desligados", "Sem aviso", BellSlash],
+  // Só gestor e administrador: tudo o que o OPA Lembretes mandou, e o aviso escrito na hora.
+  ["enviados", "Enviados", WhatsappLogo],
 ];
 
 const TRILHAS: Array<[Trilha, string, Icone]> = [
@@ -76,13 +79,16 @@ type Agendada = {
   crm_leads: { title: string } | null;
 };
 
-export default async function LembretesPage({ searchParams }: { searchParams: Promise<{ aba?: string; trilha?: string }> }) {
+export default async function LembretesPage({ searchParams }: { searchParams: Promise<{ aba?: string; trilha?: string; dias?: string; para?: string }> }) {
   const user = await requireAuth();
   const org = await resolveActiveOrg(user);
   if (!org) redirect("/app");
   const params = await searchParams;
-  const { aba, trilha: trilhaAtual } = lerAba(params.aba, params.trilha);
+  const lido = lerAba(params.aba, params.trilha);
   const gestor = org.role === "manager" || org.role === "admin";
+  // "Enviados" mostra as mensagens de toda a equipe: corretor que digitar o endereço cai na agenda dele.
+  const aba: Aba = lido.aba === "enviados" && !gestor ? "agenda" : lido.aba;
+  const trilhaAtual = lido.trilha;
   const supabase = await createClient();
 
   const [config, leads, equipe, { data: agendadasRaw }, { data: desligadosRaw }] = await Promise.all([
@@ -139,7 +145,7 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
       <CorpoOpa>
         <div data-tour="agenda-abas" className="flex flex-wrap items-center gap-3">
           <AbasPilula
-            itens={ABAS.map(([k, r, I]) => ({
+            itens={ABAS.filter(([k]) => k !== "enviados" || gestor).map(([k, r, I]) => ({
               href: k === "agenda" ? "/app/lembretes" : `/app/lembretes?aba=${k}`,
               rotulo: r,
               icone: I,
@@ -184,6 +190,8 @@ export default async function LembretesPage({ searchParams }: { searchParams: Pr
             </p>
           </Cartao>
         )}
+
+        {aba === "enviados" && gestor && <Enviados orgId={org.orgId} equipe={equipe} config={config} dias={params.dias} para={params.para} />}
 
         {aba === "avisos" && (
           <div className="mx-auto flex w-full max-w-[920px] flex-col gap-5">
