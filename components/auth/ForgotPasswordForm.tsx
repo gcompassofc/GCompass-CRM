@@ -9,11 +9,19 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { requestPasswordReset } from "@/app/actions/auth/requestPasswordReset";
+import { CampoCaptcha } from "@/components/auth/CampoCaptcha";
 
-export function ForgotPasswordForm() {
+export function ForgotPasswordForm({ captchaSiteKey }: { captchaSiteKey?: string | null }) {
   const [isPending, startTransition] = useTransition();
   const [serverError, setServerError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
+  const [codigoCaptcha, setCodigoCaptcha] = useState<string | null>(null);
+  // O código da verificação vale uma vez só: trocar a rodada redesenha o campo e pede outro.
+  const [rodadaCaptcha, setRodadaCaptcha] = useState(0);
+  const novoCaptcha = () => {
+    setCodigoCaptcha(null);
+    setRodadaCaptcha((n) => n + 1);
+  };
 
   const {
     register,
@@ -27,15 +35,18 @@ export function ForgotPasswordForm() {
   const onSubmit = (values: ForgotPasswordInput) => {
     setServerError(null);
     startTransition(async () => {
-      const res = await requestPasswordReset(values);
+      const res = await requestPasswordReset(values, codigoCaptcha ?? undefined);
       if (res.ok) {
         setSent(true);
         return;
       }
+      novoCaptcha();
       if (res.error === "rate_limited") {
         setServerError("Muitas tentativas. Aguarde alguns minutos.");
       } else if (res.error === "validation_error") {
         setServerError("E-mail inválido. Confira o campo.");
+      } else if (res.error === "captcha_failed") {
+        setServerError("A verificação de segurança não passou. Espere um instante e tente de novo.");
       } else {
         setServerError("Não foi possível enviar o e-mail. Tente novamente.");
       }
@@ -77,6 +88,7 @@ export function ForgotPasswordForm() {
           <p className="text-xs text-destructive">{errors.email.message}</p>
         )}
       </div>
+      {captchaSiteKey && <CampoCaptcha key={rodadaCaptcha} siteKey={captchaSiteKey} onCodigo={setCodigoCaptcha} />}
       {serverError && (
         <div
           className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
@@ -85,7 +97,7 @@ export function ForgotPasswordForm() {
           {serverError}
         </div>
       )}
-      <Button type="submit" className="w-full" disabled={isPending}>
+      <Button type="submit" className="w-full" disabled={isPending || (Boolean(captchaSiteKey) && !codigoCaptcha)}>
         {isPending ? "Enviando..." : "Enviar link de redefinição"}
       </Button>
     </form>

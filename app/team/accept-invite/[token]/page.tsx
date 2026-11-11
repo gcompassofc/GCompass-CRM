@@ -19,6 +19,8 @@ import { LayoutAcessoOpa } from "@/components/auth/AcessoOpa";
 import { rotuloDoPapel, type Role } from "@/lib/auth/types";
 import { marcaOpa } from "@/lib/branding";
 import { criarContaPeloConvite } from "@/app/actions/team/criarContaPeloConvite";
+import { BotaoComCaptcha } from "@/components/auth/BotaoComCaptcha";
+import { chaveDoCaptcha } from "@/lib/seguranca/captcha";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +37,8 @@ const ERROS: Record<string, string> = {
   confirma: "As duas senhas não são iguais.",
   existe: "Esse e-mail já tem conta. Entre com a sua senha para aceitar o convite.",
   falhou: "Não deu para criar o acesso agora. Tente de novo.",
+  seguranca:
+    "Seu acesso foi criado, mas a verificação de segurança não passou. Entre com a senha que você acabou de criar.",
 };
 
 export default async function AcceptInvitePage({ params, searchParams }: PageProps) {
@@ -123,12 +127,12 @@ export default async function AcceptInvitePage({ params, searchParams }: PagePro
               className="w-full rounded-md border bg-background px-3 py-2 text-sm"
             />
           </label>
-          <button
-            type="submit"
-            className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground"
+          <BotaoComCaptcha
+            siteKey={chaveDoCaptcha()}
+            className="w-full rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground disabled:opacity-60"
           >
             Criar acesso e entrar
-          </button>
+          </BotaoComCaptcha>
         </form>
         <p className="mt-4 text-sm text-muted-foreground">
           Já tem conta?{" "}

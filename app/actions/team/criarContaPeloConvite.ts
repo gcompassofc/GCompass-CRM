@@ -18,6 +18,7 @@ import { authRateLimited, AUTH_LIMITS } from "@/lib/auth/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 import { acceptInviteAction } from "./acceptInvite";
+import { CAMPO_DO_CAPTCHA, codigoDoCaptcha, recusaDeCaptcha } from "@/lib/seguranca/captcha";
 
 /** Mesma régua do GoTrue de produção (senha mínima de 12). */
 const SENHA_MINIMA = 12;
@@ -52,7 +53,14 @@ export async function criarContaPeloConvite(token: string, formData: FormData): 
   }
 
   const supabase = await createClient();
-  const { error: entrarErr } = await supabase.auth.signInWithPassword({ email, password: senha });
+  const { error: entrarErr } = await supabase.auth.signInWithPassword({
+    email,
+    password: senha,
+    options: { captchaToken: codigoDoCaptcha(formData.get(CAMPO_DO_CAPTCHA)) },
+  });
+  // A conta já nasceu aqui em cima. Se só a verificação de segurança falhou, a pessoa
+  // entra pelo login com a senha que acabou de criar e volta ao link do convite.
+  if (entrarErr && recusaDeCaptcha(entrarErr)) voltar("seguranca");
   if (entrarErr) voltar("falhou");
 
   await audit({

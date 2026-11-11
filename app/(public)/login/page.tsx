@@ -5,6 +5,7 @@ import { LoginForm } from "@/components/auth/LoginForm";
 import { branding, marcaOpa } from "@/lib/branding";
 import { env } from "@/lib/env";
 import { cn } from "@/lib/utils";
+import { chaveDoCaptcha } from "@/lib/seguranca/captcha";
 
 export const metadata = { title: "Entrar" };
 
@@ -52,7 +53,7 @@ export default async function LoginPage({
           Tente entrar novamente em instantes.
         </div>
       )}
-      <LoginForm next={next} />
+      <LoginForm next={next} captchaSiteKey={chaveDoCaptcha()} />
       <div className={cn("space-y-2 text-sm", opa ? "text-left" : "text-center")}>
         <p>
           <Link

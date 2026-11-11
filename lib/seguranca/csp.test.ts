@@ -37,6 +37,20 @@ describe("montarCsp", () => {
     expect(img.join(" ")).not.toMatch(/javascript|http:\/\/x\.com|a\.b\/c/);
   });
 
+  it("sem CAPTCHA, script e moldura só do próprio domínio", () => {
+    const csp = montarCsp(base);
+    expect(diretiva(csp, "script-src")).toEqual(["'self'", "'unsafe-inline'"]);
+    expect(diretiva(csp, "frame-src")).toEqual(["'self'"]);
+    expect(csp).not.toContain("challenges.cloudflare.com");
+  });
+
+  it("com CAPTCHA, libera só a Cloudflare em script e moldura", () => {
+    const csp = montarCsp({ ...base, captcha: true });
+    expect(diretiva(csp, "script-src")).toEqual(["'self'", "'unsafe-inline'", "https://challenges.cloudflare.com"]);
+    expect(diretiva(csp, "frame-src")).toEqual(["'self'", "https://challenges.cloudflare.com"]);
+    expect(diretiva(csp, "connect-src")).toEqual(["'self'", "https://abc.supabase.co", "wss://abc.supabase.co"]);
+  });
+
   it("HSTS só em https", () => {
     expect(cabecalhoHsts("https://crm.opailhabela.com.br")).toMatch(/max-age=31536000/);
     expect(cabecalhoHsts("http://localhost:3000")).toBeNull();

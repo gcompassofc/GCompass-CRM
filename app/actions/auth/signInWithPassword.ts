@@ -17,10 +17,17 @@ import { exigeCodigo } from "@/lib/auth/segundo-fator-cookie";
 import { enviarCodigo } from "@/lib/auth/segundo-fator";
 import { COOKIE_LEMBRAR, novoLembrar } from "@/lib/auth/lembrar";
 import { cookieSecure } from "@/lib/supabase/cookie-secure";
+import { codigoDoCaptcha, recusaDeCaptcha } from "@/lib/seguranca/captcha";
 
 export type SignInResult = {
   ok: false;
-  error: "invalid_credentials" | "rate_limited" | "validation_error" | "mfa_required" | "codigo_required";
+  error:
+    | "invalid_credentials"
+    | "rate_limited"
+    | "validation_error"
+    | "mfa_required"
+    | "codigo_required"
+    | "captcha_failed";
   details?: Record<string, unknown>;
   challengeId?: string;
 };
@@ -38,6 +45,7 @@ export type SignInResult = {
 export async function signInWithPassword(
   input: LoginInput,
   next?: string,
+  captcha?: string,
 ): Promise<SignInResult> {
   const parsed = loginSchema.safeParse(input);
   if (!parsed.success) {
@@ -89,7 +97,21 @@ export async function signInWithPassword(
   const { data, error } = await supabase.auth.signInWithPassword({
     email: parsed.data.email,
     password: parsed.data.password,
+    options: { captchaToken: codigoDoCaptcha(captcha) },
   });
+
+  // Recusa do CAPTCHA (código vencido, já usado ou ausente) não é senha errada:
+  // não gasta o orçamento da conta e a tela pede só para tentar de novo.
+  if (error && recusaDeCaptcha(error)) {
+    await audit({
+      action: "auth.login_captcha_failed",
+      metadata: { email_hash: hashEmail(parsed.data.email), reason: error.message },
+      requestId,
+      ip,
+      userAgent,
+    });
+    return { ok: false, error: "captcha_failed" };
+  }
 
   if (!error && data.user) {
     const loja = await cookies();

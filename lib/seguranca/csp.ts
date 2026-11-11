@@ -15,7 +15,13 @@
  *
  * Origem nova de imagem (CDN de fotos, por exemplo) entra por CSP_IMG_EXTRA,
  * separada por espaço, sem rebuild.
+ *
+ * Única exceção ao "script só do próprio domínio": com o CAPTCHA do acesso ligado
+ * (lib/seguranca/captcha.ts), o script e a moldura da Cloudflare são liberados.
+ * Com ele desligado, a política é a mesma de antes.
  */
+
+import { ORIGEM_DO_CAPTCHA } from "./captcha";
 
 const IMAGENS_CONHECIDAS = [
   "https://opailhabela.com.br",
@@ -30,6 +36,8 @@ export interface OpcoesCsp {
   appUrl: string;
   dev: boolean;
   imagensExtras?: string;
+  /** CAPTCHA do acesso ligado (há chave do site no ambiente). */
+  captcha?: boolean;
 }
 
 function origem(url: string): string | null {
@@ -40,22 +48,23 @@ function origem(url: string): string | null {
   }
 }
 
-export function montarCsp({ supabaseUrl, appUrl, dev, imagensExtras }: OpcoesCsp): string {
+export function montarCsp({ supabaseUrl, appUrl, dev, imagensExtras, captcha }: OpcoesCsp): string {
   const supa = origem(supabaseUrl);
   const supaWs = supa ? supa.replace(/^http/, "ws") : null;
   const extras = (imagensExtras ?? "").split(/\s+/).filter((o) => /^https:\/\/[a-z0-9*.-]+(:\d+)?$/i.test(o));
   const https = appUrl.startsWith("https://");
+  const cf = captcha ? ORIGEM_DO_CAPTCHA : null;
 
   const diretivas: Array<[string, Array<string | null>]> = [
     ["default-src", ["'self'"]],
-    ["script-src", ["'self'", "'unsafe-inline'", dev ? "'unsafe-eval'" : null]],
+    ["script-src", ["'self'", "'unsafe-inline'", dev ? "'unsafe-eval'" : null, cf]],
     ["style-src", ["'self'", "'unsafe-inline'"]],
     ["img-src", ["'self'", "data:", "blob:", supa, ...IMAGENS_CONHECIDAS, ...extras]],
     ["media-src", ["'self'", "data:", "blob:", supa]],
     ["font-src", ["'self'", "data:"]],
     ["connect-src", ["'self'", supa, supaWs, dev ? "ws:" : null]],
     ["worker-src", ["'self'", "blob:"]],
-    ["frame-src", ["'self'"]],
+    ["frame-src", ["'self'", cf]],
     ["frame-ancestors", ["'none'"]],
     ["base-uri", ["'self'"]],
     ["form-action", ["'self'"]],

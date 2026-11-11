@@ -91,4 +91,43 @@ describe("signInWithPassword — teto de tentativas", () => {
     expect(resultados.filter((r) => r?.error === "rate_limited")).toHaveLength(0);
     expect(signIn).toHaveBeenCalledTimes(10);
   });
+
+  it("recusa do CAPTCHA não é senha errada: não gasta o orçamento da conta", async () => {
+    const { signInWithPassword } = await import("./signInWithPassword");
+    const input = { email: "pessoa@example.com", password: "senha-certa-123" };
+
+    signIn.mockResolvedValue({
+      data: { user: null, session: null },
+      error: { message: "captcha verification process failed", status: 400, code: "captcha_failed" },
+    } as never);
+
+    const resultados = [];
+    for (let i = 0; i < 7; i++) {
+      resultados.push(await signInWithPassword(input, undefined, "codigo-vencido"));
+    }
+
+    // Sete recusas seguidas e a conta segue livre: se contassem como senha errada,
+    // a 6ª já voltaria `rate_limited`.
+    expect(resultados.map((r) => r.error)).toEqual(Array(7).fill("captcha_failed"));
+    expect(signIn).toHaveBeenCalledTimes(7);
+  });
+
+  it("o código do CAPTCHA segue para o provedor; sem código, vai vazio", async () => {
+    const { signInWithPassword } = await import("./signInWithPassword");
+    const input = { email: "outra@example.com", password: "senha-errada-123" };
+
+    await signInWithPassword(input, undefined, "  codigo-do-navegador  ");
+    await signInWithPassword(input);
+
+    expect(signIn).toHaveBeenNthCalledWith(1, {
+      email: input.email,
+      password: input.password,
+      options: { captchaToken: "codigo-do-navegador" },
+    });
+    expect(signIn).toHaveBeenNthCalledWith(2, {
+      email: input.email,
+      password: input.password,
+      options: { captchaToken: undefined },
+    });
+  });
 });

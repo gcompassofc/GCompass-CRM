@@ -8,6 +8,7 @@ import { audit, hashEmail } from "@/lib/audit";
 import { authRateLimited, AUTH_LIMITS } from "@/lib/auth/rate-limit";
 import { env } from "@/lib/env";
 import { IS_DEMO_MODE } from "@/lib/demo-mode";
+import { codigoDoCaptcha } from "@/lib/seguranca/captcha";
 
 export type SignUpResult =
   | { ok: true }
@@ -26,7 +27,7 @@ export type SignUpResult =
  * o GoTrue devolve um usuário ofuscado (identities vazio) sem erro, e nós não
  * diferenciamos. Rate limit de envio de e-mail é do próprio GoTrue.
  */
-export async function signUp(input: SignupInput): Promise<SignUpResult> {
+export async function signUp(input: SignupInput, captcha?: string): Promise<SignUpResult> {
   if (env.CADASTRO_ABERTO !== "true") return { ok: false, error: "signup_failed" };
   const parsed = signupSchema.safeParse(input);
   if (!parsed.success) {
@@ -61,6 +62,7 @@ export async function signUp(input: SignupInput): Promise<SignUpResult> {
     options: {
       emailRedirectTo: `${origin}/auth/confirm`,
       data: { org_name: parsed.data.org_name },
+      captchaToken: codigoDoCaptcha(captcha),
     },
   });
 

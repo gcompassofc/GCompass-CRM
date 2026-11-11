@@ -147,8 +147,17 @@ No painel do projeto (ou pela Management API com o token):
 4. **Authentication > URL Configuration**: Site URL `https://crm.opailhabela.com.br`; redirects
    `https://crm.opailhabela.com.br/auth/confirm` e `/auth/callback`.
 5. **Multi-Factor**: TOTP ligado (já é o padrão). O admin cadastra o segundo fator no primeiro login.
-6. ⚠️ **CAPTCHA: deixar desligado por enquanto.** O formulário de login do app ainda não envia o token do
-   CAPTCHA; ligar no Supabase trava o login de todo mundo. Fica como pendência (seção 9).
+6. ⚠️ **CAPTCHA: só ligar no Supabase por último.** Desde 10/11/2026 o app sabe mandar o código do CAPTCHA
+   (Cloudflare Turnstile) em entrar, recuperar senha e convite, mas só quando `TURNSTILE_SITE_KEY` está no
+   `.env`. A ordem é esta, e não pode ser invertida:
+   1. criar o widget no painel da Cloudflare (Turnstile, domínio `crm.opailhabela.com.br`, modo Managed);
+   2. pôr a chave do site (pública) em `TURNSTILE_SITE_KEY` no `/opt/crm/.env` e recriar o contêiner do app;
+   3. abrir `/login` em aba anônima e entrar: o botão libera depois de "Conferindo a segurança da conexão";
+   4. só então, no Supabase, **Authentication > Attack Protection**: ligar o CAPTCHA, provedor Turnstile, e
+      colar a chave secreta (ela só existe lá e no cofre de senhas);
+   5. entrar de novo em aba anônima e pedir uma recuperação de senha.
+   Para voltar atrás: desligar o CAPTCHA no Supabase. O app continua funcionando com ou sem ele ligado lá.
+   Ligar no Supabase antes do passo 2 trava o login de todo mundo.
 7. **Database > Backups**: confirmar backup diário (plano pago) e fazer **um teste de restauração** antes de
    chamar a equipe.
 8. **Settings > Database > SSL**: exigir SSL. Usar a connection string do **pooler (Session, porta 5432)**,
@@ -228,7 +237,7 @@ tem segredo, e WAHA, Redis e app sem porta aberta para a internet.
 
 | Item | Por que espera |
 |---|---|
-| CAPTCHA no login (Turnstile no formulário mais o Supabase) | o app ainda não manda o token; o limite por IP e o bloqueio por conta e IP já seguram o grosso |
+| CAPTCHA no login (Turnstile no formulário mais o Supabase) | o app já manda o código (10/11/2026); falta criar o widget, pôr `TURNSTILE_SITE_KEY` no `.env` e ligar no Supabase, nessa ordem (seção 3, item 6) |
 | Envio das conversões ao Meta (CAPI) | a fila `eventos_meta` já existe; falta o envio, que pede Pixel ID e token da OPA 🙋 |
 | Cifra fase 3 (apagar o texto puro) | primeiro a leitura de todas as telas passa a usar o cifrado; antes disso, apagar quebra o app |
 | CPF com hash simples (`cpf_hash`) | a OPA não coleta CPF hoje; entra junto da fase 3 |

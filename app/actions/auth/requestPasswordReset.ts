@@ -7,12 +7,13 @@ import { forgotPasswordSchema, type ForgotPasswordInput } from "@/lib/auth/schem
 import { audit, hashEmail } from "@/lib/audit";
 import { authRateLimited, AUTH_LIMITS } from "@/lib/auth/rate-limit";
 import { env } from "@/lib/env";
+import { codigoDoCaptcha, recusaDeCaptcha } from "@/lib/seguranca/captcha";
 
 export type RequestPasswordResetResult =
   | { ok: true }
   | {
       ok: false;
-      error: "validation_error" | "rate_limited" | "request_failed";
+      error: "validation_error" | "rate_limited" | "request_failed" | "captcha_failed";
       details?: Record<string, unknown>;
     };
 
@@ -23,6 +24,7 @@ export type RequestPasswordResetResult =
  */
 export async function requestPasswordReset(
   input: ForgotPasswordInput,
+  captcha?: string,
 ): Promise<RequestPasswordResetResult> {
   const parsed = forgotPasswordSchema.safeParse(input);
   if (!parsed.success) {
@@ -48,10 +50,12 @@ export async function requestPasswordReset(
   const supabase = await createClient();
   const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
     redirectTo: `${origin}/auth/confirm`,
+    captchaToken: codigoDoCaptcha(captcha),
   });
 
   if (error) {
     if (error.status === 429) return { ok: false, error: "rate_limited" };
+    if (recusaDeCaptcha(error)) return { ok: false, error: "captcha_failed" };
     await audit({
       action: "auth.password_reset_request_failed",
       metadata: {

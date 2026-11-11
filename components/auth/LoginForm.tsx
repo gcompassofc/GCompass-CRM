@@ -10,13 +10,21 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CampoSenha } from "@/components/auth/CampoSenha";
+import { CampoCaptcha } from "@/components/auth/CampoCaptcha";
 import { CircleNotch } from "@/lib/ui/icons";
 import { signInWithPassword } from "@/app/actions/auth/signInWithPassword";
 
-export function LoginForm({ next }: { next?: string }) {
+export function LoginForm({ next, captchaSiteKey }: { next?: string; captchaSiteKey?: string | null }) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [serverError, setServerError] = useState<string | null>(null);
+  const [codigoCaptcha, setCodigoCaptcha] = useState<string | null>(null);
+  // O código da verificação vale uma vez só: trocar a rodada redesenha o campo e pede outro.
+  const [rodadaCaptcha, setRodadaCaptcha] = useState(0);
+  const novoCaptcha = () => {
+    setCodigoCaptcha(null);
+    setRodadaCaptcha((n) => n + 1);
+  };
 
   const {
     register,
@@ -49,12 +57,13 @@ export function LoginForm({ next }: { next?: string }) {
     startTransition(async () => {
       // Server Action redirects on success — no return value reaches here.
       // On failure, an error discriminator is returned and rendered inline.
-      const res = await signInWithPassword(values, next);
+      const res = await signInWithPassword(values, next, codigoCaptcha ?? undefined);
       if (!res) {
         // Should be unreachable (redirect throws), but guard anyway.
         router.replace(next || "/app");
         return;
       }
+      novoCaptcha();
       if (res.error === "mfa_required") {
         const params = new URLSearchParams();
         if (next) params.set("next", next);
@@ -72,6 +81,8 @@ export function LoginForm({ next }: { next?: string }) {
         setServerError("Muitas tentativas. Aguarde alguns minutos.");
       } else if (res.error === "validation_error") {
         setServerError("Dados inválidos. Confira os campos.");
+      } else if (res.error === "captcha_failed") {
+        setServerError("A verificação de segurança não passou. Espere um instante e tente de novo.");
       } else {
         setServerError("Erro inesperado. Tente novamente.");
       }
@@ -120,6 +131,7 @@ export function LoginForm({ next }: { next?: string }) {
         />
         <span>Lembrar de mim por 30 dias</span>
       </label>
+      {captchaSiteKey && <CampoCaptcha key={rodadaCaptcha} siteKey={captchaSiteKey} onCodigo={setCodigoCaptcha} />}
       {serverError && (
         <div
           className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
@@ -128,7 +140,7 @@ export function LoginForm({ next }: { next?: string }) {
           {serverError}
         </div>
       )}
-      <Button type="submit" className="w-full" disabled={isPending}>
+      <Button type="submit" className="w-full" disabled={isPending || (Boolean(captchaSiteKey) && !codigoCaptcha)}>
         {isPending ? (
           <span className="inline-flex items-center gap-2">
             <CircleNotch size={18} className="animate-spin" aria-hidden />

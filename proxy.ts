@@ -4,6 +4,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { env } from "@/lib/env";
 import { isPublicPath } from "@/lib/auth/public-paths";
 import { cabecalhoHsts, montarCsp } from "@/lib/seguranca/csp";
+import { chaveDoCaptcha } from "@/lib/seguranca/captcha";
 import { IS_DEMO_MODE } from "@/lib/demo-mode";
 import {
   verifyImpersonateCookieEdge,
@@ -25,6 +26,7 @@ export async function proxy(request: NextRequest) {
       appUrl: env.NEXT_PUBLIC_APP_URL,
       dev: process.env.NODE_ENV !== "production",
       imagensExtras: process.env.CSP_IMG_EXTRA,
+      captcha: chaveDoCaptcha() !== null,
     }),
   );
   const hsts = cabecalhoHsts(env.NEXT_PUBLIC_APP_URL);
