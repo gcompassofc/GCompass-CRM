@@ -1,0 +1,24 @@
+/**
+ * Quem precisa ter o WhatsApp conectado (pedido do Allyson, 12/11/2026).
+ *
+ * O corretor atende lead pelo próprio número: sem ele conectado, falta algo.
+ * Gestor e administrador não precisam: só entram na conta quando conectaram
+ * (o Marco, gestor que também atende). Assim a tela diz "5 de 5" com cinco
+ * corretores, e não "5 de 6" por causa de um acesso da gestão sem número.
+ *
+ * Número sem dono conhecido (sessão antiga achada pelo nome) conta como de corretor.
+ */
+
+export type Papel = "viewer" | "agent" | "manager" | "admin" | string;
+
+export function precisaDeWhatsApp(papel: Papel | null | undefined, conectado: boolean): boolean {
+  if (conectado) return true;
+  if (papel === "manager" || papel === "admin" || papel === "viewer") return false;
+  return true;
+}
+
+/** "X de Y": conectados sobre quem precisa estar conectado. */
+export function contagemDeWhatsApp<T>(itens: T[], papelDe: (i: T) => Papel | null | undefined, conectadoDe: (i: T) => boolean): { conectados: number; total: number } {
+  const contam = itens.filter((i) => precisaDeWhatsApp(papelDe(i), conectadoDe(i)));
+  return { conectados: contam.filter(conectadoDe).length, total: contam.length };
+}

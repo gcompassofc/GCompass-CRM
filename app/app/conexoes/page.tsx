@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { listarNumerosDaEquipe, type NumeroDaEquipe } from "@/lib/channels/numeros";
 import { inicioDoPeriodo } from "@/lib/opa/dados";
+import { contagemDeWhatsApp, precisaDeWhatsApp } from "@/lib/opa/whatsapp-da-equipe";
 import { tokenDeEntrada, tokenDoRadar } from "@/lib/opa/segredos";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -60,7 +61,7 @@ export default async function ConexoesPage() {
   const admin = createAdminClient();
   const desde = inicioDoPeriodo(7);
 
-  const [sessoes, { data: convRaw }, { data: orgRaw }, { data: leadsRaw }] = await Promise.all([
+  const [sessoes, { data: convRaw }, { data: orgRaw }, { data: leadsRaw }, { data: papeisRaw }] = await Promise.all([
     listarNumerosDaEquipe(supabase, org.orgId),
     supabase
       .from("conversations")
@@ -69,6 +70,7 @@ export default async function ConexoesPage() {
       .in("status", ["open", "pending", "claimed"]),
     admin.from("organizations").select("slug").eq("id", org.orgId).maybeSingle(),
     supabase.from("crm_leads").select("source, created_at").eq("organization_id", org.orgId).gte("created_at", desde),
+    admin.from("user_organizations").select("user_id, role").eq("organization_id", org.orgId).is("revoked_at", null),
   ]);
 
   const abertasPorSessao = new Map<string, number>();
@@ -77,7 +79,10 @@ export default async function ConexoesPage() {
   }
   const lembretes = sessoes.find((s) => s.waha_session_name === "opa-lembretes");
   const corretores = sessoes.filter((s) => s !== lembretes);
-  const conectados = corretores.filter((s) => s.status === "WORKING").length;
+  // Gestor e administrador não precisam de número: só contam se conectaram (12/11/2026).
+  const papelDoDono = new Map(((papeisRaw ?? []) as Array<{ user_id: string; role: string }>).map((p) => [p.user_id, p.role]));
+  const papelDe = (s: NumeroDaEquipe) => (s.owner_user_id ? (papelDoDono.get(s.owner_user_id) ?? null) : null);
+  const { conectados, total: precisam } = contagemDeWhatsApp(corretores, papelDe, (s) => s.status === "WORKING");
   const conversasAbertas = [...abertasPorSessao.values()].reduce((a, b) => a + b, 0);
 
   const o = orgRaw as { slug: string } | null;
@@ -113,7 +118,7 @@ export default async function ConexoesPage() {
       nome: "WhatsApp dos corretores",
       descricao: "Conversa nova chega para o dono classificar: lead ou particular",
       ligado: conectados > 0,
-      estado: `${conectados} de ${corretores.length} números conectados`,
+      estado: `${conectados} de ${precisam} números conectados`,
       volume: plural(contar("whatsapp")),
     },
     {
@@ -181,9 +186,9 @@ export default async function ConexoesPage() {
             <CartaoNumero
               icone={WhatsappLogo}
               rotulo="Corretores conectados"
-              valor={`${conectados}/${corretores.length}`}
-              alerta={conectados < corretores.length}
-              contexto={conectados < corretores.length ? "tem número sem QR" : "todos no ar"}
+              valor={`${conectados}/${precisam}`}
+              alerta={conectados < precisam}
+              contexto={conectados < precisam ? "tem número sem QR" : "todos no ar"}
             />
             <CartaoNumero icone={ChatCircle} rotulo="Conversas abertas" valor={conversasAbertas} contexto="em todos os números" />
           </div>
@@ -195,6 +200,8 @@ export default async function ConexoesPage() {
             {corretores.map((s) => {
               const nome = s.display_name ?? "Corretor";
               const ok = s.status === "WORKING";
+              // Número da gestão desconectado: opcional, sem alarme.
+              const opcional = !precisaDeWhatsApp(papelDe(s), ok);
               return (
                 <li key={s.id} className="flex flex-col gap-4 rounded-[24px] bg-[#f2f6f9] p-5">
                   <div className="flex items-center gap-3">
@@ -205,7 +212,7 @@ export default async function ConexoesPage() {
                         <Phone className="size-3.5" /> {mascarar(s.phone_number)}
                       </p>
                     </div>
-                    <span title={ok ? "Conectado" : "Desconectado"} className={cn("size-2.5 shrink-0 rounded-full", ok ? "bg-[#2ba160]" : "bg-[#e07b2e]")} />
+                    <span title={ok ? "Conectado" : "Desconectado"} className={cn("size-2.5 shrink-0 rounded-full", ok ? "bg-[#2ba160]" : opcional ? "bg-[#b9cfdb]" : "bg-[#e07b2e]")} />
                   </div>
                   <div className="flex items-end justify-between gap-3">
                     <div>
@@ -216,7 +223,7 @@ export default async function ConexoesPage() {
                       href="/app/connections"
                       className={cn(
                         "inline-flex h-9 items-center gap-1.5 rounded-full px-3.5 text-[13px] font-semibold",
-                        ok ? "bg-white text-[#0a2d40] hover:bg-[#e7f0f5]" : "bg-[#0a2d40] text-white hover:bg-[#12455f]",
+                        ok || opcional ? "bg-white text-[#0a2d40] hover:bg-[#e7f0f5]" : "bg-[#0a2d40] text-white hover:bg-[#12455f]",
                       )}
                     >
                       {ok ? <Gear className="size-4" /> : <QrCode className="size-4" />}
@@ -224,8 +231,8 @@ export default async function ConexoesPage() {
                     </Link>
                   </div>
                   <div className="flex flex-wrap gap-1.5">
-                    <Chip icone={ok ? WifiHigh : WifiSlash} tom={ok ? "ok" : "alerta"}>
-                      {ok ? "Conectado" : "Falta ler o QR"}
+                    <Chip icone={ok ? WifiHigh : WifiSlash} tom={ok ? "ok" : opcional ? "neutro" : "alerta"}>
+                      {ok ? "Conectado" : opcional ? "Opcional para a gestão" : "Falta ler o QR"}
                     </Chip>
                     <Chip icone={Kanban} tom="neutro">
                       Compradores e Captação

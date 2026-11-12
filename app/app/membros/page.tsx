@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { listarNumerosDaEquipe } from "@/lib/channels/numeros";
 import { fotoDaEquipe } from "@/lib/opa/fotos-equipe";
+import { contagemDeWhatsApp } from "@/lib/opa/whatsapp-da-equipe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CheckCircle, Clock, Info, Kanban, ShieldCheck, Users, WhatsappLogo, WifiSlash, XCircle } from "@/lib/ui/icons";
 
@@ -118,7 +119,8 @@ export default async function MembrosPage() {
   if (org.role !== "manager" && org.role !== "admin") redirect("/app/hoje");
 
   const membros = await carregarMembros(org.orgId);
-  const conectados = membros.filter((m) => m.whatsapp === "conectado").length;
+  // Gestor e administrador não precisam de número: só contam se conectaram (12/11/2026).
+  const { conectados, total: precisamDeWhatsApp } = contagemDeWhatsApp(membros, (m) => m.papel, (m) => m.whatsapp === "conectado");
   const gestores = membros.filter((m) => m.papel === "admin" || m.papel === "manager").length;
   // Só o administrador troca papel (a rota confere de novo). O próprio papel fica fixo,
   // para ninguém se trancar fora sem querer.
@@ -139,7 +141,7 @@ export default async function MembrosPage() {
       <CorpoOpa>
         <div className="grid gap-5 sm:grid-cols-3">
           <CartaoNumero icone={Users} rotulo="Na equipe" valor={membros.length} contexto={`${gestores} na gestão`} />
-          <CartaoNumero icone={WhatsappLogo} rotulo="Com WhatsApp conectado" valor={conectados} contexto={`de ${membros.length} membros`} />
+          <CartaoNumero icone={WhatsappLogo} rotulo="Com WhatsApp conectado" valor={conectados} contexto={`de ${precisamDeWhatsApp} que atendem`} />
           <CartaoNumero icone={ShieldCheck} rotulo="Corretores" valor={membros.filter((m) => m.papel === "agent").length} contexto="veem só os próprios leads" />
         </div>
 
@@ -171,6 +173,10 @@ export default async function MembrosPage() {
                 {m.whatsapp === "conectado" ? (
                   <Chip icone={WhatsappLogo} tom="ok">
                     conectado
+                  </Chip>
+                ) : m.papel === "manager" || m.papel === "admin" ? (
+                  <Chip icone={WhatsappLogo} tom="neutro">
+                    WhatsApp opcional
                   </Chip>
                 ) : m.whatsapp === "desconectado" ? (
                   <Chip icone={WifiSlash} tom="alerta">
