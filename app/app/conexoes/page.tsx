@@ -3,8 +3,8 @@ import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { listarNumerosDaEquipe, type NumeroDaEquipe } from "@/lib/channels/numeros";
-import { inicioDoPeriodo } from "@/lib/opa/dados";
-import { contagemDeWhatsApp, precisaDeWhatsApp } from "@/lib/opa/whatsapp-da-equipe";
+import { carregarEquipe, inicioDoPeriodo } from "@/lib/opa/dados";
+import { contagemDeWhatsApp, papelDoNumero, precisaDeWhatsApp } from "@/lib/opa/whatsapp-da-equipe";
 import { tokenDeEntrada, tokenDoRadar } from "@/lib/opa/segredos";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -61,7 +61,7 @@ export default async function ConexoesPage() {
   const admin = createAdminClient();
   const desde = inicioDoPeriodo(7);
 
-  const [sessoes, { data: convRaw }, { data: orgRaw }, { data: leadsRaw }, { data: papeisRaw }] = await Promise.all([
+  const [sessoes, { data: convRaw }, { data: orgRaw }, { data: leadsRaw }] = await Promise.all([
     listarNumerosDaEquipe(supabase, org.orgId),
     supabase
       .from("conversations")
@@ -70,7 +70,6 @@ export default async function ConexoesPage() {
       .in("status", ["open", "pending", "claimed"]),
     admin.from("organizations").select("slug").eq("id", org.orgId).maybeSingle(),
     supabase.from("crm_leads").select("source, created_at").eq("organization_id", org.orgId).gte("created_at", desde),
-    admin.from("user_organizations").select("user_id, role").eq("organization_id", org.orgId).is("revoked_at", null),
   ]);
 
   const abertasPorSessao = new Map<string, number>();
@@ -80,8 +79,8 @@ export default async function ConexoesPage() {
   const lembretes = sessoes.find((s) => s.waha_session_name === "opa-lembretes");
   const corretores = sessoes.filter((s) => s !== lembretes);
   // Gestor e administrador não precisam de número: só contam se conectaram (12/11/2026).
-  const papelDoDono = new Map(((papeisRaw ?? []) as Array<{ user_id: string; role: string }>).map((p) => [p.user_id, p.role]));
-  const papelDe = (s: NumeroDaEquipe) => (s.owner_user_id ? (papelDoDono.get(s.owner_user_id) ?? null) : null);
+  const equipe = await carregarEquipe(org.orgId);
+  const papelDe = (s: NumeroDaEquipe) => papelDoNumero(s, [...equipe.values()]);
   const { conectados, total: precisam } = contagemDeWhatsApp(corretores, papelDe, (s) => s.status === "WORKING");
   const conversasAbertas = [...abertasPorSessao.values()].reduce((a, b) => a + b, 0);
 

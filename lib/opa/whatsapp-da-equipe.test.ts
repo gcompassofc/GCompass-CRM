@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { contagemDeWhatsApp, precisaDeWhatsApp } from "./whatsapp-da-equipe";
+import { contagemDeWhatsApp, papelDoNumero, precisaDeWhatsApp } from "./whatsapp-da-equipe";
 
 describe("quem precisa de WhatsApp conectado (12/11/2026)", () => {
   it("corretor sempre; gestão só quando conectou", () => {
@@ -21,6 +21,16 @@ describe("quem precisa de WhatsApp conectado (12/11/2026)", () => {
       { papel: "admin", ok: false },
     ];
     expect(contagemDeWhatsApp(equipe, (m) => m.papel, (m) => m.ok)).toEqual({ conectados: 5, total: 5 });
+  });
+
+  it("papel do número: pelo dono; sem dono, pelo nome igual ao de alguém da equipe", () => {
+    const equipe = [
+      { id: "u1", nome: "Luana Machado", papel: "agent" },
+      { id: "u9", nome: "growthcompassofc", papel: "admin" },
+    ];
+    expect(papelDoNumero({ owner_user_id: "u1", display_name: "Luana" }, equipe)).toBe("agent");
+    expect(papelDoNumero({ owner_user_id: null, display_name: "growthcompassofc" }, equipe)).toBe("admin");
+    expect(papelDoNumero({ owner_user_id: null, display_name: "Número antigo" }, equipe)).toBeNull();
   });
 
   it("corretor sem número continua faltando", () => {

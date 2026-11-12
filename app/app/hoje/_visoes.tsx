@@ -24,6 +24,7 @@ import {
 } from "@/lib/opa/dados";
 import { precoCompacto, precoPrincipal, type Imovel } from "@/lib/opa/imoveis";
 import { carregarNumerosDoInicio } from "@/lib/opa/inicio";
+import { papelDoNumero, precisaDeWhatsApp } from "@/lib/opa/whatsapp-da-equipe";
 import { diaSP, inicioDoDia, somarDias, type Periodo } from "@/lib/opa/periodo";
 import { createClient } from "@/lib/supabase/server";
 import { cn } from "@/lib/utils";
@@ -633,7 +634,8 @@ export async function VisaoGestor({
         esperando: meus.filter((l) => l.conversa?.esperandoMin != null).length,
         atrasados: meus.filter(foraDoPrazo).length,
         diagnostico: meus.length ? Math.round((meus.filter((l) => diagnosticoCompleto(l.campos) === 4).length / meus.length) * 100) : 0,
-        caiu: whatsCaiu(p),
+        // Gestor e administrador não precisam de WhatsApp (12/11/2026): número deles fora do ar não é alarme.
+        caiu: whatsCaiu(p) && precisaDeWhatsApp(p.papel, false),
       };
     })
     .filter((c) => c.total > 0 || c.caiu)
@@ -680,7 +682,7 @@ export async function VisaoGestor({
         </div>
       )}
 
-      {admin && <SaudeDoSistema orgId={orgId} sessoes={sessoes} />}
+      {admin && <SaudeDoSistema orgId={orgId} sessoes={sessoes} equipe={[...equipe.values()]} />}
 
       {precisa > 0 && (
         <Cartao escuro bloco className="flex flex-col gap-5">
@@ -854,14 +856,23 @@ export async function VisaoGestor({
 }
 
 /** Só administrador: o que está funcionando, com problema ou por configurar. */
-async function SaudeDoSistema({ orgId, sessoes }: { orgId: string; sessoes: Array<{ display_name: string | null; status: string }> }) {
+async function SaudeDoSistema({
+  orgId,
+  sessoes,
+  equipe,
+}: {
+  orgId: string;
+  sessoes: Array<{ display_name: string | null; status: string; owner_user_id: string | null }>;
+  equipe: Pessoa[];
+}) {
   const supabase = await createClient();
   const [{ data: ultimo }, { count: metaFila }, { count: semCifra }] = await Promise.all([
     supabase.from("crm_leads").select("created_at").eq("organization_id", orgId).order("created_at", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("eventos_meta").select("id", { count: "exact", head: true }).eq("organization_id", orgId).eq("status", "na_fila"),
     supabase.from("contacts").select("id", { count: "exact", head: true }).eq("organization_id", orgId).is("cifrado_em", null),
   ]);
-  const nomeadas = sessoes.filter((s) => s.display_name);
+  // Número da gestão desconectado não entra na conta (12/11/2026); o OPA Lembretes e os corretores, sim.
+  const nomeadas = sessoes.filter((s) => s.display_name && precisaDeWhatsApp(papelDoNumero(s, equipe), s.status === "WORKING"));
   const ligados = nomeadas.filter((s) => s.status === "WORKING");
   const caidos = nomeadas.filter((s) => s.status !== "WORKING").map((s) => primeiroNome(s.display_name));
   const minDesde = ultimo ? Math.round((new Date().getTime() - Date.parse((ultimo as { created_at: string }).created_at)) / 60_000) : null;
