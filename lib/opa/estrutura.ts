@@ -59,7 +59,7 @@ export const ETAPAS_FINAIS = [
   ["perdido", "Perdido", "#8FA3AE", null],
 ] as const;
 
-/** Do diagnóstico em diante (menos Sem momento e Perdido) o lead precisa dos 4 campos. */
+/** Do diagnóstico em diante (menos Sem momento e Perdido) o lead precisa de 2 dos 4 campos (0133). */
 export const TRAVADAS = new Set([
   "diagnostico", "selecao", "visita-agendada", "visita-realizada", "proposta", "negociacao", "fechamento", "vendido",
 ]);

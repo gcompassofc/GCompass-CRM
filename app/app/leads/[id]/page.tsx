@@ -1479,7 +1479,7 @@ export default async function LeadPage({
 }
 
 /**
- * Diagnóstico: os 4 campos que travam a etapa "Diagnóstico feito", cada um com
+ * Diagnóstico: os 4 campos da etapa "Diagnóstico feito" (2 deles bastam), cada um com
  * ícone. O que falta abre um campo para preencher à mão (se a IA ainda não
  * anotou). Na aba Campos, todos os campos do perfil ficam editáveis.
  */
@@ -1504,7 +1504,7 @@ function Diagnostico({
         icone={Target}
         tom={feitos === 4 ? "ok" : "claro"}
         titulo="Diagnóstico"
-        sub={feitos === 4 ? "Completo: libera a seleção de imóveis" : `${feitos} de 4 · sem os 4, a etapa não avança`}
+        sub={feitos === 4 ? "Completo" : feitos >= 2 ? `${feitos} de 4 · já libera a etapa` : `${feitos} de 4 · com 2, a etapa avança`}
       />
       {editavel ? (
         <div className="mt-5 flex flex-col gap-3">

@@ -9,12 +9,10 @@ import { ehLeadDaOpa, MOTIVO_PESSOAL } from "@/lib/opa/contatos-whatsapp";
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { analisarLead } from "@/lib/opa/analisar";
 import { boasVindasEnviadaEm } from "@/lib/opa/atendimento";
-import { avancarEtapa } from "@/lib/opa/avanco";
+import { avancarEtapa, camposDoDiagnosticoPreenchidos, CAMPOS_DO_DIAGNOSTICO, MINIMO_DO_DIAGNOSTICO } from "@/lib/opa/avanco";
 import { enviarBoasVindas } from "@/lib/opa/boas-vindas";
 import { mesclarCampos, type OpcoesMescla } from "@/lib/opa/campos";
 import { carregarConfig } from "@/lib/opa/config";
-import { CAMPOS } from "@/lib/opa/copiloto";
-import { CAMPOS_DIAGNOSTICO } from "@/lib/opa/dados";
 import { diaSP } from "@/lib/opa/periodo";
 import { avisarMudancaDeEtapa, avisarTagsNovas, etapaAtual } from "@/lib/opa/eventos-lead";
 import { limparNomeDoLead, tituloComNovoNome } from "@/lib/opa/nome-lead";
@@ -84,7 +82,7 @@ export async function confirmarSugestao(formData: FormData) {
     .from("copiloto_sugestoes")
     .update({ status: "aceita", valor, decidido_por: user.id, decidido_em: new Date().toISOString() })
     .eq("id", s.id);
-  // Quarto campo confirmado: o card vai sozinho para "Diagnóstico feito".
+  // Segundo campo confirmado: o card vai sozinho para "Diagnóstico feito".
   await avancarEtapa(createAdminClient(), org.orgId, s.lead_id, "diagnostico_completo");
   revalidatePath("/app/pipeline");
   revalidatePath(`/app/leads/${s.lead_id}`);
@@ -121,7 +119,7 @@ export async function editarCampo(formData: FormData) {
     revalidatePath(`/app/leads/${leadId}`);
     if (foi) {
       revalidatePath("/app/pipeline");
-      return { ok: true as const, aviso: "Diagnóstico completo: o card foi para Diagnóstico feito." };
+      return { ok: true as const, aviso: "Diagnóstico feito: o card foi para Diagnóstico feito." };
     }
     return;
   }
@@ -140,15 +138,72 @@ export async function reanalisar(formData: FormData) {
   revalidatePath(`/app/leads/${leadId}`);
 }
 
-export type ResultadoEtapa = { ok: true; aviso?: string } | { ok: false; erro: string };
+/**
+ * O que a janela "Antes de avançar" do Funil precisa: o que já está preenchido
+ * e o que a IA anotou na conversa e ninguém confirmou ainda (copiloto_sugestoes).
+ */
+export interface PedidoDiagnostico {
+  minimo: number;
+  campos: Record<string, string>;
+  sugestoes: Record<string, string>;
+}
+
+export type ResultadoEtapa = { ok: true; aviso?: string } | { ok: false; erro: string; diagnostico?: PedidoDiagnostico };
 
 /**
  * Muda a etapa conferindo as travas da OPA no servidor: "Diagnóstico feito"
- * pede finalidade, região, momento e inegociável confirmados.
+ * pede 2 dos 4 campos (finalidade, região, momento, inegociável). Quando falta,
+ * devolve o pedido para a janela do Funil, que preenche e chama `preencherEMover`.
  */
 export async function moverEtapa(formData: FormData): Promise<ResultadoEtapa> {
   const leadId = String(formData.get("leadId") ?? "");
   const etapaId = String(formData.get("etapaId") ?? "");
+  return moverParaEtapa(leadId, etapaId);
+}
+
+/**
+ * A janela do Funil: grava os campos que o corretor preencheu (ou aceitou da IA)
+ * e já leva o card para a etapa. Precisa de 2 dos 4 no fim, contando o que já estava.
+ */
+export async function preencherEMover(formData: FormData): Promise<ResultadoEtapa> {
+  const leadId = String(formData.get("leadId") ?? "");
+  const etapaId = String(formData.get("etapaId") ?? "");
+  const { user, org, supabase } = await contexto();
+  if (org.role === "viewer") return { ok: false, erro: "Seu acesso é só de leitura." };
+
+  const { data: lead } = await supabase.from("crm_leads").select("custom_fields").eq("organization_id", org.orgId).eq("id", leadId).maybeSingle();
+  if (!lead) return { ok: false, erro: "Lead não encontrado." };
+  const atuais = (((lead as { custom_fields: Record<string, unknown> | null }).custom_fields ?? {}).opa ?? {}) as Record<string, string>;
+
+  const novos: Record<string, string> = {};
+  for (const k of CAMPOS_DO_DIAGNOSTICO) {
+    const v = String(formData.get(k) ?? "").trim().slice(0, 200);
+    if (v && v !== String(atuais[k] ?? "").trim()) novos[k] = v;
+  }
+  if (camposDoDiagnosticoPreenchidos({ ...atuais, ...novos }) < MINIMO_DO_DIAGNOSTICO) {
+    return { ok: false, erro: `Preencha pelo menos ${MINIMO_DO_DIAGNOSTICO} dos 4 campos.` };
+  }
+
+  if (Object.keys(novos).length > 0) {
+    await mesclarCampos(supabase, leadId, { opa: novos }, { mesclar: ["opa"], atividade: new Date().toISOString(), orgId: org.orgId });
+    // O que a IA tinha anotado para esses campos foi decidido agora pelo corretor.
+    const agora = new Date().toISOString();
+    for (const [campo, valor] of Object.entries(novos)) {
+      await supabase
+        .from("copiloto_sugestoes")
+        .update({ status: "aceita", valor, decidido_por: user.id, decidido_em: agora })
+        .eq("organization_id", org.orgId)
+        .eq("lead_id", leadId)
+        .eq("campo", campo)
+        .eq("status", "pendente");
+    }
+  }
+  const res = await moverParaEtapa(leadId, etapaId);
+  if (res.ok) revalidatePath("/app/pipeline");
+  return res;
+}
+
+async function moverParaEtapa(leadId: string, etapaId: string): Promise<ResultadoEtapa> {
   const { org, supabase } = await contexto();
 
   const [{ data: lead }, { data: etapa }] = await Promise.all([
@@ -168,10 +223,23 @@ export async function moverEtapa(formData: FormData): Promise<ResultadoEtapa> {
     .maybeSingle();
   const posDiag = (diag as { position: number } | null)?.position;
   const passaDoDiagnostico = posDiag != null && Number(destino.position) >= Number(posDiag) && destino.slug !== "sem-momento" && destino.slug !== "perdido";
-  const faltando = CAMPOS_DIAGNOSTICO.filter((k) => !campos[k]);
-  if (passaDoDiagnostico && faltando.length > 0) {
-    const nomes = faltando.map((k) => CAMPOS[k].rotulo.toLowerCase());
-    return { ok: false, erro: `Para avançar, confirme antes: ${nomes.join(", ")}.` };
+  if (passaDoDiagnostico && camposDoDiagnosticoPreenchidos(campos) < MINIMO_DO_DIAGNOSTICO) {
+    const { data: anotadas } = await supabase
+      .from("copiloto_sugestoes")
+      .select("campo, valor")
+      .eq("organization_id", org.orgId)
+      .eq("lead_id", leadId)
+      .eq("status", "pendente")
+      .in("campo", [...CAMPOS_DO_DIAGNOSTICO]);
+    const sugestoes: Record<string, string> = {};
+    for (const s of (anotadas ?? []) as Array<{ campo: string; valor: string }>) sugestoes[s.campo] = s.valor;
+    const atuais: Record<string, string> = {};
+    for (const k of CAMPOS_DO_DIAGNOSTICO) if (String(campos[k] ?? "").trim()) atuais[k] = String(campos[k]).trim();
+    return {
+      ok: false,
+      erro: `Para avançar, preencha ${MINIMO_DO_DIAGNOSTICO} dos 4 campos do diagnóstico.`,
+      diagnostico: { minimo: MINIMO_DO_DIAGNOSTICO, campos: atuais, sugestoes },
+    };
   }
 
   const agora = new Date().toISOString();

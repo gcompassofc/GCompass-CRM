@@ -392,6 +392,8 @@ async function main() {
             organization_id: orgId, pipeline_id: pid, name: nome, slug, color: cor, position: pos,
             expected_duration_hours: horas, is_won: slug === "vendido", is_lost: slug === "perdido",
             campos_obrigatorios: TRAVADAS.has(slug) ? ["finalidade", "regiao", "momento", "inegociavel"] : [],
+            // 2 dos 4 bastam (12/11/2026, migration 0133).
+            campos_minimo: TRAVADAS.has(slug) ? 2 : null,
             // Evento ao Meta quando o negócio entra na etapa (gatilho fn_evento_meta_da_etapa).
             evento_meta: f.slug === "compradores" ? (PADRAO.meta_eventos.find((m) => m.etapa === slug)?.evento ?? null) : null,
           })

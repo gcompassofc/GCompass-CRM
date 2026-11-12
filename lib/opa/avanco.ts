@@ -4,7 +4,7 @@
  *
  *  1. Primeira resposta do corretor (mensagem que não é a boas-vindas automática,
  *     "Respondi" ou ligação atendida)        -> Primeiro contato
- *  2. Os 4 campos do diagnóstico preenchidos -> Diagnóstico feito
+ *  2. 2 dos 4 campos do diagnóstico preenchidos -> Diagnóstico feito (2 de 4 desde 12/11/2026)
  *  3. Seleção enviada pela ficha             -> Seleção enviada
  *
  * Por que aqui e não nas Automações da tela: card movido por regra não dispara
@@ -21,6 +21,12 @@ import { avisarMudancaDeEtapa } from "./eventos-lead";
 
 export const CAMPOS_DO_DIAGNOSTICO = ["finalidade", "regiao", "momento", "inegociavel"] as const;
 
+/**
+ * Quantos dos 4 campos bastam para o "Diagnóstico feito" (pedido do Allyson, 12/11/2026).
+ * O banco confere o mesmo número em `crm_stages.campos_minimo` (migration 0133).
+ */
+export const MINIMO_DO_DIAGNOSTICO = 2;
+
 export type MotivoAvanco = "primeira_resposta" | "diagnostico_completo" | "selecao_enviada";
 
 export const DESTINO_DO_MOTIVO: Record<MotivoAvanco, string> = {
@@ -31,7 +37,7 @@ export const DESTINO_DO_MOTIVO: Record<MotivoAvanco, string> = {
 
 const TEXTO_DO_MOTIVO: Record<MotivoAvanco, string> = {
   primeira_resposta: "o corretor respondeu o lead",
-  diagnostico_completo: "o diagnóstico ficou completo",
+  diagnostico_completo: "o diagnóstico ficou feito (2 dos 4 campos)",
   selecao_enviada: "a seleção de imóveis foi enviada pela ficha",
 };
 
@@ -44,14 +50,18 @@ export interface EtapaSimples {
   perdido: boolean;
 }
 
+export function camposDoDiagnosticoPreenchidos(opa: Record<string, unknown> | null | undefined): number {
+  return CAMPOS_DO_DIAGNOSTICO.filter((k) => String(opa?.[k] ?? "").trim() !== "").length;
+}
+
 export function diagnosticoFeito(opa: Record<string, unknown> | null | undefined): boolean {
-  return CAMPOS_DO_DIAGNOSTICO.every((k) => String(opa?.[k] ?? "").trim() !== "");
+  return camposDoDiagnosticoPreenchidos(opa) >= MINIMO_DO_DIAGNOSTICO;
 }
 
 /**
  * Para qual etapa o card vai, ou null se fica onde está. Separado do banco para
  * testar a regra inteira: só para frente, nunca de Sem momento, ganho ou perdido,
- * e nada passa de "Diagnóstico feito" sem os 4 campos (a mesma trava da ficha).
+ * e nada passa de "Diagnóstico feito" sem 2 dos 4 campos (a mesma trava da ficha).
  */
 export function decidirAvanco(p: {
   etapas: EtapaSimples[];

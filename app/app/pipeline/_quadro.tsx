@@ -28,6 +28,7 @@ import { cn } from "@/lib/utils";
 import { marcarRespondido, moverEtapa } from "../leads/actions";
 import { AbrirLead } from "../_opa/painel-lead";
 import { AvatarContato } from "../_opa/ui";
+import { AntesDeAvancar, type PedidoDeAvanco } from "./_antes-de-avancar";
 import { ConversaFlutuante, type LeadDaJanela } from "./_conversa-flutuante";
 import { EnviarEtapa, type EnvioDaEtapa } from "./_enviar-etapa";
 import { moverCartao } from "./mover";
@@ -118,6 +119,8 @@ export function QuadroOpa({ colunas: inicial, envio, simples = false }: { coluna
   const [colunas, setColunas] = useState(inicial);
   // Conversa aberta na janela do canto (09/11/2026): o corretor responde sem sair do Funil.
   const [conversa, setConversa] = useState<LeadDaJanela | null>(null);
+  // Faltou campo do diagnóstico: a janela abre aqui, sem sair do Funil (12/11/2026).
+  const [avanco, setAvanco] = useState<(PedidoDeAvanco & { deId: string }) | null>(null);
   const [, iniciar] = useTransition();
   const toque = useToque();
 
@@ -132,7 +135,19 @@ export function QuadroOpa({ colunas: inicial, envio, simples = false }: { coluna
       const res = await moverEtapa(fd);
       if (!res.ok) {
         setColunas(antes);
-        toast.error(res.erro);
+        const card = antes.flatMap((c) => c.cartoes).find((c) => c.id === cartaoId);
+        if (res.diagnostico && card) {
+          setAvanco({
+            leadId: cartaoId,
+            nome: card.nome,
+            etapaId: paraId,
+            etapaNome: antes.find((c) => c.id === paraId)?.nome ?? "a nova etapa",
+            pedido: res.diagnostico,
+            deId,
+          });
+        } else {
+          toast.error(res.erro);
+        }
       } else {
         toast.success(`Card movido para ${colunas.find((c) => c.id === paraId)?.nome ?? "a nova etapa"}.`);
         router.refresh();
@@ -148,6 +163,18 @@ export function QuadroOpa({ colunas: inicial, envio, simples = false }: { coluna
   return (
     <>
     {conversa && <ConversaFlutuante lead={conversa} onFechar={() => setConversa(null)} />}
+    {avanco && (
+      <AntesDeAvancar
+        avanco={avanco}
+        onFechar={() => setAvanco(null)}
+        onMovido={() => {
+          setColunas((atual) => moverCartao(atual, avanco.leadId, avanco.deId, avanco.etapaId));
+          toast.success(`Card movido para ${avanco.etapaNome}.`);
+          setAvanco(null);
+          router.refresh();
+        }}
+      />
+    )}
     <DragDropContext onDragEnd={soltar}>
       <div className="-mx-5 flex gap-4 overflow-x-auto px-5 pb-4 md:-mx-10 md:px-10">
         {colunas.map((col) => (

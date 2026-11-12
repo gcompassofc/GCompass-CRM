@@ -40,8 +40,10 @@ describe("etapa que anda sozinha", () => {
     expect(decidir("lead-recebido", "primeiro-contato", false, "lost")).toBeNull();
   });
 
-  it("diagnóstico completo só com os 4 preenchidos", () => {
-    expect(diagnosticoFeito({ finalidade: "Ainda não sei", regiao: "Norte", momento: "1 ano", inegociavel: "Vista" })).toBe(true);
-    expect(diagnosticoFeito({ finalidade: "Ainda não sei", regiao: " ", momento: "1 ano", inegociavel: "Vista" })).toBe(false);
+  it("diagnóstico feito com 2 dos 4 preenchidos (12/11/2026)", () => {
+    expect(diagnosticoFeito({ finalidade: "Moradia", regiao: "Norte", momento: "", inegociavel: "" })).toBe(true);
+    expect(diagnosticoFeito({ momento: "Em até 1 ano", inegociavel: "Vista" })).toBe(true);
+    expect(diagnosticoFeito({ finalidade: "Moradia", regiao: " ", momento: "", inegociavel: "" })).toBe(false);
+    expect(diagnosticoFeito({})).toBe(false);
   });
 });
