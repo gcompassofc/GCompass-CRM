@@ -38,7 +38,7 @@ import { FiltrosLeads, FormatoLeads, ListaDoGestor, MarcarLead, type OpcaoFiltro
 import { CabecalhoOpa, CorpoOpa } from "../_opa/cabecalho";
 import { FotoImovel } from "../_opa/componentes";
 import { IlustraConversa } from "../_opa/ilustracoes";
-import { AbasPilula, Avatar, Cartao, CartaoNumero, Chip, Vazio, iniciaisDe, type Icone } from "../_opa/ui";
+import { AbasPilula, Avatar, AvatarContato, Cartao, CartaoNumero, Chip, Vazio, iniciaisDe, type Icone } from "../_opa/ui";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Leads" };
@@ -204,7 +204,7 @@ export default async function LeadsPage({
                 <MarcarLead id={l.id} nome={l.nome} />
                 <AbrirLead leadId={l.id} data-tour="leads-item" className="flex min-w-0 flex-[1_1_60%] items-center gap-3 md:flex-1">
                   <span className="relative shrink-0">
-                    <Avatar texto={iniciaisDe(l.nome)} tom={l.offMarket ? "escuro" : "claro"} className="size-11 text-[13px]" />
+                    <AvatarContato nome={l.nome} contatoId={l.contatoId} temFoto={l.temFoto} tom={l.offMarket ? "escuro" : "claro"} className="size-11 text-[13px]" />
                     {espera && <span title="Esperando resposta" className="absolute -right-0.5 -top-0.5 size-3 rounded-full border-2 border-white bg-[#e07b2e]" />}
                   </span>
                   <span className="min-w-0 flex-1">

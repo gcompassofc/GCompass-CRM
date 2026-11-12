@@ -27,6 +27,7 @@ import { cn } from "@/lib/utils";
 
 import { marcarRespondido, moverEtapa } from "../leads/actions";
 import { AbrirLead } from "../_opa/painel-lead";
+import { AvatarContato } from "../_opa/ui";
 import { ConversaFlutuante, type LeadDaJanela } from "./_conversa-flutuante";
 import { EnviarEtapa, type EnvioDaEtapa } from "./_enviar-etapa";
 import { moverCartao } from "./mover";
@@ -34,6 +35,9 @@ import { moverCartao } from "./mover";
 export interface CartaoQuadro {
   id: string;
   nome: string;
+  /** Foto do WhatsApp do contato (a mesma das Conversas); sem ela, as iniciais. */
+  contatoId: string | null;
+  temFoto: boolean;
   imovel: { tipo: string; codigo: string; valor: string; titulo: string } | null;
   /** Captação e relacionamento: o imóvel do proprietário (tipo, bairro, valor pretendido). */
   proprietario: { tipo: string; bairro: string; valor: string } | null;
@@ -195,13 +199,11 @@ export function QuadroOpa({ colunas: inicial, envio, simples = false }: { coluna
                           >
                             <AbrirLead leadId={c.id} className="block">
                               <p className="flex items-center gap-2 text-[15px] font-semibold text-[#0a2d40]">
-                                <span
-                                  className={cn(
-                                    "flex size-[22px] shrink-0 items-center justify-center rounded-full text-[11px]",
-                                    c.esperandoMin != null ? "bg-[#0a2d40] text-white" : "bg-[#eef3f6] text-[#5b7284]",
+                                <span className="relative shrink-0" title={`${i + 1}º da etapa`}>
+                                  <AvatarContato nome={c.nome} contatoId={c.contatoId} temFoto={c.temFoto} tom={c.offMarket ? "escuro" : "claro"} className="size-8 text-[11px]" />
+                                  {c.esperandoMin != null && (
+                                    <span title="Esperando resposta" className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full border-2 border-white bg-[#e07b2e]" />
                                   )}
-                                >
-                                  {i + 1}
                                 </span>
                                 <span className="truncate">{c.nome}</span>
                                 <span className="ml-auto flex shrink-0 items-center gap-1 text-[#5b7284]">

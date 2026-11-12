@@ -149,6 +149,8 @@ export default async function PipelinePage({
         return {
           id: l.id,
           nome: l.nome,
+          contatoId: l.contatoId || null,
+          temFoto: l.temFoto,
           imovel: im
             ? { tipo: im.tipo ? im.tipo[0]!.toUpperCase() + im.tipo.slice(1) : "Imóvel", codigo: im.codigo, valor: precoCurto(im.preco_venda_cents), titulo: im.titulo }
             : null,

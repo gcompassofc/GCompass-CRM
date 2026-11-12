@@ -347,6 +347,42 @@ export function Avatar({
   );
 }
 
+/**
+ * Rosto do lead: a foto do WhatsApp que a tela Conversas já mostra, com as
+ * iniciais por baixo. A <img> só monta quando o contato tem foto guardada (sem
+ * isso o browser pediria a rota para cada lead sem foto e levaria 404); se a
+ * foto não carregar, ela some e as iniciais continuam ali.
+ */
+export function AvatarContato({
+  nome,
+  contatoId,
+  temFoto,
+  tom = "claro",
+  className,
+}: {
+  nome: string;
+  contatoId: string | null | undefined;
+  temFoto: boolean;
+  tom?: "claro" | "escuro" | "acao";
+  className?: string;
+}) {
+  const iniciais = <Avatar texto={iniciaisDe(nome)} tom={tom} className={className} />;
+  if (!temFoto || !contatoId) return iniciais;
+  return (
+    <span className="relative inline-flex shrink-0">
+      {iniciais}
+      {/* eslint-disable-next-line @next/next/no-img-element -- rota própria que redireciona para URL assinada do Storage */}
+      <img
+        src={`/api/v1/contacts/${contatoId}/avatar`}
+        alt=""
+        loading="lazy"
+        decoding="async"
+        className="absolute inset-0 size-full rounded-full object-cover"
+      />
+    </span>
+  );
+}
+
 export function iniciaisDe(nome: string): string {
   const p = nome.split(" ").filter(Boolean);
   return ((p[0]?.[0] ?? "") + (p.length > 1 ? p.at(-1)![0] : "")).toUpperCase();

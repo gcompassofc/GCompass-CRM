@@ -92,6 +92,8 @@ export interface LeadOpa {
   nome: string;
   telefone: string | null;
   contatoId: string;
+  /** O contato tem foto do WhatsApp guardada (a mesma das Conversas, servida por /api/v1/contacts/{id}/avatar). */
+  temFoto: boolean;
   etapa: { id: string; nome: string; slug: string; cor: string | null; posicao: number };
   pipelineId: string;
   donoId: string | null;
@@ -177,7 +179,13 @@ type LinhaLead = {
   contact_id: string | null;
   created_at: string;
   assigned_at: string | null;
-  contacts: { name: string | null; phone_number: string | null; telefone_cifrado?: string | null } | null;
+  contacts: {
+    name: string | null;
+    phone_number: string | null;
+    telefone_cifrado?: string | null;
+    avatar_storage_path?: string | null;
+    is_anonymized?: boolean | null;
+  } | null;
   crm_stages: { name: string; slug: string; color: string | null; position: number } | null;
 };
 
@@ -230,7 +238,7 @@ export async function carregarLeadsSemCache(
     let c = supabase
       .from("crm_leads")
       .select(
-        "id, title, status, stage_id, pipeline_id, owner_user_id, value_cents, source, tags, custom_fields, contact_id, created_at, assigned_at, contacts(name, phone_number, telefone_cifrado), crm_stages(name, slug, color, position)",
+        "id, title, status, stage_id, pipeline_id, owner_user_id, value_cents, source, tags, custom_fields, contact_id, created_at, assigned_at, contacts(name, phone_number, telefone_cifrado, avatar_storage_path, is_anonymized), crm_stages(name, slug, color, position)",
       )
       .eq("organization_id", orgId);
     // A ficha abre também negócio ganho ou perdido; as listas só mostram os abertos.
@@ -328,6 +336,8 @@ export async function carregarLeadsSemCache(
       nome,
       telefone: l.contacts?.phone_number ?? telefoneSoCifrado(orgId, l.contacts?.telefone_cifrado ?? null),
       contatoId: l.contact_id ?? "",
+      // Contato anonimizado nunca mostra rosto (a rota da foto também barra).
+      temFoto: Boolean(l.contact_id && l.contacts?.avatar_storage_path && !l.contacts?.is_anonymized),
       etapa: {
         id: l.stage_id,
         nome: l.crm_stages?.name ?? "",
