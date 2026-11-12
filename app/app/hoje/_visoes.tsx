@@ -23,6 +23,7 @@ import {
   type Venda,
 } from "@/lib/opa/dados";
 import { precoCompacto, precoPrincipal, type Imovel } from "@/lib/opa/imoveis";
+import { MINIMO_DO_DIAGNOSTICO } from "@/lib/opa/avanco";
 import { carregarNumerosDoInicio } from "@/lib/opa/inicio";
 import { papelDoNumero, precisaDeWhatsApp } from "@/lib/opa/whatsapp-da-equipe";
 import { diaSP, inicioDoDia, somarDias, type Periodo } from "@/lib/opa/periodo";
@@ -608,7 +609,9 @@ export async function VisaoGestor({
   const vgvVendido = vendas.reduce((s, v) => s + v.vgvCents, 0);
   const carteira = leads.filter((l) => l.imovelCodigo).reduce((s, l) => s + (l.valorCents ?? 0), 0);
   const emProposta = leads.filter((l) => ["proposta", "negociacao", "fechamento"].includes(l.etapa.slug));
-  const pctDiagnostico = leads.length ? Math.round((leads.filter((l) => diagnosticoCompleto(l.campos) === 4).length / leads.length) * 100) : 0;
+  // Diagnóstico feito = 2 dos 4 campos, a mesma regra da etapa (12/11/2026).
+  const diagnosticoFeito = (l: (typeof leads)[number]) => diagnosticoCompleto(l.campos) >= MINIMO_DO_DIAGNOSTICO;
+  const pctDiagnostico = leads.length ? Math.round((leads.filter(diagnosticoFeito).length / leads.length) * 100) : 0;
 
   const semAcento = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
   // O número é de quem é dono dele (owner_user_id); o nome só vale para número antigo sem dono.
@@ -633,7 +636,7 @@ export async function VisaoGestor({
         total: meus.length,
         esperando: meus.filter((l) => l.conversa?.esperandoMin != null).length,
         atrasados: meus.filter(foraDoPrazo).length,
-        diagnostico: meus.length ? Math.round((meus.filter((l) => diagnosticoCompleto(l.campos) === 4).length / meus.length) * 100) : 0,
+        diagnostico: meus.length ? Math.round((meus.filter(diagnosticoFeito).length / meus.length) * 100) : 0,
         // Gestor e administrador não precisam de WhatsApp (12/11/2026): número deles fora do ar não é alarme.
         caiu: whatsCaiu(p) && precisaDeWhatsApp(p.papel, false),
       };
@@ -764,7 +767,7 @@ export async function VisaoGestor({
             contexto={`${vendas.length} ${vendas.length === 1 ? "venda" : "vendas"} · VGV ${precoCompacto(vgvVendido)}`}
           />
         ) : (
-          <CartaoNumero icone={Funnel} rotulo="Diagnóstico completo" valor={`${pctDiagnostico}%`} contexto="finalidade, região, momento e inegociável" />
+          <CartaoNumero icone={Funnel} rotulo="Diagnóstico feito" valor={`${pctDiagnostico}%`} contexto="2 de: finalidade, região, momento, inegociável" />
         )}
       </div>
 
