@@ -10,6 +10,7 @@ import { carregarConfig } from "./config";
 import { carregarImoveis, chaveOrigem, type OrigemLead } from "./dados";
 import { montarDashboard, type Dashboard, type EtapaDash, type LeadDash } from "./dashboard";
 import { carregarRespostasDosLeads } from "./inicio";
+import { ehInterno } from "./interno";
 import { emLotes, todasAsPaginas } from "./lotes";
 
 export interface FunilDash {
@@ -97,7 +98,10 @@ export async function carregarDashboard(
   if (erroEtapas) throw new Error(`carregarDashboard: ${erroEtapas.message}`);
 
   const porId = new Map<string, LeadDash>();
-  for (const l of [...criados, ...abertos, ...fechados] as unknown as Linha[]) porId.set(l.id, paraLeadDash(l));
+  // Número interno da OPA (etiqueta `interno`) não é cliente: fora de todas as contas.
+  for (const l of [...criados, ...abertos, ...fechados] as unknown as Linha[]) {
+    if (!ehInterno(l.tags)) porId.set(l.id, paraLeadDash(l));
+  }
   const leads = [...porId.values()];
 
   const doPeriodo = leads.filter((l) => l.criadoEm >= periodo.anterior.de && l.criadoEm < periodo.ate).map((l) => l.id);

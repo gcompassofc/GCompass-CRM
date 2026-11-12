@@ -23,6 +23,7 @@ import { carregarConfig } from "./config";
 import { ROTULO_ORIGEM, primeiroNome } from "./dados";
 import { ETAPAS_FINAIS, FUNIS } from "./estrutura";
 import { resumirPrazo, type LeadParaPrazo, type RespostaDoLead } from "./inicio";
+import { ehInterno } from "./interno";
 import { todasAsPaginas } from "./lotes";
 import { diaSP, inicioDoDia } from "./periodo";
 
@@ -205,7 +206,8 @@ export async function carregarDadosDoMes(admin: SupabaseClient, orgId: string, m
       .range(i, f),
   )) as unknown as Array<{ id: string; source: string | null; tags: string[] | null; created_at: string; owner_user_id: string | null; stage_id: string; status: string }>;
 
-  const leads: LeadDoMes[] = linhas.map((l) => ({
+  // Número interno da OPA (etiqueta `interno`) não é cliente: fora do relatório.
+  const leads: LeadDoMes[] = linhas.filter((l) => !ehInterno(l.tags)).map((l) => ({
     id: l.id,
     criadoEm: Date.parse(l.created_at),
     origem: l.source,
@@ -228,7 +230,7 @@ export async function carregarDadosDoMes(admin: SupabaseClient, orgId: string, m
   const [fechados, visitas, membros] = await Promise.all([
     admin
       .from("crm_leads")
-      .select("status, lost_reason, value_cents, custom_fields")
+      .select("status, lost_reason, value_cents, custom_fields, tags")
       .eq("organization_id", orgId)
       .eq("pipeline_id", funilId)
       .in("status", ["won", "lost"])
@@ -241,8 +243,8 @@ export async function carregarDadosDoMes(admin: SupabaseClient, orgId: string, m
   if (visitas.error) throw new Error(`relatorio: visitas: ${visitas.error.message}`);
   if (membros.error) throw new Error(`relatorio: equipe: ${membros.error.message}`);
 
-  type Fechado = { status: string; lost_reason: string | null; value_cents: number | null; custom_fields: { venda?: { vgv_cents?: number } } | null };
-  const linhasFechadas = (fechados.data ?? []) as Fechado[];
+  type Fechado = { status: string; lost_reason: string | null; value_cents: number | null; custom_fields: { venda?: { vgv_cents?: number } } | null; tags: string[] | null };
+  const linhasFechadas = ((fechados.data ?? []) as Fechado[]).filter((l) => !ehInterno(l.tags));
 
   const equipe = new Map<string, string>();
   for (const m of (membros.data ?? []) as Array<{ user_id: string }>) {

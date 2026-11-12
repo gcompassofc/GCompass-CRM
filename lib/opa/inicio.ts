@@ -14,6 +14,7 @@ import { createClient } from "@/lib/supabase/server";
 
 import { esperaEmMinutos } from "./atendimento";
 import type { ConfigOpa } from "./config";
+import { ehInterno } from "./interno";
 import { todasAsPaginas } from "./lotes";
 
 export interface LeadParaPrazo {
@@ -116,7 +117,7 @@ export async function carregarNumerosDoInicio(
     throw new Error(`carregarNumerosDoInicio: ${e instanceof Error ? e.message : String(e)}`);
   });
 
-  const leads = (linhas as unknown as Array<{ id: string; source: string | null; tags: string[] | null; created_at: string }>).map((l) => ({
+  const leads = (linhas as unknown as Array<{ id: string; source: string | null; tags: string[] | null; created_at: string }>).filter((l) => !ehInterno(l.tags)).map((l) => ({
     id: l.id,
     pago: l.source === "meta" || (l.tags ?? []).includes("pago"),
     criadoEm: Date.parse(l.created_at),
