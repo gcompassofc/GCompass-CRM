@@ -88,6 +88,26 @@ describe("aviso de lead novo", () => {
     );
   });
 
+  it("traz o que o lead respondeu no formulário (12/11/2026)", () => {
+    const t = textoLeadNovo({
+      corretor: "Luana Machado",
+      lead: "Clodoaldo Kadima",
+      imovel: "CA006944",
+      canal: "meta",
+      voltou: false,
+      link: "https://crm/l/1",
+      whatsapp: "5512999990000",
+      respostas: [
+        { pergunta: "Para que é o imóvel?", resposta: "Moradia" },
+        { pergunta: "Quando pensa em comprar", resposta: "Em até 3 meses" },
+        { pergunta: "", resposta: "sem pergunta some" },
+      ],
+    });
+    expect(t).toBe(
+      "Luana, lead novo para você: Clodoaldo Kadima.\n\nImóvel CA006944, formulário do anúncio.\n\nO que ele respondeu:\n• Para que é o imóvel: Moradia\n• Quando pensa em comprar: Em até 3 meses\n\nResponder: https://wa.me/5512999990000\n\nFicha: https://crm/l/1",
+    );
+  });
+
   it("do site, sem imóvel e sem telefone", () => {
     const t = textoLeadNovo({ corretor: "Marco", lead: "Ana", imovel: null, canal: "site", voltou: false, link: "https://crm/l/2", whatsapp: null });
     expect(t).toBe("Marco, lead novo para você: Ana.\n\nVeio pelo formulário do site.\n\nFicha: https://crm/l/2");

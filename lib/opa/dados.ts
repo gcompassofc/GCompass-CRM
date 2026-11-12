@@ -6,8 +6,9 @@ import { cifraConfigurada, decifrar } from "@/lib/crypto/dados-pessoais";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
-import { boasVindasEnviadaEm, esperaDesde, esperaEmMinutos } from "./atendimento";
+import { boasVindasEnviadaEm, boasVindasFoiEntregue, esperaDesde, esperaEmMinutos } from "./atendimento";
 import { carregarConfig } from "./config";
+import { fotoDaEquipe } from "./fotos-equipe";
 import type { Imovel } from "./imoveis";
 import { emLotes, todasAsPaginas } from "./lotes";
 
@@ -315,6 +316,7 @@ export async function carregarLeadsSemCache(
       ultimaEntradaEm: bruta?.last_inbound_at,
       ultimaSaidaEm: bruta?.last_outbound_at,
       boasVindasEm: boasVindasEnviadaEm(cf),
+      boasVindasEntregue: boasVindasFoiEntregue(cf),
     });
     const esperandoMin = desde !== null ? esperaEmMinutos(desde, agora, config.horario) : null;
     let conversa: LeadOpa["conversa"] = bruta
@@ -416,7 +418,8 @@ export const carregarEquipe = cache(async (orgId: string): Promise<Map<string, P
     const nome = (u?.user_metadata?.full_name as string | undefined) ?? u?.email?.split("@")[0] ?? "Pessoa";
     const partes = nome.split(" ").filter(Boolean);
     const iniciais = ((partes[0]?.[0] ?? "") + (partes.length > 1 ? partes.at(-1)![0] : "")).toUpperCase();
-    const foto = (u?.user_metadata?.avatar_url as string | undefined) || null;
+    // Sem foto no perfil, a guardada no CRM (fotos-equipe.ts, 12/11/2026).
+    const foto = fotoDaEquipe({ avatarUrl: u?.user_metadata?.avatar_url as string | undefined, email: u?.email, nome });
     mapa.set(m.user_id, { id: m.user_id, nome, papel: m.role, iniciais, foto });
   }
   return mapa;

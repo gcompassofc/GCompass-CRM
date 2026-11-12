@@ -156,6 +156,11 @@ export interface DadosDaEspera {
   ultimaSaidaEm?: string | null;
   /** custom_fields.boas_vindas.em quando a boas-vindas automática saiu (#498). */
   boasVindasEm?: string | null;
+  /**
+   * A boas-vindas chegou ao WhatsApp do lead (status "enviada"). Aí o lead já foi
+   * atendido e só volta a esperar quando responder (pedido do Allyson, 12/11/2026).
+   */
+  boasVindasEntregue?: boolean;
 }
 
 const ms = (iso: string | null | undefined): number | null => {
@@ -190,6 +195,11 @@ export function boasVindasEnviadaEm(cf: Record<string, unknown> | null | undefin
   return bv?.em ?? null;
 }
 
+/** custom_fields.boas_vindas.status === "enviada": a mensagem saiu de fato (falha e sem WhatsApp não contam). */
+export function boasVindasFoiEntregue(cf: Record<string, unknown> | null | undefined): boolean {
+  return (cf?.boas_vindas as { status?: string } | undefined)?.status === "enviada";
+}
+
 /**
  * Desde quando o lead espera uma resposta do corretor (ms), ou null se não
  * espera. Regras da fila:
@@ -199,7 +209,10 @@ export function boasVindasEnviadaEm(cf: Record<string, unknown> | null | undefin
  *  - "Respondi" ou ligação depois do início da espera tira o lead da fila até
  *    ele escrever de novo;
  *  - lead aberto sem conversa e sem "Respondi" espera desde que entrou;
- *  - lead passado a outro corretor (repasse da roleta ou troca do gerente) começa o relógio de novo na atribuição.
+ *  - lead passado a outro corretor (repasse da roleta ou troca do gerente) começa o relógio de novo na atribuição;
+ *  - boas-vindas automática entregue (12/11/2026): o lead não espera enquanto não
+ *    responder; quando responde, espera desde a resposta dele. Se a boas-vindas
+ *    falhou, vale a regra antiga (espera desde que entrou).
  */
 export function esperaDesde(d: DadosDaEspera): number | null {
   const entrou = ms(d.ultimaEntradaEm);
@@ -207,9 +220,13 @@ export function esperaDesde(d: DadosDaEspera): number | null {
   const soBoasVindas = saidaFoiSoBoasVindas(d.ultimaSaidaEm, d.boasVindasEm);
   const saiu = soBoasVindas ? null : ms(d.ultimaSaidaEm);
   let desde: number | null = entrou !== null && (saiu === null || entrou > saiu) ? entrou : null;
-  // Lead respondeu à boas-vindas: o relógio continua o da chegada do lead.
+  // Boas-vindas entregue e o corretor ainda não escreveu: só a resposta do lead depois dela conta.
+  const aguardaOLead = soBoasVindas && Boolean(d.boasVindasEntregue);
+  const bv = ms(d.boasVindasEm);
+  if (aguardaOLead && desde !== null && bv !== null && desde <= bv) desde = null;
+  // Boas-vindas que não chegou: o relógio continua o da chegada do lead.
   const criadoEm = ms(d.criadoEm);
-  if (soBoasVindas && desde !== null && criadoEm !== null) desde = Math.min(desde, criadoEm);
+  if (soBoasVindas && !aguardaOLead && desde !== null && criadoEm !== null) desde = Math.min(desde, criadoEm);
 
   const voltou = ms(d.voltouEm);
   if (voltou !== null) {
@@ -220,7 +237,7 @@ export function esperaDesde(d: DadosDaEspera): number | null {
   const respondido = ms(d.respondidoEm) ?? 0;
   if (desde !== null && respondido >= desde) desde = null;
 
-  if (desde === null && (!d.temConversa || soBoasVindas) && d.status === "open" && !respondido) desde = ms(d.criadoEm);
+  if (desde === null && !aguardaOLead && (!d.temConversa || soBoasVindas) && d.status === "open" && !respondido) desde = ms(d.criadoEm);
 
   // A entrega inicial (atribuição no instante da criação) não reinicia nada;
   // uma troca de corretor depois dela, sim.

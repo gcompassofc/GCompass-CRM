@@ -47,7 +47,7 @@ import { avancarRespondidos } from "./avanco";
 import { temPrazoDeResposta } from "./veio-de-formulario";
 import { avisoDevidoRadar, diasParado, textoAvisoRadar } from "./radar-captacoes";
 import { carregarCardsRadar, type CardRadar } from "./radar-captacoes-dados";
-import { boasVindasEnviadaEm, esperaDesde, esperaEmMinutos, minutosUteis, saidaDoCorretor } from "./atendimento";
+import { boasVindasEnviadaEm, boasVindasFoiEntregue, esperaDesde, esperaEmMinutos, minutosUteis, saidaDoCorretor } from "./atendimento";
 import { avisoAtivo, carregarConfig, type ConfigOpa } from "./config";
 import { carregarEquipe, type Pessoa } from "./dados";
 import { emLotes } from "./lotes";
@@ -457,6 +457,7 @@ async function processarFila(c: Contexto, inicio: number) {
       ultimaEntradaEm: conv?.last_inbound_at,
       ultimaSaidaEm: conv?.last_outbound_at,
       boasVindasEm,
+      boasVindasEntregue: boasVindasFoiEntregue(cf as unknown as Record<string, unknown>),
     });
     if (desde === null) continue;
 

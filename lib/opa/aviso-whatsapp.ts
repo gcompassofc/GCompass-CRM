@@ -285,11 +285,18 @@ export function textoLeadNovo(p: {
   voltou: boolean;
   link: string;
   whatsapp: string | null;
+  /** O que o lead respondeu no formulário (custom_fields.formulario.respostas), para o corretor chegar sabendo (12/11/2026). */
+  respostas?: Array<{ pergunta: string; resposta: string }>;
 }): string {
   const de = p.canal === "site" ? "formulário do site" : "formulário do anúncio";
+  const respostas = (p.respostas ?? [])
+    .filter((r) => r?.pergunta?.trim() && r?.resposta?.trim())
+    .slice(0, 6)
+    .map((r) => `• ${r.pergunta.trim().replace(/[?:]\s*$/, "")}: ${r.resposta.trim().slice(0, 120)}`);
   return emParagrafos([
     p.voltou ? `${primeiroNomeDe(p.corretor)}, ${p.lead} preencheu o formulário de novo.` : `${primeiroNomeDe(p.corretor)}, lead novo para você: ${p.lead}.`,
     p.imovel ? `Imóvel ${p.imovel}, ${de}.` : `Veio pelo ${de}.`,
+    respostas.length ? ["O que ele respondeu:", ...respostas].join("\n") : null,
     p.whatsapp ? `Responder: https://wa.me/${p.whatsapp}` : null,
     `Ficha: ${p.link}`,
   ]);

@@ -8,7 +8,39 @@ import { montarOrigem } from "./entrada";
 const criado = "2026-11-06T22:53:00.000Z";
 const bv = "2026-11-06T22:53:40.000Z";
 
-describe("boas-vindas não é resposta do corretor", () => {
+describe("boas-vindas entregue: o lead só espera depois de responder (12/11/2026)", () => {
+  it("só a boas-vindas saiu e o lead não respondeu: não está esperando, nada de aviso", () => {
+    const d = esperaDesde({ status: "open", criadoEm: criado, atribuidoEm: criado, temConversa: true, ultimaMensagemEm: bv, ultimaSaidaEm: "2026-11-06T22:53:39.000Z", boasVindasEm: bv, boasVindasEntregue: true });
+    expect(d).toBeNull();
+  });
+
+  it("o lead respondeu à boas-vindas: espera desde a resposta dele", () => {
+    const d = esperaDesde({
+      status: "open",
+      criadoEm: criado,
+      atribuidoEm: criado,
+      temConversa: true,
+      ultimaEntradaEm: "2026-11-06T23:10:00.000Z",
+      ultimaSaidaEm: "2026-11-06T22:53:39.000Z",
+      boasVindasEm: bv,
+      boasVindasEntregue: true,
+    });
+    expect(d).toBe(Date.parse("2026-11-06T23:10:00.000Z"));
+  });
+
+  it("o lead preencheu o formulário de novo depois da boas-vindas: volta a esperar desde a volta", () => {
+    const voltou = "2026-11-07T10:00:00.000Z";
+    const d = esperaDesde({ status: "open", criadoEm: criado, atribuidoEm: criado, temConversa: true, ultimaMensagemEm: bv, ultimaSaidaEm: "2026-11-06T22:53:39.000Z", boasVindasEm: bv, boasVindasEntregue: true, voltouEm: voltou });
+    expect(d).toBe(Date.parse(voltou));
+  });
+
+  it("o corretor respondeu depois: saiu da fila", () => {
+    const d = esperaDesde({ status: "open", criadoEm: criado, atribuidoEm: criado, temConversa: true, ultimaEntradaEm: "2026-11-06T23:10:00.000Z", ultimaSaidaEm: "2026-11-06T23:20:00.000Z", boasVindasEm: bv, boasVindasEntregue: true });
+    expect(d).toBeNull();
+  });
+});
+
+describe("boas-vindas que não chegou (falhou) não é resposta do corretor", () => {
   it("só a boas-vindas saiu: o lead segue esperando desde que entrou", () => {
     const d = esperaDesde({ status: "open", criadoEm: criado, atribuidoEm: criado, temConversa: true, ultimaMensagemEm: bv, ultimaSaidaEm: "2026-11-06T22:53:39.000Z", boasVindasEm: bv });
     expect(d).toBe(Date.parse(criado));

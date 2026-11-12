@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { requireAuth, resolveActiveOrg } from "@/lib/auth/server";
 import { listarNumerosDaEquipe } from "@/lib/channels/numeros";
+import { fotoDaEquipe } from "@/lib/opa/fotos-equipe";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { CheckCircle, Clock, Info, Kanban, ShieldCheck, Users, WhatsappLogo, WifiSlash, XCircle } from "@/lib/ui/icons";
 
@@ -103,7 +104,7 @@ async function carregarMembros(orgId: string): Promise<Membro[]> {
         papel: m.role,
         acesso: ultimoAcesso(u?.last_sign_in_at),
         whatsapp: sessao ? (sessao.status === "WORKING" ? "conectado" : "desconectado") : "sem",
-        foto: (u?.user_metadata?.avatar_url as string | undefined) || null,
+        foto: fotoDaEquipe({ avatarUrl: u?.user_metadata?.avatar_url as string | undefined, email: u?.email, nome }),
         leadsAbertos: leadsPorDono.get(m.user_id) ?? 0,
       } as Membro;
     })

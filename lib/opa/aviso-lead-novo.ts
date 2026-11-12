@@ -91,6 +91,7 @@ export async function avisarLeadNovo(
         voltou,
         link: `${env.NEXT_PUBLIC_APP_URL}/app/leads/${lead.id}`,
         whatsapp: (lead.contacts?.phone_number ?? "").replace(/\D/g, "") || null,
+        respostas: ((lead.custom_fields?.formulario as { respostas?: Array<{ pergunta: string; resposta: string }> } | undefined)?.respostas ?? []),
       }),
     );
     await admin

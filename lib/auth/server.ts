@@ -9,6 +9,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { logger } from "@/lib/logger";
+import { fotoDaEquipe } from "@/lib/opa/fotos-equipe";
 import { createClient } from "@/lib/supabase/server";
 import type { AuthUser, Role, UserOrgMembership, ActiveOrg } from "./types";
 
@@ -119,7 +120,8 @@ export async function loadAuthUser(): Promise<AuthUser | null> {
   });
 
   const fullName = (user.user_metadata?.full_name as string | undefined) ?? null;
-  const avatarUrl = (user.user_metadata?.avatar_url as string | undefined) ?? null;
+  // Sem foto no perfil, a da equipe guardada no CRM (lib/opa/fotos-equipe.ts, 12/11/2026).
+  const avatarUrl = fotoDaEquipe({ avatarUrl: user.user_metadata?.avatar_url as string | undefined, email: user.email, nome: fullName });
 
   return {
     id: user.id,
