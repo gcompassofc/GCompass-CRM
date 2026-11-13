@@ -17,6 +17,7 @@ import type { createAdminClient } from "@/lib/supabase/admin";
 import { ackToStatus } from "@/lib/types/messaging";
 import { bareWaMessageId, chatIdFromWaMessageId } from "@/lib/waha/message-id";
 import { logger } from "@/lib/logger";
+import { marcarConversou } from "@/lib/opa/conversa-iniciada";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -492,6 +493,10 @@ async function handleInbound(
       metadata: { reason: "stop_keyword", contact_id: contactId },
     });
   }
+
+  // Primeira mensagem do cliente num card que veio do site: etiqueta
+  // "conversou", que o painel de tracking transforma em conversão (0134).
+  await marcarConversou(admin, session.organization_id, contactId, "waha.inbound");
 
   await audit({
     action: "message.received",

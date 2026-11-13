@@ -17,6 +17,7 @@ import { mesclarCampos } from "./campos";
 import { carregarConfig } from "./config";
 import { camposDoCorretorDasRespostas, diagnosticoDasRespostas, lerRespostas, soOQueFalta } from "./formulario";
 import { avisarLeadCriado } from "@/lib/opa/eventos-lead";
+import { marcarConversou } from "@/lib/opa/conversa-iniciada";
 import { phoneLookupVariants } from "@/lib/channels/phone-variants";
 
 /** Padrão da janela; a empresa muda em Configurações (config.volta_dias). */
@@ -377,5 +378,8 @@ async function criarLead(
   const leadId = (data as { id: string }).id;
   // Automações (webhook e regras) disparam também para lead que entra pela OPA.
   await avisarLeadCriado(admin, orgId, { id: leadId, pipeline_id: pipelineId, stage_id: etapaId, title: `${e.nome}${im ? ` · ${im.codigo}` : ""}` }, `opa.${e.origem}`);
+  // A mensagem do cliente pode ter chegado antes do card (formulário abre o
+  // WhatsApp na hora): marca "conversou" já aqui, se for o caso (0134).
+  await marcarConversou(admin, orgId, contactId, `opa.${e.origem}.entrada`);
   return leadId;
 }
