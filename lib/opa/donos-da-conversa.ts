@@ -25,6 +25,8 @@ export interface ContatoLinha {
   name?: string | null;
   phone_number: string | null;
   telefone_indice: string | null;
+  /** Foto do WhatsApp guardada: sinal de que este número existe no WhatsApp. */
+  avatar_storage_path?: string | null;
 }
 export interface ConversaLinha {
   id: string;
@@ -32,6 +34,8 @@ export interface ConversaLinha {
   channel_session_id: string | null;
   assigned_to_user_id: string | null;
   created_at: string;
+  /** Última mensagem do cliente nesta conversa: o número funciona (o cliente escreveu dele). */
+  last_inbound_at?: string | null;
 }
 export interface LeadLinha {
   id: string;
@@ -171,7 +175,7 @@ async function emLotes<T>(ids: string[], ler: (lote: string[]) => Promise<T[]>):
  * conferiu o acesso e resolveu a org no servidor; toda consulta filtra por ela.
  */
 export async function carregarPessoas(admin: Admin, orgId: string, nomeDe: (id: string) => string, contatoIds?: string[]): Promise<Map<string, PessoaDoNumero>> {
-  const COLUNAS = "id, display_name, name, phone_number, telefone_indice";
+  const COLUNAS = "id, display_name, name, phone_number, telefone_indice, avatar_storage_path";
   let contatos: ContatoLinha[];
   if (contatoIds) {
     const pedidos = await emLotes(contatoIds, async (lote) => {
@@ -203,7 +207,7 @@ export async function carregarPessoas(admin: Admin, orgId: string, nomeDe: (id: 
   const conversas = await emLotes(ids, async (lote) => {
     const { data, error } = await admin
       .from("conversations")
-      .select("id, contact_id, channel_session_id, assigned_to_user_id, created_at")
+      .select("id, contact_id, channel_session_id, assigned_to_user_id, created_at, last_inbound_at")
       .eq("organization_id", orgId)
       .eq("is_group", false)
       .in("contact_id", lote);

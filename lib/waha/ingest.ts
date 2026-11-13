@@ -272,6 +272,30 @@ export async function formaJaGravada(admin: Admin, orgId: string, telefone: stri
 }
 
 /**
+ * O WhatsApp mostrou o número real (`real`) de um contato gravado com a outra forma
+ * (`gravada`, com ou sem o nono dígito). Troca o número do cadastro para o real, só se ninguém
+ * mais usa o real (senão seriam dois cadastros com o mesmo número). Falha = não troca, e a
+ * mensagem segue para o cadastro como está (o comportamento de antes).
+ */
+export async function corrigirParaONumeroReal(admin: Admin, orgId: string, gravada: string, real: string): Promise<boolean> {
+  if (!phoneLookupVariants(real).includes(gravada)) return false;
+  try {
+    const { data, error } = await admin
+      .from("contacts")
+      .update({ phone_number: real })
+      .eq("organization_id", orgId)
+      .eq("phone_number", gravada)
+      .is("is_merged_into", null)
+      .select("id");
+    if (error || !data?.length) return false;
+    logger.info("[waha.ingest] número do contato trocado pela forma que o WhatsApp usa", { contatos: data.length });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Upsert atômico de contato pela identidade canônica. Retorna null se a
  * identidade for de grupo ou a RPC falhar.
  */
@@ -303,8 +327,13 @@ export async function upsertContact(
   if (!ehEnderecavel(parsed)) return null;
   // Nono dígito (13/11/2026, caso da Wandalcy): se a pessoa já existe com a outra forma
   // do número (o formulário grava como ela digitou), a mensagem cai nesse contato em vez
-  // de criar um segundo. Só a busca muda; o número gravado não é reescrito.
-  const telefone = parsed.kind === "phone" ? await formaJaGravada(admin, orgId, parsed.phone) : null;
+  // de criar um segundo. E como o endereço que chega aqui veio do próprio WhatsApp, ele é o
+  // número que funciona: o cadastro passa a usá-lo (foto, envio e conversa batem com ele).
+  let telefone: string | null = null;
+  if (parsed.kind === "phone") {
+    const gravada = await formaJaGravada(admin, orgId, parsed.phone);
+    telefone = gravada === parsed.phone || (await corrigirParaONumeroReal(admin, orgId, gravada, parsed.phone)) ? parsed.phone : gravada;
+  }
   const { data, error } = await admin.rpc("fn_upsert_wa_contact" as never, {
     p_org: orgId,
     p_kind: parsed.kind,

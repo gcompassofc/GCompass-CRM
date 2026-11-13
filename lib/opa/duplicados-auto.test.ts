@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { tipoDoTexto } from "./enviados";
 import { agruparContatos, montarPessoa, type ContatoLinha, type ConversaLinha, type LeadLinha } from "./donos-da-conversa";
-import { planoDoDuplicado, textoDuplicadoCorrigido, textoDuplicadoParaDecidir } from "./duplicados-auto";
+import { cadastroQueFunciona, planoDoDuplicado, textoDuplicadoCorrigido, textoDuplicadoParaDecidir } from "./duplicados-auto";
 
 const nomes: Record<string, string> = { cris: "Cristian Spengler", marco: "Marco Ilhabela", paulo: "Paulo Martin" };
 const nome = (id: string) => nomes[id] ?? id;
@@ -13,12 +13,13 @@ const numeros = new Map<string, string | null>([
 ]);
 
 const contato = (id: string, phone: string): ContatoLinha => ({ id, display_name: "Wandalcy Lopes", phone_number: phone, telefone_indice: null });
-const conversa = (id: string, contato: string, sessao: string, em: string): ConversaLinha => ({
+const conversa = (id: string, contato: string, sessao: string, em: string, clienteEscreveu: string | null = em): ConversaLinha => ({
   id,
   contact_id: contato,
   channel_session_id: sessao,
   assigned_to_user_id: null,
   created_at: em,
+  last_inbound_at: clienteEscreveu,
 });
 const formulario = (id: string, contato: string, dono: string, em: string): LeadLinha => ({
   id,
@@ -74,10 +75,15 @@ describe("corretor principal (13/11/2026)", () => {
 });
 
 describe("planoDoDuplicado", () => {
-  it("Wandalcy: fica o lead do formulário, o do WhatsApp é encerrado e o lead passa para o cadastro que conversa", () => {
+  it("Wandalcy: fica o lead do formulário, o do WhatsApp é encerrado e o lead passa para o número que funciona", () => {
+    // A boas-vindas foi para o número com 99 (A) e nunca teve resposta; ela respondeu pelo número com um 9 só (B).
     const p = montarPessoa(
       [A, B],
-      [conversa("c", "B", "s-cris", "2026-11-12T14:47:00Z"), conversa("m", "B", "s-marco", "2026-11-12T10:02:00Z")],
+      [
+        conversa("boas-vindas", "A", "s-cris", "2026-11-12T09:42:00Z", null),
+        conversa("c", "B", "s-cris", "2026-11-12T14:47:00Z"),
+        conversa("m", "B", "s-marco", "2026-11-12T10:02:00Z"),
+      ],
       [formulario("f", "A", "cris", "2026-11-12T09:41:00Z"), doWhatsApp("w", "B", "marco", "2026-11-12T10:02:00Z")],
       numeros,
       new Map(),
@@ -115,6 +121,27 @@ describe("planoDoDuplicado", () => {
   it("um lead de WhatsApp sozinho: nada a fazer", () => {
     const p = montarPessoa([B], [conversa("m", "B", "s-marco", "2026-11-12T10:00:00Z")], [doWhatsApp("w", "B", "marco", "2026-11-12T10:00:00Z")], numeros, new Map(), nome);
     expect(planoDoDuplicado(p).acao).toBe("nada");
+  });
+
+  it("conversa nos dois números mas o cliente só escreveu de um: esse é o certo, mesmo com conversa mais nova no outro", () => {
+    const p = montarPessoa(
+      [A, B],
+      [conversa("b", "B", "s-cris", "2026-11-12T10:00:00Z"), conversa("a", "A", "s-cris", "2026-11-12T20:00:00Z", null)],
+      [formulario("f", "A", "cris", "2026-11-12T09:41:00Z")],
+      numeros,
+      new Map(),
+      nome,
+    );
+    expect(planoDoDuplicado(p)).toMatchObject({ acao: "corrigir", religarPara: "B" });
+  });
+
+  it("ninguém respondeu: vale o número com foto; sem foto em nenhum, não troca de cadastro", () => {
+    const comFoto = { ...B, avatar_storage_path: "org/B.jpg" };
+    const p1 = montarPessoa([A, comFoto], [conversa("a", "A", "s-cris", "2026-11-12T09:42:00Z", null)], [formulario("f", "A", "cris", "2026-11-12T09:41:00Z")], numeros, new Map(), nome);
+    expect(cadastroQueFunciona(p1)).toBe("B");
+    const p2 = montarPessoa([A, B], [conversa("a", "A", "s-cris", "2026-11-12T09:42:00Z", null)], [formulario("f", "A", "cris", "2026-11-12T09:41:00Z")], numeros, new Map(), nome);
+    expect(cadastroQueFunciona(p2)).toBeNull();
+    expect(planoDoDuplicado(p2).acao).toBe("nada");
   });
 
   it("lead do formulário no cadastro certo e sem outro lead: nada a fazer", () => {
