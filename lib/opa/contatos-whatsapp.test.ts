@@ -69,6 +69,30 @@ describe("sinais de anúncio e do site", () => {
     expect(sinalDeEntrada({ body: "Olá! Quero saber mais sobre o imóvel Casa no Perequê." })).toEqual({ origem: "site", imovelCodigo: null });
   });
 
+  it("os outros botões do site também viram lead do site, nas três línguas (13/11/2026)", () => {
+    const textos = [
+      "Olá! Vi o site da OPA e queria falar com um corretor.",
+      "Olá! Vi o site da OPA.",
+      "Olá! Vi o site da OPA e queria conversar sobre um imóvel.",
+      "Olá! Vi o perfil de Luana Machado no site da OPA e queria conversar.",
+      "Olá! Li o artigo Bairros de Ilhabela no blog da OPA e queria conversar.",
+      "Olá! Não achei no site o que procuro em Ilhabela. Pode olhar a carteira off-market?",
+      "Olá! Quero conhecer os imóveis off-market da OPA.",
+      "Hello! I saw the OPA website and would like to speak with an agent.",
+      "Hello! I saw Luana's profile on the OPA website and would like to talk.",
+      "Hello! I'd like to see OPA's off-market properties.",
+      "¡Hola! Vi el sitio de OPA y quería hablar con un corredor.",
+      "¡Hola! Quiero conocer las propiedades off-market de OPA.",
+    ];
+    for (const body of textos) expect(sinalDeEntrada({ body }), body).toEqual({ origem: "site", imovelCodigo: null });
+  });
+
+  it("conversa comum e o botão de quem quer vender não viram lead do site", () => {
+    expect(sinalDeEntrada({ body: "Oi Marco, tudo bem? Vamos almoçar amanhã?" })).toBeNull();
+    expect(sinalDeEntrada({ body: "Olá! Quero apresentar um imóvel para a OPA." })).toBeNull();
+    expect(sinalDeEntrada({ body: "Fui no site do banco e não achei o boleto" })).toBeNull();
+  });
+
   it("aviso do OPA Lembretes leva o link do CRM, e isso não é mensagem do site (10/11/2026)", () => {
     const aviso = "Luana, João Silva espera sua resposta há 20 min.\n\nFicha: https://crm.opailhabela.com.br/app/leads/6caadaf7";
     expect(sinalDeEntrada({ body: aviso })).toBeNull();

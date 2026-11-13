@@ -139,7 +139,29 @@ export interface Sinal {
 const CODIGO_IMOVEL = /\b([A-Z]{2}\d{6})\b/;
 // O endereço do CRM (crm.opailhabela.com.br) não é o site: ele vem nos avisos do OPA
 // Lembretes ("Ficha: https://crm..."), e sem esta exceção o aviso virava lead (10/11/2026).
-const TEXTO_DO_SITE = /((?<!crm\.)opailhabela\.com\.br|tenho interesse no im[oó]vel|quero saber mais sobre o im[oó]vel)/i;
+// Os textos prontos dos outros botões do site (13/11/2026): o botão flutuante e o
+// menu ("Vi o site da OPA"), o perfil do corretor ("no site da OPA"), os artigos
+// ("no blog da OPA"), a busca ("Não achei no site") e o off-market, em português,
+// inglês e espanhol (dados/i18n do site). Antes só a ficha do imóvel virava lead;
+// os outros caíam em "a classificar". O botão de quem quer vender ("apresentar um
+// imóvel para a OPA") fica de fora de propósito: é captação, não comprador.
+const TEXTO_DO_SITE = new RegExp(
+  [
+    String.raw`(?<!crm\.)opailhabela\.com\.br`,
+    "tenho interesse no im[oó]vel",
+    "quero saber mais sobre o im[oó]vel",
+    "vi o site da opa",
+    "no site da opa",
+    "no blog da opa",
+    "off-?market da opa",
+    "n[aã]o achei no site",
+    "the opa website",
+    "opa'?s off-?market",
+    "el sitio de opa",
+    "off-?market de opa",
+  ].join("|"),
+  "i",
+);
 // Em minúsculas: a grafia muda de um motor do WAHA para o outro.
 
 /** "FB_Ads", "ctwa_ad", "ig_ads": o valor diz que veio de anúncio. "contact_card" ou "global_search" não. */
