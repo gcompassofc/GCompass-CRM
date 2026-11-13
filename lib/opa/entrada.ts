@@ -17,6 +17,7 @@ import { mesclarCampos } from "./campos";
 import { carregarConfig } from "./config";
 import { camposDoCorretorDasRespostas, diagnosticoDasRespostas, lerRespostas, soOQueFalta } from "./formulario";
 import { avisarLeadCriado } from "@/lib/opa/eventos-lead";
+import { phoneLookupVariants } from "@/lib/channels/phone-variants";
 
 /** Padrão da janela; a empresa muda em Configurações (config.volta_dias). */
 export const JANELA_VOLTA_DIAS = 90;
@@ -140,13 +141,18 @@ export async function registrarEntrada(admin: SupabaseClient, orgId: string, e: 
     : { data: null };
   const im = imovel as { codigo: string; preco_venda_cents: number | null; off_market: boolean } | null;
 
-  // Contato: telefone é a chave que junta tudo.
+  // Contato: telefone é a chave que junta tudo, com e sem o nono dígito (13/11/2026,
+  // caso da Wandalcy: o formulário veio com o 9 e o WhatsApp dela é sem). O mais
+  // antigo ganha, e um segundo achado não pode virar erro (e contato novo).
+  const formas = phoneLookupVariants(telefone);
   const { data: contatoExistente } = await admin
     .from("contacts")
     .select("id")
     .eq("organization_id", orgId)
-    .eq("phone_number", telefone)
+    .in("phone_number", formas.length ? formas : [telefone])
     .is("is_merged_into", null)
+    .order("created_at", { ascending: true })
+    .limit(1)
     .maybeSingle();
 
   if (contatoExistente) {

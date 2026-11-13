@@ -176,6 +176,23 @@ export function avisoAtivo(config: Pick<ConfigOpa, "avisos">, aviso: AvisoOpa): 
   return !config.avisos.desligados.includes(aviso);
 }
 
+/**
+ * Números da gestão e da administração gravados na configuração (avisos e assistente).
+ * Quem não atende por um WhatsApp conectado ao CRM (o administrador, por exemplo) só
+ * aparece aqui; sem esta lista, a mensagem dele a um corretor virava lead (13/11/2026,
+ * caso do Allyson na conversa do Cristian). Só dígitos, com 55, sem repetir.
+ */
+export function numerosInternos(config: Pick<ConfigOpa, "avisos" | "assistente">): string[] {
+  return [
+    ...new Set([
+      ...config.avisos.gestor,
+      ...config.avisos.admin,
+      ...config.avisos.teste,
+      ...config.assistente.numeros.map((n) => n.numero),
+    ]),
+  ];
+}
+
 export interface NumeroDoAssistente {
   /** Só dígitos, com 55. */
   numero: string;

@@ -9,6 +9,7 @@
  * emite `message` E `message.any` para a mesma mensagem (corrida). Ver migration
  * 0027 para o modelo de identidade canônica.
  */
+import { phoneLookupVariants } from "@/lib/channels/phone-variants";
 import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { audit } from "@/lib/audit";
@@ -242,6 +243,34 @@ function notifyNameOf(p: WahaPayload): string | null {
 }
 
 /**
+ * A forma do telefone com que a pessoa já está no CRM: a que chegou, se ela existe;
+ * senão a outra (com ou sem o nono dígito), se essa existe; senão a que chegou.
+ * Falha na consulta = a que chegou (o comportamento de antes).
+ */
+export async function formaJaGravada(admin: Admin, orgId: string, telefone: string): Promise<string> {
+  const formas = phoneLookupVariants(telefone);
+  if (formas.length < 2) return telefone;
+  let data: unknown[] | null = null;
+  try {
+    const r = await admin
+      .from("contacts")
+      .select("phone_number")
+      .eq("organization_id", orgId)
+      .in("phone_number", formas)
+      .is("is_merged_into", null)
+      .order("created_at", { ascending: true });
+    if (r.error) return telefone;
+    data = r.data;
+  } catch {
+    return telefone;
+  }
+  if (!data?.length) return telefone;
+  const gravadas = (data as Array<{ phone_number: string | null }>).map((c) => c.phone_number);
+  if (gravadas.includes(telefone)) return telefone;
+  return gravadas.find((g): g is string => !!g) ?? telefone;
+}
+
+/**
  * Upsert atômico de contato pela identidade canônica. Retorna null se a
  * identidade for de grupo ou a RPC falhar.
  */
@@ -271,10 +300,14 @@ export async function upsertContact(
   // fronteira com uma RPC que não valida nada. Quem mexer aqui não vai ser
   // avisado por teste nenhum — só por este comentário.
   if (!ehEnderecavel(parsed)) return null;
+  // Nono dígito (13/11/2026, caso da Wandalcy): se a pessoa já existe com a outra forma
+  // do número (o formulário grava como ela digitou), a mensagem cai nesse contato em vez
+  // de criar um segundo. Só a busca muda; o número gravado não é reescrito.
+  const telefone = parsed.kind === "phone" ? await formaJaGravada(admin, orgId, parsed.phone) : null;
   const { data, error } = await admin.rpc("fn_upsert_wa_contact" as never, {
     p_org: orgId,
     p_kind: parsed.kind,
-    p_phone: parsed.kind === "phone" ? parsed.phone : null,
+    p_phone: parsed.kind === "phone" ? telefone : null,
     p_lid: parsed.kind === "lid" ? parsed.lid : null,
     p_chat_id: chatId,
     p_notify: notifyName,

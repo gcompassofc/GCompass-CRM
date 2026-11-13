@@ -46,6 +46,8 @@ import {
 } from "@/lib/opa/contatos-whatsapp";
 import { avisarLeadDeOutroCorretor } from "@/lib/opa/aviso-outro-corretor";
 import { chaveDoTelefone } from "@/lib/opa/aviso-whatsapp";
+import { carregarConfig, numerosInternos } from "@/lib/opa/config";
+import { phoneLookupVariants } from "@/lib/channels/phone-variants";
 import { entregarConversaAoDono } from "@/lib/opa/conversa-do-lead";
 import { registrarLeadDoContato } from "@/lib/opa/entrada";
 import { avisarMudancaDeEtapa } from "@/lib/opa/eventos-lead";
@@ -174,10 +176,18 @@ async function lerContato(admin: Admin, sessaoId: string, chave: string): Promis
 /** Os contatos do CRM desta pessoa, pela identidade do WhatsApp ou pelo telefone. */
 async function contatosDoChat(admin: Admin, orgId: string, chatId: string): Promise<string[]> {
   const p = parseChatId(chatId);
-  const identidade = p.kind === "phone" ? `phone:${p.phone}` : p.kind === "lid" ? `lid:${p.lid}` : null;
-  if (!identidade) return [];
-  const filtros = [`wa_identity.eq.${identidade}`];
-  if (p.kind === "phone" && cifraConfigurada()) filtros.push(`telefone_indice.eq.${indiceTelefone(orgId, p.phone)}`);
+  let filtros: string[];
+  if (p.kind === "phone") {
+    // Com e sem o nono dígito (13/11/2026, caso da Wandalcy): o formulário grava o
+    // número como a pessoa digitou e o WhatsApp manda o de antes do nono dígito.
+    const formas = phoneLookupVariants(p.phone);
+    filtros = formas.map((f) => `wa_identity.eq.phone:${f}`);
+    if (cifraConfigurada()) filtros.push(...formas.map((f) => `telefone_indice.eq.${indiceTelefone(orgId, f)}`));
+  } else if (p.kind === "lid") {
+    filtros = [`wa_identity.eq.lid:${p.lid}`];
+  } else {
+    return [];
+  }
   const { data: contatos } = await admin
     .from("contacts")
     .select("id")
@@ -402,6 +412,9 @@ export async function filtrarEventoDoCorretor(
 /**
  * Os números de WhatsApp da própria empresa (OPA Lembretes e o de cada corretor), pela
  * chave DDD + 8 últimos dígitos. Guardado por um minuto: é consultado a cada mensagem.
+ * Desde 13/11/2026 entram também os números fixos da gestão, da administração e do
+ * assistente (numerosInternos): o administrador não tem WhatsApp conectado e a mensagem
+ * dele a um corretor virava lead.
  */
 const equipePorOrg = new Map<string, { em: number; numeros: Set<string> }>();
 const EQUIPE_VALE_MS = 60_000;
@@ -415,6 +428,15 @@ export async function numerosDaEquipe(admin: Admin, orgId: string, agora = Date.
   const numeros = new Set(
     ((data ?? []) as Array<{ phone_number: string | null }>).map((s) => chaveDoTelefone(s.phone_number)).filter((c): c is string => Boolean(c)),
   );
+  // Configuração ilegível não impede o resto: fica só com os números conectados.
+  try {
+    for (const n of numerosInternos(await carregarConfig(admin, orgId))) {
+      const chave = chaveDoTelefone(n);
+      if (chave) numeros.add(chave);
+    }
+  } catch (err) {
+    logger.warn("contatos-pessoais: configuração ilegível para os números da equipe", { erro: String(err).slice(0, 120) });
+  }
   equipePorOrg.set(orgId, { em: agora, numeros });
   return numeros;
 }
