@@ -55,7 +55,7 @@ export function tipoDoTexto(texto: string | null | undefined, manual = false): T
   if (/espera sua resposta há|chegou e está sem resposta há/.test(t)) return "lembrete";
   if (/está com o corretor responsável/.test(t)) return "outro_corretor";
   if (/capta[çc]/i.test(t)) return "radar";
-  if (/Decida quem atende|está com alguém que saiu da equipe/.test(t)) return "gestao";
+  if (/Decida quem atende|está com alguém que saiu da equipe|estava duplicado no CRM|o CRM não soube com quem fica/.test(t)) return "gestao";
   if (/está parado há \d+ dias/.test(t)) return "parado";
   if (/hora de mandar a mensagem que você agendou|, lembrete: /.test(t)) return "agenda";
   if (/boas-vindas/i.test(t)) return "boas_vindas";
@@ -145,6 +145,7 @@ export function rotuloDoAviso(tipo: string): string {
     radar_lembrete: "Radar: lembrete",
     radar_prazo: "Radar: prazo",
     boas_vindas_falhou: "Boas-vindas não saiu",
+    duplicado: "Duplicado",
   };
   return nomes[tipo] ?? "Aviso";
 }

@@ -3,14 +3,19 @@
  * tem a própria conversa. Aqui sai a resposta única das telas (pedido do Allyson,
  * 06/11/2026):
  *
- *  - principal: o corretor que falou primeiro com a pessoa;
+ *  - principal: o dono do lead de formulário (quem a roleta escolheu), desde 13/11/2026
+ *    (decisão do Allyson no caso da Wandalcy); sem lead de formulário, o corretor que
+ *    falou primeiro com a pessoa;
  *  - responsável: o dono do lead aberto; sem lead, o dono da conversa.
  *
- * O mesmo número pode estar em dois contatos (telefone e @lid do WhatsApp), então a
- * pessoa é agrupada pelo índice do telefone, não pelo contato. Só devolve nomes e datas,
+ * O mesmo número pode estar em dois contatos (telefone e @lid do WhatsApp, ou com e sem
+ * o nono dígito), então a pessoa é agrupada pelo telefone, não pelo contato. Só devolve nomes e datas,
  * nunca o que foi conversado: é o que o corretor precisa para não pisar no colega.
  */
+import { phoneLookupVariants } from "@/lib/channels/phone-variants";
 import type { createAdminClient } from "@/lib/supabase/admin";
+
+import { veioDeFormulario } from "./veio-de-formulario";
 
 type Admin = ReturnType<typeof createAdminClient>;
 
@@ -34,6 +39,14 @@ export interface LeadLinha {
   contact_id: string;
   owner_user_id: string | null;
   created_at: string;
+  /** Para saber se nasceu de formulário (roleta). */
+  source?: string | null;
+  origem?: unknown;
+}
+
+/** Lead que nasceu de formulário do anúncio ou do site: o dono é quem a roleta escolheu. */
+export function ehLeadDaRoleta(l: Pick<LeadLinha, "source" | "origem" | "owner_user_id">): boolean {
+  return Boolean(l.owner_user_id) && veioDeFormulario(l.origem ? { origem: l.origem } : null, l.source ?? null);
 }
 
 export interface CorretorDoNumero {
@@ -46,7 +59,7 @@ export interface CorretorDoNumero {
 
 export interface DonosDaConversa {
   responsavel: { id: string; nome: string } | null;
-  principal: { id: string; nome: string; desde: string } | null;
+  principal: { id: string; nome: string; desde: string; criterio: "roleta" | "primeira_conversa" } | null;
   corretores: CorretorDoNumero[];
   leadsAbertos: number;
 }
@@ -69,9 +82,17 @@ export function agruparContatos(contatos: ContatoLinha[]): ContatoLinha[][] {
   const grupos = new Map<string, ContatoLinha[]>();
   const chaves = new Map<string, string>();
   for (const c of contatos) {
-    const minhas = [c.telefone_indice && `i:${c.telefone_indice}`, c.phone_number && `t:${c.phone_number}`].filter((k): k is string => Boolean(k));
-    const achada = minhas.map((k) => chaves.get(k)).find(Boolean);
-    const chave = achada ?? `c:${c.id}`;
+    // Com e sem o nono dígito é a mesma pessoa (13/11/2026): as duas formas viram chave.
+    const telefones = c.phone_number ? phoneLookupVariants(c.phone_number) : [];
+    const minhas = [c.telefone_indice && `i:${c.telefone_indice}`, ...telefones.map((t) => `t:${t}`)].filter((k): k is string => Boolean(k));
+    const achadas = [...new Set(minhas.map((k) => chaves.get(k)).filter((k): k is string => Boolean(k)))];
+    const chave = achadas[0] ?? `c:${c.id}`;
+    // Um contato pode ligar dois grupos que já existiam (um pelo índice, outro pelo número): junta.
+    for (const outra of achadas.slice(1)) {
+      grupos.set(chave, [...(grupos.get(chave) ?? []), ...(grupos.get(outra) ?? [])]);
+      grupos.delete(outra);
+      for (const [k, v] of chaves) if (v === outra) chaves.set(k, chave);
+    }
     for (const k of minhas) chaves.set(k, chave);
     grupos.set(chave, [...(grupos.get(chave) ?? []), c]);
   }
@@ -91,23 +112,35 @@ export function montarPessoa(
     .map((c) => ({ ...c, corretorId: corretorDaConversa(c, donoDoNumero), primeira: primeiras.get(c.id) ?? c.created_at }))
     .sort((a, b) => a.primeira.localeCompare(b.primeira));
 
-  // Quem aparece primeiro na lista, já em ordem, é o principal. Conversa sem corretor não conta.
+  const leadsEmOrdem = [...leads].sort((a, b) => a.created_at.localeCompare(b.created_at));
+  // Lead de formulário: o principal é quem a roleta escolheu, mesmo que outro corretor tenha
+  // falado antes (a mensagem automática da Meta cai no número da página segundos depois).
+  const daRoleta = leadsEmOrdem.find(ehLeadDaRoleta);
+
+  // Sem lead da roleta, quem aparece primeiro na lista, já em ordem, é o principal. Conversa sem corretor não conta.
   const vistos = new Set<string>();
   const corretores: CorretorDoNumero[] = [];
   for (const c of com) {
     if (!c.corretorId || vistos.has(c.corretorId)) continue;
     vistos.add(c.corretorId);
-    corretores.push({ id: c.corretorId, nome: nomeDe(c.corretorId), desde: c.primeira, conversaId: c.id, principal: corretores.length === 0 });
+    corretores.push({ id: c.corretorId, nome: nomeDe(c.corretorId), desde: c.primeira, conversaId: c.id, principal: false });
   }
-  const principal = corretores[0] ? { id: corretores[0].id, nome: corretores[0].nome, desde: corretores[0].desde } : null;
-
-  const leadsEmOrdem = [...leads].sort((a, b) => a.created_at.localeCompare(b.created_at));
-  const donoDoLead = leadsEmOrdem.find((l) => l.owner_user_id)?.owner_user_id ?? null;
+  const idPrincipal = daRoleta?.owner_user_id ?? corretores[0]?.id ?? null;
+  for (const c of corretores) c.principal = c.id === idPrincipal;
+  const principal = daRoleta?.owner_user_id
+    ? { id: daRoleta.owner_user_id, nome: nomeDe(daRoleta.owner_user_id), desde: daRoleta.created_at, criterio: "roleta" as const }
+    : corretores[0]
+      ? { id: corretores[0].id, nome: corretores[0].nome, desde: corretores[0].desde, criterio: "primeira_conversa" as const }
+      : null;
+  const donoDoLead = donoDoLeadDe(leadsEmOrdem);
   const idResponsavel = donoDoLead ?? com.find((c) => c.corretorId)?.corretorId ?? null;
 
   const motivos: PessoaDoNumero["motivos"] = [];
   if (leads.length > 1) motivos.push("dois_leads");
-  if (corretores.length > 1) motivos.push("corretores_diferentes");
+  // Outro corretor conversando não é problema quando o lead é da roleta e está com o dono certo:
+  // esse corretor já recebe o aviso "esse lead está com outro corretor".
+  const resolvidoPelaRoleta = Boolean(daRoleta) && leads.length === 1 && donoDoLeadDe(leadsEmOrdem) === principal?.id;
+  if (corretores.length > 1 && !resolvidoPelaRoleta) motivos.push("corretores_diferentes");
   if (contatos.length > 1) motivos.push("contato_repetido");
   if (donoDoLead && principal && donoDoLead !== principal.id) motivos.push("lead_com_outro");
 
@@ -121,6 +154,10 @@ export function montarPessoa(
     leads: leadsEmOrdem,
     motivos,
   };
+}
+
+function donoDoLeadDe(leads: LeadLinha[]): string | null {
+  return leads.find(ehLeadDaRoleta)?.owner_user_id ?? leads.find((l) => l.owner_user_id)?.owner_user_id ?? null;
 }
 
 async function emLotes<T>(ids: string[], ler: (lote: string[]) => Promise<T[]>): Promise<T[]> {
@@ -148,7 +185,14 @@ export async function carregarPessoas(admin: Admin, orgId: string, nomeDe: (id: 
       if (error) throw new Error(`pessoas: gêmeos: ${error.message}`);
       return (data ?? []) as ContatoLinha[];
     });
-    contatos = [...new Map([...pedidos, ...gemeos].map((c) => [c.id, c])).values()];
+    // A outra forma do celular (com ou sem o nono dígito) também é a pessoa.
+    const variantes = [...new Set(pedidos.flatMap((c) => (c.phone_number ? phoneLookupVariants(c.phone_number) : [])))];
+    const pelaVariante = await emLotes(variantes, async (lote) => {
+      const { data, error } = await admin.from("contacts").select(COLUNAS).eq("organization_id", orgId).in("phone_number", lote).is("is_merged_into", null);
+      if (error) throw new Error(`pessoas: outra forma do número: ${error.message}`);
+      return (data ?? []) as ContatoLinha[];
+    });
+    contatos = [...new Map([...pedidos, ...gemeos, ...pelaVariante].map((c) => [c.id, c])).values()];
   } else {
     const { data, error } = await admin.from("contacts").select(COLUNAS).eq("organization_id", orgId).is("is_merged_into", null).limit(20000);
     if (error) throw new Error(`pessoas: contatos: ${error.message}`);
@@ -169,7 +213,7 @@ export async function carregarPessoas(admin: Admin, orgId: string, nomeDe: (id: 
   const leads = await emLotes(ids, async (lote) => {
     const { data, error } = await admin
       .from("crm_leads")
-      .select("id, title, contact_id, owner_user_id, created_at")
+      .select("id, title, contact_id, owner_user_id, created_at, source, origem:custom_fields->origem")
       .eq("organization_id", orgId)
       .eq("status", "open")
       .in("contact_id", lote);

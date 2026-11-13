@@ -159,10 +159,11 @@ export interface ConfigOpa {
  *  - repasse: o lead passa para o próximo da roleta no fim do prazo (e a escalada à gestão).
  *    Desligado, o lead fica com o corretor e só os lembretes saem;
  *  - parado: negócio parado em proposta, negociação e fechamento;
- *  - radar: Captações do Radar.
+ *  - radar: Captações do Radar;
+ *  - duplicado: o que o CRM resolveu sozinho na tela Duplicados e o que a gestão precisa decidir (13/11/2026).
  * Lembrete que a própria pessoa agendou e o aviso de boas-vindas que não saiu não entram aqui.
  */
-export const AVISOS_OPA = ["lead_novo", "prazo", "outro_corretor", "repasse", "parado", "radar"] as const;
+export const AVISOS_OPA = ["lead_novo", "prazo", "outro_corretor", "repasse", "parado", "radar", "duplicado"] as const;
 export type AvisoOpa = (typeof AVISOS_OPA)[number];
 
 /** Lista limpa dos avisos desligados: só tipo conhecido, sem repetir. */

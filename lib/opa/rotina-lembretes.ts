@@ -50,6 +50,8 @@ import { carregarCardsRadar, type CardRadar } from "./radar-captacoes-dados";
 import { boasVindasEnviadaEm, boasVindasFoiEntregue, esperaDesde, esperaEmMinutos, minutosUteis, saidaDoCorretor } from "./atendimento";
 import { avisoAtivo, carregarConfig, type ConfigOpa } from "./config";
 import { carregarEquipe, type Pessoa } from "./dados";
+import { carregarPessoas } from "./donos-da-conversa";
+import { resolverDuplicados } from "./duplicados-auto";
 import { emLotes } from "./lotes";
 import { diaSP } from "./periodo";
 import {
@@ -93,9 +95,12 @@ export interface ResultadoRotina {
   avancos: number;
   /** Avisos das Captações do Radar (chegada, lembrete, prazo). */
   radar: number;
+  /** Duplicados resolvidos sozinhos e casos mandados à gestão (lib/opa/duplicados-auto.ts). */
+  duplicadosCorrigidos: number;
+  duplicadosParaDecidir: number;
 }
 
-const vazio = (): ResultadoRotina => ({ lembretes: 0, avisos: 0, repasses: 0, escaladas: 0, parados: 0, semNumero: 0, avancos: 0, radar: 0 });
+const vazio = (): ResultadoRotina => ({ lembretes: 0, avisos: 0, repasses: 0, escaladas: 0, parados: 0, semNumero: 0, avancos: 0, radar: 0, duplicadosCorrigidos: 0, duplicadosParaDecidir: 0 });
 
 type Admin = SupabaseClient;
 
@@ -727,6 +732,29 @@ interface ItemRadar {
 // ---------------------------------------------------------------- rodada
 
 /** Organizações com o CRM da OPA ligado: têm o funil de compradores e a configuração `settings.opa`. */
+/**
+ * Duplicados (13/11/2026): resolve sozinho o caso sem dúvida e manda à gestão o caso com
+ * dúvida. A correção roda sempre; o aviso respeita o interruptor "duplicado".
+ */
+async function processarDuplicados(c: Contexto) {
+  const nomeDe = (id: string | null) => (id ? c.equipe.get(id)?.nome ?? "Corretor" : "Sem corretor");
+  const pessoas = [...new Set((await carregarPessoas(c.admin, c.orgId, (id) => nomeDe(id))).values())].filter((p) => p.motivos.length > 0);
+  const res = await resolverDuplicados(
+    c.admin,
+    c.orgId,
+    pessoas,
+    nomeDe,
+    async (_tipo, leadId, marca, texto) => {
+      if (!avisoAtivo(c.config, "duplicado")) return;
+      for (const d of c.gestores) await avisarGestao(c, { leadId, tipo: "duplicado", marca }, d, texto);
+    },
+    link,
+    `${env.NEXT_PUBLIC_APP_URL}/app/duplicados`,
+  );
+  c.r.duplicadosCorrigidos += res.corrigidos;
+  c.r.duplicadosParaDecidir += res.paraDecidir;
+}
+
 async function orgsDaOpa(admin: Admin): Promise<string[]> {
   const { data, error } = await admin.from("crm_pipelines").select("organization_id").eq("slug", "compradores");
   if (error) throw new Error(`orgsDaOpa: ${error.message}`);
@@ -777,6 +805,16 @@ export async function rodarRotinaLembretes(admin: Admin, agora = Date.now()): Pr
         logger.warn("[opa-lembretes] falha no avanço de etapa", { orgId, error: String(e) });
       }
       await processarFila(c, agora);
+
+      // Duplicados: de meia em meia hora, a qualquer hora (corrigir não depende do horário).
+      const { minuto: minutoAgora } = horaEMinuto(agora);
+      if (minutoAgora % 30 === 0) {
+        try {
+          await processarDuplicados(c);
+        } catch (e) {
+          logger.warn("[opa-lembretes] falha nos duplicados", { orgId, error: String(e) });
+        }
+      }
 
       // Negócio parado: de dez em dez minutos, no horário comercial de dia aberto.
       const { hora, minuto } = horaEMinuto(agora);

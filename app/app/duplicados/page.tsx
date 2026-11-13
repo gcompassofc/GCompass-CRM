@@ -44,7 +44,7 @@ export default async function DuplicadosPage() {
       <CabecalhoOpa secao="Gestão" titulo="Duplicados" subtitulo="O mesmo número com mais de um corretor ou mais de um lead" icone={UsersThree} equipe={false} ferramentas={false} />
       <CorpoOpa largura="max-w-[1100px]">
         <Cartao bloco>
-          <TituloBloco icone={Warning} tom="aviso" titulo={`${casos.length} ${casos.length === 1 ? "caso" : "casos"} para olhar`} sub="O corretor principal é quem falou primeiro com a pessoa. Lead novo já não duplica: o banco barra." />
+          <TituloBloco icone={Warning} tom="aviso" titulo={`${casos.length} ${casos.length === 1 ? "caso" : "casos"} para olhar`} sub="Lead de formulário é de quem a roleta escolheu; sem formulário, o principal é quem falou primeiro. A cada 30 minutos o CRM resolve sozinho os casos sem dúvida." />
         </Cartao>
 
         {casos.length === 0 && (
@@ -75,7 +75,8 @@ export default async function DuplicadosPage() {
                 <p className="flex flex-wrap items-center gap-1.5 rounded-2xl bg-[#e5f3ea] px-4 py-2.5 text-[14px] text-[#1d6b43]">
                   <Star className="size-4" weight="fill" aria-hidden />
                   <span>
-                    <strong>Corretor principal: {p.principal.nome}</strong>, falou primeiro em {dia(p.principal.desde)}
+                    <strong>Corretor principal: {p.principal.nome}</strong>,{" "}
+                    {p.principal.criterio === "roleta" ? `recebeu pela roleta em ${dia(p.principal.desde)}` : `falou primeiro em ${dia(p.principal.desde)}`}
                   </span>
                 </p>
               )}
